@@ -1,0 +1,101 @@
+import { Link } from 'react-router-dom';
+import { Menu, X, Sun, Moon } from 'lucide-react';
+import { useState } from 'react';
+import { useTheme } from '@/hooks/useTheme';
+
+export function Navbar() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container mx-auto flex h-14 items-center px-4">
+        <Link to="/" className="mr-6 flex items-center space-x-2">
+          <span className="text-xl font-bold bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
+            MTG League
+          </span>
+        </Link>
+
+        <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
+          <Link to="/standings" className="text-muted-foreground transition-colors hover:text-foreground">
+            Standings
+          </Link>
+          <Link to="/schedule" className="text-muted-foreground transition-colors hover:text-foreground">
+            Schedule
+          </Link>
+          <Link to="/pools" className="text-muted-foreground transition-colors hover:text-foreground">
+            Card Pools
+          </Link>
+          <Link to="/decks" className="text-muted-foreground transition-colors hover:text-foreground">
+            Decklists
+          </Link>
+        </nav>
+
+        <div className="flex flex-1 items-center justify-end space-x-2">
+          <button
+            onClick={toggleTheme}
+            className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            aria-label="Toggle theme"
+          >
+            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+          </button>
+          <Link
+            to="/login"
+            className="hidden md:inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Sign In
+          </Link>
+          <button
+            className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="md:hidden border-t border-border bg-background">
+          <nav className="container mx-auto px-4 py-4 space-y-3">
+            <Link
+              to="/standings"
+              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Standings
+            </Link>
+            <Link
+              to="/schedule"
+              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Schedule
+            </Link>
+            <Link
+              to="/pools"
+              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Card Pools
+            </Link>
+            <Link
+              to="/decks"
+              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Decklists
+            </Link>
+            <Link
+              to="/login"
+              className="block text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Sign In
+            </Link>
+          </nav>
+        </div>
+      )}
+    </header>
+  );
+}

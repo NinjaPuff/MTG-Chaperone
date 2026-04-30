@@ -1,0 +1,479 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// Enums
+// ──────────────────────────────────────────────
+
+enum LeagueRole {
+  admin
+  player
+}
+
+enum InviteLinkStatus {
+  active
+  revoked
+}
+
+enum EventStatus {
+  setup
+  active
+  completed
+}
+
+enum EventFormat {
+  swiss
+  seeded_swiss
+  round_robin
+}
+
+enum SideboardRule {
+  entire_pool
+  fixed_15
+  none
+}
+
+enum SchedulingType {
+  fixed_deadlines
+  open_window
+  weekly_auto
+}
+
+enum DeckLockingMode {
+  required_before_round
+  free_modification
+  admin_locked
+}
+
+enum SeedingSource {
+  previous_season
+  previous_event
+  manual
+}
+
+enum RoundStatus {
+  not_started
+  in_progress
+  completed
+}
+
+enum MatchStatus {
+  pending
+  reported
+  confirmed
+  disputed
+  resolved
+}
+
+enum BoosterType {
+  draft
+  play
+  set
+  collector
+}
+
+enum PoolVerificationMode {
+  honor_system
+  admin_approval
+  peer_approval
+}
+
+enum AcquisitionApprovalStatus {
+  pending
+  approved
+  rejected
+}
+
+enum DecklistStatus {
+  draft
+  submitted
+  locked
+}
+
+enum DeckZone {
+  main
+  sideboard
+}
+
+// ──────────────────────────────────────────────
+// Identity & Membership
+// ──────────────────────────────────────────────
+
+model User {
+  id          String   @id @default(uuid())
+  discordId   String?  @unique
+  googleId    String?  @unique
+  displayName String
+  slug        String   @unique
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships      LeagueMembership[]
+  inviteLinks      InviteLink[]
+  cardPools        CardPool[]
+  decklists        Decklist[]
+  standings        Standing[]
+  matchesAsPlayer1 Match[]        @relation("MatchPlayer1")
+  matchesAsPlayer2 Match[]        @relation("MatchPlayer2")
+  matchesReported  Match[]        @relation("MatchReporter")
+  gameResultWins   GameResult[]   @relation("GameWinner")
+  scheduledAs1     ScheduledPairing[] @relation("ScheduledPlayer1")
+  scheduledAs2     ScheduledPairing[] @relation("ScheduledPlayer2")
+}
+
+model League {
+  id                   String   @id @default(uuid())
+  name                 String
+  slug                 String   @unique
+  description          String?
+  logoUrl              String?
+  bannerUrl            String?
+  poolVisibility       Boolean  @default(true)
+  decklistVisibility   Boolean  @default(true)
+  scheduleVisibility   Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  memberships LeagueMembership[]
+  inviteLinks InviteLink[]
+  seasons     Season[]
+}
+
+model LeagueMembership {
+  id       String     @id @default(uuid())
+  userId   String
+  leagueId String
+  role     LeagueRole @default(player)
+  joinedAt DateTime   @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, leagueId])
+}
+
+model InviteLink {
+  id          String           @id @default(uuid())
+  leagueId    String
+  token       String           @unique
+  status      InviteLinkStatus @default(active)
+  maxUses     Int?
+  useCount    Int              @default(0)
+  expiresAt   DateTime?
+  createdById String
+  createdAt   DateTime         @default(now())
+
+  league    League @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  createdBy User   @relation(fields: [createdById], references: [id])
+}
+
+// ──────────────────────────────────────────────
+// Season & Scoring
+// ──────────────────────────────────────────────
+
+model Season {
+  id             String  @id @default(uuid())
+  leagueId       String
+  name           String
+  number         Int
+  tradingEnabled Boolean @default(false)
+  isActive       Boolean @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  league             League              @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  pointConfig        PointConfig?
+  events             Event[]
+  cardPools          CardPool[]
+  standings          Standing[]
+  roundRobinSchedule RoundRobinSchedule?
+
+  @@unique([leagueId, number])
+}
+
+model PointConfig {
+  id               String @id @default(uuid())
+  seasonId         String @unique
+  matchWinPoints   Int    @default(3)
+  matchDrawPoints  Int    @default(1)
+  matchLossPoints  Int    @default(0)
+  gameWinPoints    Int    @default(0)
+  sweepBonusPoints Int    @default(0)
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+}
+
+model Standing {
+  id          String   @id @default(uuid())
+  seasonId    String
+  userId      String
+  points      Int      @default(0)
+  matchWins   Int      @default(0)
+  matchLosses Int      @default(0)
+  matchDraws  Int      @default(0)
+  gameWins    Int      @default(0)
+  gameLosses  Int      @default(0)
+  omwPercent  Float    @default(0)
+  gwPercent   Float    @default(0)
+  ogwPercent  Float    @default(0)
+  updatedAt   DateTime @updatedAt
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([seasonId, userId])
+  @@index([seasonId, points(sort: Desc)])
+}
+
+// ──────────────────────────────────────────────
+// Events & Rounds
+// ──────────────────────────────────────────────
+
+model Event {
+  id                String      @id @default(uuid())
+  seasonId          String
+  name              String
+  status            EventStatus @default(setup)
+  pointMultiplier   Float       @default(1.0)
+  standingsOverride Boolean     @default(false)
+  orderIndex        Int
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  season             Season              @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  config             EventConfig?
+  rounds             Round[]
+  decklists          Decklist[]
+  deckUniquenessRule DeckUniquenessRule?
+}
+
+model EventConfig {
+  id              String          @id @default(uuid())
+  eventId         String          @unique
+  format          EventFormat
+  bestOfN         Int             @default(3)
+  deckCount       Int             @default(1)
+  minDeckSize     Int             @default(40)
+  sideboardRule   SideboardRule   @default(entire_pool)
+  schedulingType  SchedulingType  @default(open_window)
+  deckLockingMode DeckLockingMode @default(free_modification)
+  seedingSource   SeedingSource?
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Round {
+  id          String      @id @default(uuid())
+  eventId     String
+  roundNumber Int
+  status      RoundStatus @default(not_started)
+  deadline    DateTime?
+  createdAt   DateTime    @default(now())
+
+  event     Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  matches   Match[]
+  decklists Decklist[]
+}
+
+model RoundRobinSchedule {
+  id        String   @id @default(uuid())
+  seasonId  String   @unique
+  createdAt DateTime @default(now())
+
+  season   Season            @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  pairings ScheduledPairing[]
+}
+
+model ScheduledPairing {
+  id         String  @id @default(uuid())
+  scheduleId String
+  player1Id  String
+  player2Id  String
+  eventId    String?
+  roundId    String?
+
+  schedule RoundRobinSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  player1  User               @relation("ScheduledPlayer1", fields: [player1Id], references: [id])
+  player2  User               @relation("ScheduledPlayer2", fields: [player2Id], references: [id])
+}
+
+// ──────────────────────────────────────────────
+// Matches
+// ──────────────────────────────────────────────
+
+model Match {
+  id           String      @id @default(uuid())
+  roundId      String
+  player1Id    String
+  player2Id    String?
+  isBye        Boolean     @default(false)
+  status       MatchStatus @default(pending)
+  reportedById String?
+  confirmedAt  DateTime?
+  createdAt    DateTime    @default(now())
+
+  round      Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  player1    User         @relation("MatchPlayer1", fields: [player1Id], references: [id])
+  player2    User?        @relation("MatchPlayer2", fields: [player2Id], references: [id])
+  reportedBy User?        @relation("MatchReporter", fields: [reportedById], references: [id])
+  gameResults GameResult[]
+
+  @@index([roundId])
+  @@index([player1Id])
+  @@index([player2Id])
+  @@index([status])
+}
+
+model GameResult {
+  id         String  @id @default(uuid())
+  matchId    String
+  gameNumber Int
+  winnerId   String?
+  isDraw     Boolean @default(false)
+  notes      String?
+
+  match  Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  winner User? @relation("GameWinner", fields: [winnerId], references: [id])
+}
+
+// ──────────────────────────────────────────────
+// Card Pools
+// ──────────────────────────────────────────────
+
+model BoosterProduct {
+  id              String      @id @default(uuid())
+  name            String
+  setReleaseName  String
+  boosterType     BoosterType
+  createdAt       DateTime    @default(now())
+
+  setCodes  BoosterSetCode[]
+  cardPools CardPool[]
+}
+
+model BoosterSetCode {
+  id               String @id @default(uuid())
+  boosterProductId String
+  setCode          String @db.VarChar(10)
+
+  boosterProduct BoosterProduct @relation(fields: [boosterProductId], references: [id], onDelete: Cascade)
+
+  @@unique([boosterProductId, setCode])
+}
+
+model CardPool {
+  id               String               @id @default(uuid())
+  userId           String
+  seasonId         String
+  boosterProductId String
+  verificationMode PoolVerificationMode @default(honor_system)
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  season         Season          @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  boosterProduct BoosterProduct  @relation(fields: [boosterProductId], references: [id])
+  acquisitions   PoolAcquisition[]
+
+  @@unique([userId, seasonId])
+}
+
+model PoolAcquisition {
+  id             String                    @id @default(uuid())
+  cardPoolId     String
+  phaseLabel     String
+  approvalStatus AcquisitionApprovalStatus @default(pending)
+  addedAt        DateTime                  @default(now())
+
+  cardPool CardPool        @relation(fields: [cardPoolId], references: [id], onDelete: Cascade)
+  entries  CardPoolEntry[]
+}
+
+model CardPoolEntry {
+  id            String @id @default(uuid())
+  acquisitionId String
+  cachedCardId  String
+  quantity      Int    @default(1)
+
+  acquisition PoolAcquisition @relation(fields: [acquisitionId], references: [id], onDelete: Cascade)
+  cachedCard  CachedCard      @relation(fields: [cachedCardId], references: [scryfallId])
+
+  @@index([acquisitionId])
+}
+
+// ──────────────────────────────────────────────
+// Decklists
+// ──────────────────────────────────────────────
+
+model Decklist {
+  id        String         @id @default(uuid())
+  userId    String
+  eventId   String
+  roundId   String
+  name      String?
+  status    DecklistStatus @default(draft)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event   Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  round   Round          @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  entries DecklistEntry[]
+
+  @@index([userId, eventId, roundId])
+}
+
+model DecklistEntry {
+  id           String   @id @default(uuid())
+  decklistId   String
+  cachedCardId String
+  quantity     Int      @default(1)
+  zone         DeckZone @default(main)
+
+  decklist   Decklist   @relation(fields: [decklistId], references: [id], onDelete: Cascade)
+  cachedCard CachedCard @relation(fields: [cachedCardId], references: [scryfallId])
+
+  @@index([decklistId])
+}
+
+model DeckUniquenessRule {
+  id             String @id @default(uuid())
+  eventId        String @unique
+  constraintType String
+  parameters     Json   @default("{}")
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+// ──────────────────────────────────────────────
+// Scryfall Cache
+// ──────────────────────────────────────────────
+
+model CachedCard {
+  scryfallId    String   @id
+  name          String
+  manaCost      String?
+  typeLine      String
+  oracleText    String?
+  colors        String[]
+  colorIdentity String[]
+  cmc           Float
+  rarity        String
+  setCode       String
+  imageUris     Json?
+  prices        Json?
+  lastFetched   DateTime @default(now())
+
+  cardPoolEntries CardPoolEntry[]
+  decklistEntries DecklistEntry[]
+
+  @@index([setCode])
+  @@index([name])
+}
