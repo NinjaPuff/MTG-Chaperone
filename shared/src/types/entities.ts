@@ -34,9 +34,6 @@ export interface League {
   description: string | null;
   logoUrl: string | null;
   bannerUrl: string | null;
-  poolVisibility: boolean;
-  decklistVisibility: boolean;
-  scheduleVisibility: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -68,6 +65,9 @@ export interface Season {
   number: number;
   tradingEnabled: boolean;
   isActive: boolean;
+  poolVisibility: boolean;
+  decklistVisibility: boolean;
+  scheduleVisibility: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

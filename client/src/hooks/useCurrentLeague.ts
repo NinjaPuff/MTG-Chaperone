@@ -5,13 +5,22 @@ type LeagueWithActiveSeason = {
   id: string;
   name: string;
   slug: string;
-  seasons: Array<{ id: string; name: string; isActive: boolean }>;
+  seasons: Array<{
+    id: string;
+    name: string;
+    number: number;
+    isActive: boolean;
+    poolVisibility: boolean;
+    decklistVisibility: boolean;
+    scheduleVisibility: boolean;
+  }>;
 };
 
 type ApiListResponse<T> = { data: T[] };
 
 export function useCurrentLeague() {
   const [league, setLeague] = useState<LeagueWithActiveSeason | null>(null);
+  const [activeSeason, setActiveSeason] = useState<LeagueWithActiveSeason['seasons'][number] | null>(null);
   const [activeSeasonId, setActiveSeasonId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -21,7 +30,9 @@ export function useCurrentLeague() {
         const response = await apiRequest<ApiListResponse<LeagueWithActiveSeason>>('/api/leagues');
         const current = response.data[0] ?? null;
         setLeague(current);
-        setActiveSeasonId(current?.seasons[0]?.id ?? null);
+        const active = current?.seasons[0] ?? null;
+        setActiveSeason(active);
+        setActiveSeasonId(active?.id ?? null);
       } finally {
         setIsLoading(false);
       }
@@ -29,5 +40,5 @@ export function useCurrentLeague() {
     void load();
   }, []);
 
-  return { league, activeSeasonId, isLoading };
+  return { league, activeSeason, activeSeasonId, isLoading };
 }

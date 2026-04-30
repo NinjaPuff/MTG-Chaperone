@@ -7,6 +7,7 @@ import { CardPoolsPage } from './pages/CardPoolsPage';
 import { DecklistsPage } from './pages/DecklistsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
+import { SeasonHistoryPage } from './pages/SeasonHistoryPage';
 import { JoinPage } from './pages/JoinPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { LoginPage } from './pages/LoginPage';
@@ -23,6 +24,7 @@ export function App() {
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/pools" element={<CardPoolsPage />} />
         <Route path="/decks" element={<DecklistsPage />} />
+        <Route path="/history" element={<SeasonHistoryPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/:slug" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage />} />

@@ -185,6 +185,9 @@ model Season {
   number         Int
   tradingEnabled Boolean @default(false)
   isActive       Boolean @default(false)
+  poolVisibility     Boolean @default(true)
+  decklistVisibility Boolean @default(true)
+  scheduleVisibility Boolean @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

@@ -4,6 +4,9 @@ import { prisma } from '../lib/prisma.js';
 type SeasonPayload = {
   name: string;
   tradingEnabled?: boolean;
+  poolVisibility?: boolean;
+  decklistVisibility?: boolean;
+  scheduleVisibility?: boolean;
   pointConfig?: {
     matchWinPoints?: number;
     matchDrawPoints?: number;
@@ -39,6 +42,9 @@ export async function createSeason(leagueId: string, payload: SeasonPayload) {
       number: seasonNumber,
       tradingEnabled: payload.tradingEnabled ?? false,
       isActive: lastSeason ? false : true,
+      poolVisibility: payload.poolVisibility ?? true,
+      decklistVisibility: payload.decklistVisibility ?? true,
+      scheduleVisibility: payload.scheduleVisibility ?? true,
       pointConfig: {
         create: {
           matchWinPoints: payload.pointConfig?.matchWinPoints ?? 3,
@@ -87,6 +93,9 @@ export async function updateSeason(seasonId: string, payload: SeasonPayload) {
     data: {
       name: payload.name ?? season.name,
       tradingEnabled: payload.tradingEnabled ?? season.tradingEnabled,
+      poolVisibility: payload.poolVisibility ?? season.poolVisibility,
+      decklistVisibility: payload.decklistVisibility ?? season.decklistVisibility,
+      scheduleVisibility: payload.scheduleVisibility ?? season.scheduleVisibility,
     },
   });
 

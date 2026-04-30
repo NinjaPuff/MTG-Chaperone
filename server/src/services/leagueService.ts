@@ -8,9 +8,6 @@ type LeaguePayload = {
   description?: string | null;
   logoUrl?: string | null;
   bannerUrl?: string | null;
-  poolVisibility?: boolean;
-  decklistVisibility?: boolean;
-  scheduleVisibility?: boolean;
 };
 
 async function uniqueLeagueSlug(seed: string) {
@@ -51,9 +48,6 @@ export async function createLeague(payload: LeaguePayload, userId: string) {
       description: payload.description ?? null,
       logoUrl: payload.logoUrl ?? null,
       bannerUrl: payload.bannerUrl ?? null,
-      poolVisibility: payload.poolVisibility ?? true,
-      decklistVisibility: payload.decklistVisibility ?? true,
-      scheduleVisibility: payload.scheduleVisibility ?? true,
       memberships: {
         create: {
           userId,
@@ -102,9 +96,6 @@ export async function updateLeague(slug: string, payload: LeaguePayload) {
       description: payload.description ?? existing.description,
       logoUrl: payload.logoUrl ?? existing.logoUrl,
       bannerUrl: payload.bannerUrl ?? existing.bannerUrl,
-      poolVisibility: payload.poolVisibility ?? existing.poolVisibility,
-      decklistVisibility: payload.decklistVisibility ?? existing.decklistVisibility,
-      scheduleVisibility: payload.scheduleVisibility ?? existing.scheduleVisibility,
     },
   });
 }

@@ -13,6 +13,8 @@ import { adminRouter } from './admin.js';
 import { invitesRouter } from './invites.js';
 import { boosterProductsRouter } from './boosterProducts.js';
 import { cardsRouter } from './cards.js';
+import { setsRouter } from './sets.js';
+import { mtgjsonRouter } from './mtgjson.js';
 
 const router = Router();
 
@@ -30,5 +32,7 @@ router.use('/users', usersRouter);
 router.use('/admin', adminRouter);
 router.use('/booster-products', boosterProductsRouter);
 router.use('/cards', cardsRouter);
+router.use('/sets', setsRouter);
+router.use('/mtgjson', mtgjsonRouter);
 
 export { router as apiRouter };

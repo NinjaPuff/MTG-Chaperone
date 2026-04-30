@@ -25,14 +25,14 @@ const leagueSchema = z.object({
   description: z.string().nullish(),
   logoUrl: z.string().url().nullish(),
   bannerUrl: z.string().url().nullish(),
-  poolVisibility: z.boolean().optional(),
-  decklistVisibility: z.boolean().optional(),
-  scheduleVisibility: z.boolean().optional(),
 });
 
 const seasonSchema = z.object({
   name: z.string().min(2),
   tradingEnabled: z.boolean().optional(),
+  poolVisibility: z.boolean().optional(),
+  decklistVisibility: z.boolean().optional(),
+  scheduleVisibility: z.boolean().optional(),
   pointConfig: z
     .object({
       matchWinPoints: z.number().int().optional(),

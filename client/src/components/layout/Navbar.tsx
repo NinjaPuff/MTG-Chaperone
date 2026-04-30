@@ -31,6 +31,9 @@ export function Navbar() {
           <Link to="/decks" className="text-muted-foreground transition-colors hover:text-foreground">
             Decklists
           </Link>
+          <Link to="/history" className="text-muted-foreground transition-colors hover:text-foreground">
+            History
+          </Link>
         </nav>
 
         <div className="flex flex-1 items-center justify-end space-x-2">
@@ -112,6 +115,13 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Decklists
+            </Link>
+            <Link
+              to="/history"
+              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              History
             </Link>
             {user ? (
               <>
