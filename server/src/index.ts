@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import passport from 'passport';
 import { configurePassport } from './config/passport.js';
 import { errorHandler } from './middleware/errorHandler.js';
 
@@ -14,6 +15,7 @@ app.use(cors({
 app.use(express.json());
 
 configurePassport();
+app.use(passport.initialize());
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

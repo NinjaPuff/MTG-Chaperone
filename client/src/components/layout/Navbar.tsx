@@ -2,10 +2,12 @@ import { Link } from 'react-router-dom';
 import { Menu, X, Sun, Moon } from 'lucide-react';
 import { useState } from 'react';
 import { useTheme } from '@/hooks/useTheme';
+import { useAuth } from '@/context/AuthContext';
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const { user, logout } = useAuth();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -39,12 +41,37 @@ export function Navbar() {
           >
             {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
-          <Link
-            to="/login"
-            className="hidden md:inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Sign In
-          </Link>
+          {user ? (
+            <div className="hidden md:flex items-center gap-2">
+              <Link
+                to={`/profile/${user.slug}`}
+                className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent"
+              >
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.displayName} className="h-5 w-5 rounded-full" />
+                ) : (
+                  <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                    {user.displayName.slice(0, 1).toUpperCase()}
+                  </span>
+                )}
+                {user.displayName}
+              </Link>
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              className="hidden md:inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              Sign In
+            </Link>
+          )}
           <button
             className="md:hidden inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -86,13 +113,35 @@ export function Navbar() {
             >
               Decklists
             </Link>
-            <Link
-              to="/login"
-              className="block text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Sign In
-            </Link>
+            {user ? (
+              <>
+                <Link
+                  to={`/profile/${user.slug}`}
+                  className="block text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {user.displayName}
+                </Link>
+                <button
+                  type="button"
+                  className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => {
+                    logout();
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="block text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Sign In
+              </Link>
+            )}
           </nav>
         </div>
       )}

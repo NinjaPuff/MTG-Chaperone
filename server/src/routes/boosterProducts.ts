@@ -1,30 +1,67 @@
 import { Router } from 'express';
+import { z } from 'zod';
+import { requireAuth } from '../middleware/auth.js';
+import { validateBody } from '../lib/validate.js';
+import {
+  createBoosterProduct,
+  deleteBoosterProduct,
+  getBoosterProduct,
+  listBoosterProducts,
+  updateBoosterProduct,
+} from '../services/boosterProductService.js';
 
 const router = Router();
 
-router.get('/', (_req, res) => {
-  // TODO: List all booster products
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'List booster products not yet implemented' } });
+const boosterSchema = z.object({
+  name: z.string().min(2),
+  setReleaseName: z.string().min(2),
+  boosterType: z.enum(['draft', 'play', 'set', 'collector']),
+  setCodes: z.array(z.string().min(2)),
 });
 
-router.post('/', (_req, res) => {
-  // TODO: Create a booster product
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Create booster product not yet implemented' } });
+router.get('/', async (_req, res, next) => {
+  try {
+    const products = await listBoosterProducts();
+    res.json({ data: products });
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.get('/:id', (_req, res) => {
-  // TODO: Get booster product details
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Get booster product not yet implemented' } });
+router.post('/', requireAuth, validateBody(boosterSchema), async (req, res, next) => {
+  try {
+    const product = await createBoosterProduct(req.body);
+    res.status(201).json({ data: product });
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.patch('/:id', (_req, res) => {
-  // TODO: Update a booster product
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Update booster product not yet implemented' } });
+router.get('/:id', async (req, res, next) => {
+  try {
+    const product = await getBoosterProduct(req.params.id);
+    res.json({ data: product });
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.delete('/:id', (_req, res) => {
-  // TODO: Delete a booster product
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Delete booster product not yet implemented' } });
+router.patch('/:id', requireAuth, validateBody(boosterSchema.partial()), async (req, res, next) => {
+  try {
+    const product = await updateBoosterProduct(req.params.id, req.body);
+    res.json({ data: product });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:id', requireAuth, async (req, res, next) => {
+  try {
+    await deleteBoosterProduct(req.params.id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
 });
 
 export { router as boosterProductsRouter };

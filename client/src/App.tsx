@@ -9,11 +9,15 @@ import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
 import { JoinPage } from './pages/JoinPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { LoginPage } from './pages/LoginPage';
+import { AuthCallbackPage } from './pages/AuthCallbackPage';
 
 export function App() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
         <Route path="/" element={<DashboardPage />} />
         <Route path="/standings" element={<StandingsPage />} />
         <Route path="/schedule" element={<SchedulePage />} />
