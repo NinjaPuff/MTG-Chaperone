@@ -27,8 +27,27 @@ type ScryfallCard = {
   rarity: string;
   set: string;
   image_uris?: Record<string, string>;
+  card_faces?: Array<{
+    image_uris?: Record<string, string>;
+  }>;
   prices?: Record<string, string | null>;
 };
+
+function resolveImageUris(card: ScryfallCard) {
+  if (card.image_uris) {
+    return card.image_uris;
+  }
+
+  if (card.card_faces) {
+    for (const face of card.card_faces) {
+      if (face.image_uris) {
+        return face.image_uris;
+      }
+    }
+  }
+
+  return Prisma.JsonNull;
+}
 
 async function fetchScryfall<T>(url: string): Promise<T> {
   return withRateLimit(async () => {
@@ -57,7 +76,7 @@ async function upsertCard(card: ScryfallCard) {
       cmc: card.cmc ?? 0,
       rarity: card.rarity,
       setCode: card.set.toUpperCase(),
-      imageUris: card.image_uris ?? Prisma.JsonNull,
+      imageUris: resolveImageUris(card),
       prices: card.prices ?? Prisma.JsonNull,
       lastFetched: new Date(),
     },
@@ -72,7 +91,7 @@ async function upsertCard(card: ScryfallCard) {
       cmc: card.cmc ?? 0,
       rarity: card.rarity,
       setCode: card.set.toUpperCase(),
-      imageUris: card.image_uris ?? Prisma.JsonNull,
+      imageUris: resolveImageUris(card),
       prices: card.prices ?? Prisma.JsonNull,
       lastFetched: new Date(),
     },

@@ -4,6 +4,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { StandingsPage } from './pages/StandingsPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { CardPoolsPage } from './pages/CardPoolsPage';
+import { CardPoolDetailPage } from './pages/CardPoolDetailPage';
 import { DecklistsPage } from './pages/DecklistsPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
@@ -23,6 +24,7 @@ export function App() {
         <Route path="/standings" element={<StandingsPage />} />
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/pools" element={<CardPoolsPage />} />
+        <Route path="/pools/:poolId" element={<CardPoolDetailPage />} />
         <Route path="/decks" element={<DecklistsPage />} />
         <Route path="/history" element={<SeasonHistoryPage />} />
         <Route path="/profile" element={<ProfilePage />} />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { primaryName, secondaryName } from '@/lib/userDisplay';
@@ -80,7 +81,11 @@ export function CardPoolsPage() {
           </h2>
           <div className="mt-4 space-y-3">
             {pools.map((pool) => (
-              <div key={pool.id} className="rounded-md border border-border p-3">
+              <Link
+                key={pool.id}
+                to={`/pools/${pool.id}`}
+                className="block rounded-md border border-border p-3 transition-colors hover:bg-muted/40"
+              >
                 <div>
                   <p className="font-medium">{primaryName(pool.user)}</p>
                   {secondaryName(pool.user) ? (
@@ -90,7 +95,7 @@ export function CardPoolsPage() {
                 <p className="text-sm text-muted-foreground">
                   {pool.boosterProduct.name} ({pool.boosterProduct.boosterType})
                 </p>
-              </div>
+              </Link>
             ))}
             {pools.length === 0 ? <p className="text-muted-foreground text-sm">No pools registered.</p> : null}
           </div>
