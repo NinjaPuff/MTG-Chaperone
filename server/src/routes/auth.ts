@@ -89,8 +89,10 @@ router.get('/me', requireAuth, async (req, res, next) => {
       select: {
         id: true,
         displayName: true,
+        publicName: true,
         slug: true,
         avatarUrl: true,
+        role: true,
         createdAt: true,
       },
     });

@@ -17,6 +17,7 @@ router.get('/:seasonId/standings', async (req, res, next) => {
           select: {
             id: true,
             displayName: true,
+            publicName: true,
             slug: true,
             avatarUrl: true,
           },
@@ -120,6 +121,7 @@ router.get('/:seasonId/card-pools', async (req, res, next) => {
           select: {
             id: true,
             displayName: true,
+            publicName: true,
             slug: true,
           },
         },

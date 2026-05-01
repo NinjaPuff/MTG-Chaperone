@@ -5,8 +5,10 @@ import { apiRequest, clearStoredToken, getStoredToken } from '@/lib/api';
 type AuthUser = {
   id: string;
   displayName: string;
+  publicName: string | null;
   slug: string;
   avatarUrl: string | null;
+  role: 'admin' | 'user';
 };
 
 type AuthResponse = {

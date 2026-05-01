@@ -51,7 +51,6 @@ export async function createLeague(payload: LeaguePayload, userId: string) {
       memberships: {
         create: {
           userId,
-          role: 'admin',
         },
       },
     },
@@ -117,11 +116,16 @@ export async function getMembers(slug: string) {
 
   return prisma.leagueMembership.findMany({
     where: { leagueId: league.id },
-    include: {
+    select: {
+      id: true,
+      userId: true,
+      leagueId: true,
+      joinedAt: true,
       user: {
         select: {
           id: true,
           displayName: true,
+          publicName: true,
           slug: true,
           avatarUrl: true,
         },
@@ -131,7 +135,7 @@ export async function getMembers(slug: string) {
   });
 }
 
-export async function addMember(slug: string, userId: string, role: 'admin' | 'player' = 'player') {
+export async function addMember(slug: string, userId: string) {
   const league = await prisma.league.findUnique({ where: { slug }, select: { id: true } });
   if (!league) {
     throw new AppError(404, 'NOT_FOUND', 'League not found');
@@ -144,11 +148,10 @@ export async function addMember(slug: string, userId: string, role: 'admin' | 'p
         leagueId: league.id,
       },
     },
-    update: { role },
+    update: {},
     create: {
       userId,
       leagueId: league.id,
-      role,
     },
   });
 }
@@ -172,5 +175,16 @@ export async function removeMember(slug: string, userId: string) {
     throw new AppError(404, 'NOT_FOUND', 'Member not found');
   }
 
-  await prisma.leagueMembership.delete({ where: { id: membership.id } });
+  await prisma.$transaction(async (tx) => {
+    await tx.cardPool.deleteMany({
+      where: {
+        userId,
+        season: {
+          leagueId: league.id,
+        },
+      },
+    });
+
+    await tx.leagueMembership.delete({ where: { id: membership.id } });
+  });
 }

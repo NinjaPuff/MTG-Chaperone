@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiRequest } from '@/lib/api';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useAuth } from '@/context/AuthContext';
+import { primaryName } from '@/lib/userDisplay';
 
 type Event = {
   id: string;
@@ -13,8 +14,8 @@ type Event = {
 type Match = {
   id: string;
   status: 'pending' | 'reported' | 'confirmed' | 'disputed' | 'resolved';
-  player1: { id: string; displayName: string; slug: string };
-  player2: { id: string; displayName: string; slug: string } | null;
+  player1: { id: string; displayName: string; publicName?: string | null; slug: string };
+  player2: { id: string; displayName: string; publicName?: string | null; slug: string } | null;
   gameResults: Array<{ id: string; winnerId: string | null; isDraw: boolean }>;
   isBye: boolean;
   reportedById: string | null;
@@ -176,9 +177,9 @@ export function SchedulePage() {
                       >
                         <div>
                           {match.isBye ? (
-                            <span>{match.player1.displayName} -- BYE</span>
+                            <span>{primaryName(match.player1)} -- BYE</span>
                           ) : (
-                            <span>{match.player1.displayName} vs {match.player2?.displayName}</span>
+                            <span>{primaryName(match.player1)} vs {match.player2 ? primaryName(match.player2) : ''}</span>
                           )}
                           <span className="ml-2 text-xs text-muted-foreground">{match.status}</span>
                         </div>
@@ -225,15 +226,15 @@ export function SchedulePage() {
         <form onSubmit={reportMatch} className="rounded-lg border border-border bg-card p-6 space-y-3">
           <h3 className="text-lg font-semibold">Report Match</h3>
           <p className="text-sm text-muted-foreground">
-            {selectedMatch.player1.displayName} vs {selectedMatch.player2?.displayName}
+            {primaryName(selectedMatch.player1)} vs {selectedMatch.player2 ? primaryName(selectedMatch.player2) : ''}
           </p>
           <select
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
             value={reportWinner}
             onChange={(event) => setReportWinner(event.target.value as 'player1' | 'player2' | 'draw')}
           >
-            <option value="player1">{selectedMatch.player1.displayName} wins</option>
-            <option value="player2">{selectedMatch.player2?.displayName ?? 'Opponent'} wins</option>
+            <option value="player1">{primaryName(selectedMatch.player1)} wins</option>
+            <option value="player2">{selectedMatch.player2 ? primaryName(selectedMatch.player2) : 'Opponent'} wins</option>
             <option value="draw">Draw</option>
           </select>
           <div className="flex gap-2">

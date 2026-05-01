@@ -107,7 +107,7 @@ export async function validateAndJoin(token: string, userId: string) {
     data: { useCount: { increment: 1 } },
   });
 
-  await addMember(invite.league.slug, userId, 'player');
+  await addMember(invite.league.slug, userId);
 
   return invite.league;
 }

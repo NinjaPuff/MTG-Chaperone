@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
+import { primaryName } from '@/lib/userDisplay';
 
 type Standing = {
   id: string;
@@ -12,6 +13,7 @@ type Standing = {
   user: {
     id: string;
     displayName: string;
+    publicName?: string | null;
   };
 };
 
@@ -24,8 +26,8 @@ type Event = {
 type Match = {
   id: string;
   status: string;
-  player1: { id: string; displayName: string };
-  player2: { id: string; displayName: string } | null;
+  player1: { id: string; displayName: string; publicName?: string | null };
+  player2: { id: string; displayName: string; publicName?: string | null } | null;
 };
 
 type Round = {
@@ -85,7 +87,7 @@ export function DashboardPage() {
           <h3 className="text-sm font-medium text-muted-foreground">Next Match</h3>
           <p className="mt-2 text-xl font-bold">
             {nextMatch
-              ? `${nextMatch.player1.displayName} vs ${nextMatch.player2?.displayName ?? 'BYE'}`
+              ? `${primaryName(nextMatch.player1)} vs ${nextMatch.player2 ? primaryName(nextMatch.player2) : 'BYE'}`
               : '--'}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
@@ -116,7 +118,7 @@ export function DashboardPage() {
             {recentMatches.map((match) => (
               <div key={match.id} className="flex items-center justify-between text-sm">
                 <span>
-                  {match.player1.displayName} vs {match.player2?.displayName ?? 'BYE'}
+                  {primaryName(match.player1)} vs {match.player2 ? primaryName(match.player2) : 'BYE'}
                 </span>
                 <span className="text-muted-foreground">{match.status}</span>
               </div>

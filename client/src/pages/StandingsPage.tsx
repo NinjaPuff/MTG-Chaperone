@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { apiRequest } from '@/lib/api';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
+import { primaryName } from '@/lib/userDisplay';
 
 type StandingRow = {
   id: string;
@@ -14,6 +15,7 @@ type StandingRow = {
   ogwPercent: number;
   user: {
     displayName: string;
+    publicName?: string | null;
     slug: string;
   };
 };
@@ -80,7 +82,7 @@ export function StandingsPage() {
                     <td className="p-3">{index + 1}</td>
                     <td className="p-3">
                       <Link className="hover:underline" to={`/profile/${row.user.slug}`}>
-                        {row.user.displayName}
+                        {primaryName(row.user)}
                       </Link>
                     </td>
                     <td className="p-3 text-right">{row.points}</td>

@@ -3,7 +3,6 @@ import { z } from 'zod';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import {
-  addMember,
   createLeague,
   deleteLeague,
   getLeagueBySlug,
@@ -16,6 +15,7 @@ import { createSeason, listSeasonsByLeague, setActive, updateSeason } from '../s
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { createInvite, listInvites, revokeInvite, validateAndJoin } from '../services/inviteService.js';
+import { createPool, deletePool, listPoolsBySeason, updatePool } from '../services/cardPoolService.js';
 
 const router = Router();
 
@@ -44,6 +44,49 @@ const seasonSchema = z.object({
     .optional(),
 });
 
+const createPoolSchema = z.object({
+  userId: z.string().uuid(),
+  boosterProductId: z.string().uuid(),
+});
+
+const updatePoolSchema = z.object({
+  boosterProductId: z.string().uuid(),
+});
+
+async function getLeagueIdBySlug(slug: string) {
+  const league = await prisma.league.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
+  if (!league) {
+    throw new AppError(404, 'NOT_FOUND', 'League not found');
+  }
+  return league.id;
+}
+
+async function getSeasonByLeagueAndNumber(leagueId: string, seasonNumberParam: string) {
+  const seasonNumber = Number(seasonNumberParam);
+  if (!Number.isInteger(seasonNumber) || seasonNumber < 1) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Season number must be a positive integer');
+  }
+
+  const season = await prisma.season.findFirst({
+    where: {
+      leagueId,
+      number: seasonNumber,
+    },
+    select: {
+      id: true,
+      number: true,
+    },
+  });
+  if (!season) {
+    throw new AppError(404, 'NOT_FOUND', 'Season not found');
+  }
+
+  return season;
+}
+
 router.get('/', async (_req, res, next) => {
   try {
     const leagues = await listLeagues();
@@ -62,6 +105,24 @@ router.post('/', requireAuth, validateBody(leagueSchema), async (req, res, next)
   }
 });
 
+router.get('/:slug/members', async (req, res, next) => {
+  try {
+    const members = await getMembers(req.params.slug);
+    res.json({ data: members });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:slug/members/:userId', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    await removeMember(req.params.slug, req.params.userId);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/:slug', async (req, res, next) => {
   try {
     const league = await getLeagueBySlug(req.params.slug);
@@ -71,7 +132,7 @@ router.get('/:slug', async (req, res, next) => {
   }
 });
 
-router.patch('/:slug', requireAuth, requireAdmin('slug'), validateBody(leagueSchema.partial()), async (req, res, next) => {
+router.patch('/:slug', requireAuth, requireAdmin, validateBody(leagueSchema.partial()), async (req, res, next) => {
   try {
     const league = await updateLeague(req.params.slug, req.body);
     res.json({ data: league });
@@ -80,19 +141,10 @@ router.patch('/:slug', requireAuth, requireAdmin('slug'), validateBody(leagueSch
   }
 });
 
-router.delete('/:slug', requireAuth, requireAdmin('slug'), async (req, res, next) => {
+router.delete('/:slug', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     await deleteLeague(req.params.slug);
     res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get('/:slug/members', async (req, res, next) => {
-  try {
-    const members = await getMembers(req.params.slug);
-    res.json({ data: members });
   } catch (error) {
     next(error);
   }
@@ -108,7 +160,7 @@ router.post('/:slug/join', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/:slug/invites', requireAuth, requireAdmin('slug'), async (req, res, next) => {
+router.get('/:slug/invites', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const invites = await listInvites(req.params.slug);
     res.json({ data: invites });
@@ -120,7 +172,7 @@ router.get('/:slug/invites', requireAuth, requireAdmin('slug'), async (req, res,
 router.post(
   '/:slug/invites',
   requireAuth,
-  requireAdmin('slug'),
+  requireAdmin,
   validateBody(
     z.object({
       maxUses: z.number().int().positive().nullable().optional(),
@@ -137,7 +189,7 @@ router.post(
   },
 );
 
-router.delete('/:slug/invites/:id', requireAuth, requireAdmin('slug'), async (req, res, next) => {
+router.delete('/:slug/invites/:id', requireAuth, requireAdmin, async (req, res, next) => {
   try {
     const invite = await revokeInvite(req.params.slug, req.params.id);
     res.json({ data: invite });
@@ -162,7 +214,7 @@ router.get('/:slug/seasons', async (req, res, next) => {
   }
 });
 
-router.post('/:slug/seasons', requireAuth, requireAdmin('slug'), validateBody(seasonSchema), async (req, res, next) => {
+router.post('/:slug/seasons', requireAuth, requireAdmin, validateBody(seasonSchema), async (req, res, next) => {
   try {
     const league = await prisma.league.findUnique({
       where: { slug: req.params.slug },
@@ -199,10 +251,107 @@ router.get('/:slug/seasons/:number', async (req, res, next) => {
   }
 });
 
+router.get('/:slug/seasons/:number/pools', requireAuth, async (req, res, next) => {
+  try {
+    const leagueId = await getLeagueIdBySlug(req.params.slug);
+    const season = await getSeasonByLeagueAndNumber(leagueId, req.params.number);
+    const pools = await listPoolsBySeason(season.id);
+    res.json({ data: pools });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post(
+  '/:slug/seasons/:number/pools',
+  requireAuth,
+  requireAdmin,
+  validateBody(createPoolSchema),
+  async (req, res, next) => {
+    try {
+      const leagueId = await getLeagueIdBySlug(req.params.slug);
+      const season = await getSeasonByLeagueAndNumber(leagueId, req.params.number);
+
+      const membership = await prisma.leagueMembership.findUnique({
+        where: {
+          userId_leagueId: {
+            userId: req.body.userId,
+            leagueId,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (!membership) {
+        throw new AppError(400, 'VALIDATION_ERROR', 'User is not a member of this league');
+      }
+
+      const pool = await createPool(req.body.userId, season.id, req.body.boosterProductId);
+      res.status(201).json({ data: pool });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.patch(
+  '/:slug/seasons/:number/pools/:poolId',
+  requireAuth,
+  requireAdmin,
+  validateBody(updatePoolSchema),
+  async (req, res, next) => {
+    try {
+      const leagueId = await getLeagueIdBySlug(req.params.slug);
+      const season = await getSeasonByLeagueAndNumber(leagueId, req.params.number);
+
+      const scopedPool = await prisma.cardPool.findFirst({
+        where: {
+          id: req.params.poolId,
+          seasonId: season.id,
+        },
+        select: { id: true },
+      });
+
+      if (!scopedPool) {
+        throw new AppError(404, 'NOT_FOUND', 'Card pool not found');
+      }
+
+      const pool = await updatePool(scopedPool.id, req.body.boosterProductId);
+      res.json({ data: pool });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.delete('/:slug/seasons/:number/pools/:poolId', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const leagueId = await getLeagueIdBySlug(req.params.slug);
+    const season = await getSeasonByLeagueAndNumber(leagueId, req.params.number);
+
+    const scopedPool = await prisma.cardPool.findFirst({
+      where: {
+        id: req.params.poolId,
+        seasonId: season.id,
+      },
+      select: { id: true },
+    });
+
+    if (!scopedPool) {
+      throw new AppError(404, 'NOT_FOUND', 'Card pool not found');
+    }
+
+    await deletePool(scopedPool.id);
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.patch(
   '/:slug/seasons/:number',
   requireAuth,
-  requireAdmin('slug'),
+  requireAdmin,
   validateBody(seasonSchema.partial().extend({ isActive: z.boolean().optional() })),
   async (req, res, next) => {
     try {
@@ -228,14 +377,5 @@ router.patch(
     }
   },
 );
-
-router.delete('/:slug/members/:userId', requireAuth, requireAdmin('slug'), async (req, res, next) => {
-  try {
-    await removeMember(req.params.slug, req.params.userId);
-    res.status(204).send();
-  } catch (error) {
-    next(error);
-  }
-});
 
 export { router as leaguesRouter };

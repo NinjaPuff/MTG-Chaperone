@@ -10,6 +10,7 @@ declare global {
       displayName: string;
       slug: string;
       avatarUrl: string | null;
+      role: 'admin' | 'user';
     }
   }
 }
@@ -38,8 +39,10 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       select: {
         id: true,
         displayName: true,
+        publicName: true,
         slug: true,
         avatarUrl: true,
+        role: true,
       },
     });
 
@@ -57,38 +60,18 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
-export function requireAdmin(leagueSlugParam: string) {
-  return async (req: Request, _res: Response, next: NextFunction) => {
-    if (!req.user) {
-      next(new AppError(401, 'UNAUTHORIZED', 'Authentication required'));
-      return;
-    }
+export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user) {
+    next(new AppError(401, 'UNAUTHORIZED', 'Authentication required'));
+    return;
+  }
 
-    const leagueSlug = req.params[leagueSlugParam];
-    if (!leagueSlug) {
-      next(new AppError(400, 'VALIDATION_ERROR', 'League slug is required'));
-      return;
-    }
+  if (req.user.role !== 'admin') {
+    next(new AppError(403, 'FORBIDDEN', 'Admin access required'));
+    return;
+  }
 
-    try {
-      const membership = await prisma.leagueMembership.findFirst({
-        where: {
-          userId: req.user.id,
-          league: { slug: leagueSlug },
-        },
-        select: { role: true },
-      });
-
-      if (!membership || membership.role !== 'admin') {
-        next(new AppError(403, 'FORBIDDEN', 'Admin access required'));
-        return;
-      }
-
-      next();
-    } catch (error) {
-      next(error);
-    }
-  };
+  next();
 }
 
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
@@ -111,8 +94,10 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
       select: {
         id: true,
         displayName: true,
+        publicName: true,
         slug: true,
         avatarUrl: true,
+        role: true,
       },
     });
 

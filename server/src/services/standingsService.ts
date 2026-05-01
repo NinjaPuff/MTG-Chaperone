@@ -190,6 +190,7 @@ export async function getStandings(seasonId: string) {
         select: {
           id: true,
           displayName: true,
+          publicName: true,
           slug: true,
           avatarUrl: true,
         },

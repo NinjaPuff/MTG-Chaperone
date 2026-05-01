@@ -23,8 +23,8 @@ router.get('/:matchId', async (req, res, next) => {
     const match = await prisma.match.findUnique({
       where: { id: req.params.matchId },
       include: {
-        player1: { select: { id: true, displayName: true, slug: true } },
-        player2: { select: { id: true, displayName: true, slug: true } },
+        player1: { select: { id: true, displayName: true, publicName: true, slug: true } },
+        player2: { select: { id: true, displayName: true, publicName: true, slug: true } },
         gameResults: true,
         round: {
           include: {

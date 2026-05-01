@@ -3,6 +3,7 @@ import { Menu, X, Sun, Moon } from 'lucide-react';
 import { useState } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/context/AuthContext';
+import { primaryName } from '@/lib/userDisplay';
 
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -51,13 +52,13 @@ export function Navbar() {
                 className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent"
               >
                 {user.avatarUrl ? (
-                  <img src={user.avatarUrl} alt={user.displayName} className="h-5 w-5 rounded-full" />
+                  <img src={user.avatarUrl} alt={primaryName(user)} className="h-5 w-5 rounded-full" />
                 ) : (
                   <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
-                    {user.displayName.slice(0, 1).toUpperCase()}
+                    {primaryName(user).slice(0, 1).toUpperCase()}
                   </span>
                 )}
-                {user.displayName}
+                {primaryName(user)}
               </Link>
               <button
                 type="button"
@@ -130,7 +131,7 @@ export function Navbar() {
                   className="block text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {user.displayName}
+                  {primaryName(user)}
                 </Link>
                 <button
                   type="button"

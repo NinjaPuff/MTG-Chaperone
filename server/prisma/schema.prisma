@@ -11,9 +11,9 @@ datasource db {
 // Enums
 // ──────────────────────────────────────────────
 
-enum LeagueRole {
+enum SiteRole {
   admin
-  player
+  user
 }
 
 enum InviteLinkStatus {
@@ -110,8 +110,10 @@ model User {
   discordId   String?  @unique
   googleId    String?  @unique
   displayName String
+  publicName  String?
   slug        String   @unique
   avatarUrl   String?
+  role        SiteRole @default(user)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -147,11 +149,10 @@ model League {
 }
 
 model LeagueMembership {
-  id       String     @id @default(uuid())
+  id       String   @id @default(uuid())
   userId   String
   leagueId String
-  role     LeagueRole @default(player)
-  joinedAt DateTime   @default(now())
+  joinedAt DateTime @default(now())
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   league League @relation(fields: [leagueId], references: [id], onDelete: Cascade)

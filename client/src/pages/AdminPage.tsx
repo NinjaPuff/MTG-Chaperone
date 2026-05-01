@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { ApiError, apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { SetCodePicker } from '@/components/SetCodePicker';
+import { primaryName, secondaryName } from '@/lib/userDisplay';
 
 type League = {
   id: string;
@@ -70,6 +71,41 @@ type BoosterProduct = {
   setCodes: Array<{ id: string; setCode: string }>;
 };
 
+type Member = {
+  id: string;
+  userId?: string;
+  joinedAt: string;
+  user: {
+    id: string;
+    displayName: string;
+    publicName?: string | null;
+    slug: string;
+    avatarUrl: string | null;
+  };
+};
+
+type CardPoolSummary = {
+  id: string;
+  userId?: string;
+  user?: { id: string };
+  boosterProductId: string;
+  boosterProduct: {
+    id: string;
+    name: string;
+    boosterType: BoosterProduct['boosterType'];
+  };
+};
+
+type SiteUser = {
+  id: string;
+  displayName: string;
+  publicName?: string | null;
+  slug: string;
+  avatarUrl: string | null;
+  role: 'admin' | 'user';
+  createdAt: string;
+};
+
 type ScryfallSet = {
   code: string;
   name: string;
@@ -112,6 +148,28 @@ function formatBoosterTypeLabel(type: BoosterProduct['boosterType']) {
   }
 }
 
+/** Stable row id for league membership APIs (some payloads omit userId; user.id is always present). */
+function membershipRowUserId(member: Member) {
+  return member.userId ?? member.user.id;
+}
+
+function poolOwnerUserId(pool: CardPoolSummary) {
+  return pool.userId ?? pool.user?.id ?? '';
+}
+
+function formatMutationError(err: unknown, fallback: string) {
+  if (err instanceof ApiError) {
+    if (err.fields && Object.keys(err.fields).length > 0) {
+      const detail = Object.entries(err.fields)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join('; ');
+      return `${err.message} (${detail})`;
+    }
+    return err.message;
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
 export function AdminPage() {
   const { user } = useAuth();
   const [leagues, setLeagues] = useState<League[]>([]);
@@ -119,6 +177,11 @@ export function AdminPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [invites, setInvites] = useState<InviteLink[]>([]);
   const [boosterProducts, setBoosterProducts] = useState<BoosterProduct[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [cardPools, setCardPools] = useState<CardPoolSummary[]>([]);
+  const [poolAssignments, setPoolAssignments] = useState<Record<string, string>>({});
+  const [siteUsers, setSiteUsers] = useState<SiteUser[]>([]);
+  const [userSearch, setUserSearch] = useState('');
   const [scryfallSets, setScryfallSets] = useState<ScryfallSet[]>([]);
   const [selectedLeagueSlug, setSelectedLeagueSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +235,16 @@ export function AdminPage() {
     [seasons],
   );
   const hasActiveEvent = useMemo(() => events.some((event) => event.status === 'active'), [events]);
+  const poolsByUserId = useMemo(() => {
+    const map = new Map<string, CardPoolSummary>();
+    for (const pool of cardPools) {
+      const uid = poolOwnerUserId(pool);
+      if (uid) {
+        map.set(uid, pool);
+      }
+    }
+    return map;
+  }, [cardPools]);
 
   const scryfallSetMap = useMemo(() => {
     return new Map(scryfallSets.map((set) => [set.code.toUpperCase(), set.name]));
@@ -223,16 +296,42 @@ export function AdminPage() {
     setInvites(response.data);
   };
 
+  const loadMembers = async (leagueSlug: string) => {
+    const response = await apiRequest<ApiListResponse<Member>>(`/api/leagues/${leagueSlug}/members`);
+    setMembers(response.data);
+  };
+
+  const loadCardPools = async (leagueSlug: string, seasonNumber: number) => {
+    const response = await apiRequest<ApiListResponse<CardPoolSummary>>(
+      `/api/leagues/${leagueSlug}/seasons/${seasonNumber}/pools`,
+    );
+    setCardPools(response.data);
+    setPoolAssignments((prev) => {
+      const next = { ...prev };
+      for (const pool of response.data) {
+        const uid = poolOwnerUserId(pool);
+        if (uid) {
+          next[uid] = pool.boosterProductId;
+        }
+      }
+      return next;
+    });
+  };
+
   const loadBoosterProducts = async () => {
     const response = await apiRequest<ApiListResponse<BoosterProduct>>('/api/booster-products');
     setBoosterProducts(response.data);
   };
 
+  const loadSiteUsers = async () => {
+    const response = await apiRequest<ApiListResponse<SiteUser>>('/api/users');
+    setSiteUsers(response.data);
+  };
+
   useEffect(() => {
     const load = async () => {
       try {
-        await loadLeagues();
-        await loadBoosterProducts();
+        await Promise.all([loadLeagues(), loadBoosterProducts(), loadSiteUsers()]);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load admin data');
       }
@@ -257,13 +356,15 @@ export function AdminPage() {
       setSeasons([]);
       setEvents([]);
       setInvites([]);
+      setMembers([]);
+      setCardPools([]);
+      setPoolAssignments({});
       return;
     }
 
     const load = async () => {
       try {
-        await loadSeasons(selectedLeagueSlug);
-        await loadInvites(selectedLeagueSlug);
+        await Promise.all([loadSeasons(selectedLeagueSlug), loadInvites(selectedLeagueSlug), loadMembers(selectedLeagueSlug)]);
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Unable to load league details');
       }
@@ -275,6 +376,42 @@ export function AdminPage() {
   useEffect(() => {
     void loadEvents(activeSeason?.id ?? null);
   }, [activeSeason?.id]);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!selectedLeagueSlug || !activeSeason) {
+        setCardPools([]);
+        return;
+      }
+
+      try {
+        await loadCardPools(selectedLeagueSlug, activeSeason.number);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to load card pools');
+      }
+    };
+
+    void load();
+  }, [selectedLeagueSlug, activeSeason?.number]);
+
+  useEffect(() => {
+    if (boosterProducts.length === 0) {
+      return;
+    }
+
+    const defaultBoosterId = boosterProducts[0].id;
+    setPoolAssignments((prev) => {
+      const next = { ...prev };
+      for (const member of members) {
+        const uid = membershipRowUserId(member);
+        const hasPool = poolsByUserId.has(uid);
+        if (!hasPool && !next[uid]) {
+          next[uid] = defaultBoosterId;
+        }
+      }
+      return next;
+    });
+  }, [members, poolsByUserId, boosterProducts]);
 
   useEffect(() => {
     const primaryCode = boosterForm.primarySet[0] ?? null;
@@ -564,11 +701,157 @@ export function AdminPage() {
     }
   };
 
-  if (!user) {
+  const removeLeagueMember = async (member: Member) => {
+    if (!selectedLeagueSlug) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove ${member.user.displayName} from the league? Their card pool (if any) will also be deleted.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/api/leagues/${selectedLeagueSlug}/members/${encodeURIComponent(membershipRowUserId(member))}`, {
+        method: 'DELETE',
+      });
+      await loadMembers(selectedLeagueSlug);
+      if (activeSeason) {
+        await loadCardPools(selectedLeagueSlug, activeSeason.number);
+      }
+      setSuccess('Member removed.');
+    } catch (memberError) {
+      setError(formatMutationError(memberError, 'Unable to remove member'));
+    }
+  };
+
+  const assignPool = async (userId: string) => {
+    if (!selectedLeagueSlug || !activeSeason) {
+      return;
+    }
+
+    const boosterProductId = poolAssignments[userId];
+    if (!boosterProductId) {
+      setError('Select a booster product before assigning a pool.');
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools`, {
+        method: 'POST',
+        body: { userId, boosterProductId },
+      });
+      await loadMembers(selectedLeagueSlug);
+      await loadCardPools(selectedLeagueSlug, activeSeason.number);
+      setSuccess('Pool assigned.');
+    } catch (assignError) {
+      setError(formatMutationError(assignError, 'Unable to assign pool'));
+    }
+  };
+
+  const changePool = async (poolId: string, userId: string) => {
+    if (!selectedLeagueSlug || !activeSeason) {
+      return;
+    }
+
+    const boosterProductId = poolAssignments[userId];
+    if (!boosterProductId) {
+      setError('Select a booster product before updating the pool.');
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools/${poolId}`, {
+        method: 'PATCH',
+        body: { boosterProductId },
+      });
+      await loadMembers(selectedLeagueSlug);
+      await loadCardPools(selectedLeagueSlug, activeSeason.number);
+      setSuccess('Pool updated.');
+    } catch (updateError) {
+      setError(formatMutationError(updateError, 'Unable to update pool'));
+    }
+  };
+
+  const removePool = async (poolId: string) => {
+    if (!selectedLeagueSlug || !activeSeason) {
+      return;
+    }
+
+    const confirmed = window.confirm('Remove this pool assignment?');
+    if (!confirmed) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools/${poolId}`, {
+        method: 'DELETE',
+      });
+      await loadMembers(selectedLeagueSlug);
+      await loadCardPools(selectedLeagueSlug, activeSeason.number);
+      setSuccess('Pool removed.');
+    } catch (deleteError) {
+      setError(formatMutationError(deleteError, 'Unable to remove pool'));
+    }
+  };
+
+  const siteAdminCount = useMemo(() => siteUsers.filter((u) => u.role === 'admin').length, [siteUsers]);
+  const filteredSiteUsers = useMemo(() => {
+    const q = userSearch.trim().toLowerCase();
+    const list = q
+      ? siteUsers.filter(
+          (u) =>
+            u.displayName.toLowerCase().includes(q) ||
+            u.slug.toLowerCase().includes(q) ||
+            (u.publicName?.toLowerCase().includes(q) ?? false),
+        )
+      : siteUsers;
+    return [...list].sort((a, b) => {
+      if (a.role === 'admin' && b.role !== 'admin') return -1;
+      if (a.role !== 'admin' && b.role === 'admin') return 1;
+      return 0;
+    });
+  }, [siteUsers, userSearch]);
+
+  const toggleSiteRole = async (targetUser: SiteUser) => {
+    const newRole = targetUser.role === 'admin' ? 'user' : 'admin';
+
+    if (targetUser.role === 'admin' && siteAdminCount <= 1) {
+      setError('Cannot demote the last site admin.');
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/api/users/${targetUser.id}/role`, {
+        method: 'PATCH',
+        body: { role: newRole },
+      });
+      await loadSiteUsers();
+      setSuccess(`${targetUser.displayName} is now ${newRole === 'admin' ? 'an admin' : 'a regular user'}.`);
+    } catch (toggleError) {
+      setError(formatMutationError(toggleError, 'Unable to update user role'));
+    }
+  };
+
+  if (!user || user.role !== 'admin') {
     return (
       <div className="rounded-lg border border-border bg-card p-6">
         <h1 className="text-2xl font-semibold">Admin</h1>
-        <p className="mt-2 text-sm text-muted-foreground">You must be signed in to access admin tools.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {!user ? 'You must be signed in to access admin tools.' : 'You do not have admin access.'}
+        </p>
       </div>
     );
   }
@@ -618,6 +901,7 @@ export function AdminPage() {
             ['league-settings', 'League Settings'],
             ['current-season', 'Current Season'],
             ['booster-products', 'Booster Products'],
+            ['site-settings', 'Site Settings'],
           ].map(([value, label]) => (
             <Tabs.Trigger
               key={value}
@@ -852,6 +1136,118 @@ export function AdminPage() {
                   </button>
                 </div>
               </form>
+
+              <div className="border-t border-border pt-6">
+                <h3 className="text-lg font-semibold">Members & Pools</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Use Update Role / Assign / Update here — these actions save immediately and are separate from Save Season
+                  Settings above.
+                </p>
+                {boosterProducts.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">Create a booster product first to assign pools.</p>
+                ) : null}
+                <div className="mt-4 space-y-3">
+                  {members.map((member) => {
+                    const uid = membershipRowUserId(member);
+                    const pool = poolsByUserId.get(uid);
+                    const name = primaryName(member.user);
+                    const sub = secondaryName(member.user);
+                    const initials = name
+                      .split(/\s+/)
+                      .filter(Boolean)
+                      .map((part) => part[0])
+                      .join('')
+                      .slice(0, 2)
+                      .toUpperCase();
+
+                    return (
+                      <div key={member.id} className="rounded-md border border-border p-3">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div className="flex items-center gap-3">
+                            {member.user.avatarUrl ? (
+                              <img
+                                src={member.user.avatarUrl}
+                                alt={name}
+                                className="h-10 w-10 rounded-full border border-border object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-xs font-semibold">
+                                {initials || '?'}
+                              </div>
+                            )}
+                            <div>
+                              <p className="font-medium">{name}</p>
+                              {sub ? <p className="text-xs text-muted-foreground">{sub}</p> : null}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded bg-accent px-2 py-1 text-xs text-accent-foreground">
+                              {pool ? pool.boosterProduct.name : 'No pool'}
+                            </span>
+
+                            <select
+                              className="rounded-md border border-border bg-background px-3 py-1 text-sm"
+                              value={poolAssignments[uid] ?? pool?.boosterProductId ?? ''}
+                              onChange={(event) =>
+                                setPoolAssignments((prev) => ({
+                                  ...prev,
+                                  [uid]: event.target.value,
+                                }))
+                              }
+                            >
+                              <option value="">Select booster product</option>
+                              {boosterProducts.map((product) => (
+                                <option key={product.id} value={product.id}>
+                                  {product.name}
+                                </option>
+                              ))}
+                            </select>
+
+                            {!pool ? (
+                              <button
+                                type="button"
+                                className="rounded-md border border-border px-3 py-1 text-sm"
+                                onClick={() => assignPool(uid)}
+                                disabled={!poolAssignments[uid]}
+                              >
+                                Assign
+                              </button>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="rounded-md border border-border px-3 py-1 text-sm"
+                                  onClick={() => changePool(pool.id, uid)}
+                                  disabled={!poolAssignments[uid]}
+                                >
+                                  Update
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-md border border-border px-3 py-1 text-sm"
+                                  onClick={() => removePool(pool.id)}
+                                >
+                                  Remove Pool
+                                </button>
+                              </>
+                            )}
+
+                            <button
+                              type="button"
+                              className="rounded-md border border-border px-3 py-1 text-sm"
+                              onClick={() => removeLeagueMember(member)}
+                            >
+                              Remove Member
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {members.length === 0 ? <p className="text-sm text-muted-foreground">No league members yet.</p> : null}
+                </div>
+              </div>
 
               <div className="border-t border-border pt-6">
                 <div className="mb-4 flex items-center justify-between">
@@ -1231,6 +1627,84 @@ export function AdminPage() {
             ))}
             {boosterProducts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No booster products configured.</p>
+            ) : null}
+          </div>
+        </Tabs.Content>
+
+        <Tabs.Content value="site-settings" className="space-y-6 rounded-lg border border-border bg-card p-6">
+          <h3 className="text-lg font-semibold">Site Users</h3>
+          <p className="text-xs text-muted-foreground">
+            Manage user roles. Site admins can manage all leagues, seasons, members, and booster products.
+          </p>
+          <input
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            placeholder="Search users by name…"
+            value={userSearch}
+            onChange={(event) => setUserSearch(event.target.value)}
+          />
+          <div className="space-y-3">
+            {filteredSiteUsers.map((siteUser) => {
+              const isLastAdmin = siteUser.role === 'admin' && siteAdminCount <= 1;
+              const sName = primaryName(siteUser);
+              const sSub = secondaryName(siteUser);
+              const initials = sName
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((part) => part[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase();
+
+              return (
+                <div key={siteUser.id} className="rounded-md border border-border p-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      {siteUser.avatarUrl ? (
+                        <img
+                          src={siteUser.avatarUrl}
+                          alt={sName}
+                          className="h-10 w-10 rounded-full border border-border object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-border text-xs font-semibold">
+                          {initials || '?'}
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-medium">{sName}</p>
+                        {sSub ? (
+                          <p className="text-xs text-muted-foreground">{sSub}</p>
+                        ) : null}
+                        <p className="text-xs text-muted-foreground">
+                          Joined {new Date(siteUser.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`rounded px-2 py-1 text-xs font-medium ${siteUser.role === 'admin' ? 'bg-primary/10 text-primary' : 'bg-accent text-accent-foreground'}`}
+                      >
+                        {siteUser.role === 'admin' ? 'Admin' : 'User'}
+                      </span>
+                      <button
+                        type="button"
+                        className="rounded-md border border-border px-3 py-1 text-sm"
+                        onClick={() => toggleSiteRole(siteUser)}
+                        disabled={isLastAdmin}
+                        title={isLastAdmin ? 'Cannot demote the last admin' : undefined}
+                      >
+                        {siteUser.role === 'admin' ? 'Demote' : 'Promote'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filteredSiteUsers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {userSearch.trim() ? 'No users match your search.' : 'No users found.'}
+              </p>
             ) : null}
           </div>
         </Tabs.Content>

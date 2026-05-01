@@ -1,6 +1,9 @@
 import { Router } from 'express';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAuth, requireAdmin);
 
 router.post('/matches/batch-report', (_req, res) => {
   // TODO: Batch report match results

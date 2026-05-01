@@ -94,8 +94,8 @@ router.get('/:eventId/rounds', async (req, res, next) => {
       include: {
         matches: {
           include: {
-            player1: { select: { id: true, displayName: true, slug: true } },
-            player2: { select: { id: true, displayName: true, slug: true } },
+            player1: { select: { id: true, displayName: true, publicName: true, slug: true } },
+            player2: { select: { id: true, displayName: true, publicName: true, slug: true } },
             gameResults: true,
           },
         },
@@ -127,6 +127,7 @@ router.get('/:eventId/decklists', async (req, res, next) => {
           select: {
             id: true,
             displayName: true,
+            publicName: true,
             slug: true,
           },
         },
