@@ -39,7 +39,6 @@ export async function createRound(eventId: string) {
           league: {
             include: {
               memberships: {
-                where: { role: 'player' },
                 select: { userId: true },
               },
             },
@@ -51,6 +50,19 @@ export async function createRound(eventId: string) {
 
   if (!event || !event.config) {
     throw new AppError(404, 'NOT_FOUND', 'Event not found');
+  }
+
+  if (event.config.format === 'round_robin') {
+    const existingPreparedRound = await prisma.round.findFirst({
+      where: {
+        eventId,
+        status: 'not_started',
+      },
+      select: { id: true },
+    });
+    if (existingPreparedRound) {
+      throw new AppError(409, 'ROUND_ALREADY_PREPARED', 'A round is already prepared for this event');
+    }
   }
 
   const round = await prisma.round.create({
@@ -142,4 +154,36 @@ export async function regenerateRoundPairings(roundId: string) {
   } else {
     await assignRoundRobinPairings(roundId);
   }
+}
+
+export async function deleteRound(roundId: string) {
+  const round = await prisma.round.findUnique({
+    where: { id: roundId },
+    include: {
+      event: {
+        include: { config: true },
+      },
+    },
+  });
+  if (!round) {
+    throw new AppError(404, 'NOT_FOUND', 'Round not found');
+  }
+  if (!['in_progress', 'completed'].includes(round.status)) {
+    throw new AppError(409, 'INVALID_ROUND_STATE', 'Only in-progress or completed rounds can be deleted');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    if (round.event.config?.format === 'round_robin') {
+      await tx.scheduledPairing.updateMany({
+        where: { roundId },
+        data: { roundId: null },
+      });
+    }
+
+    await tx.round.delete({
+      where: { id: roundId },
+    });
+  });
+
+  return { seasonId: round.event.seasonId };
 }

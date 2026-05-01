@@ -2,6 +2,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 
 type Pair = { player1Id: string; player2Id: string | null; isBye: boolean };
+type PlayerRankStat = { userId: string; matchWins: number; gameWins: number; gameLosses: number };
 
 function pairSequential(playerIds: string[]): Pair[] {
   const pairs: Pair[] = [];
@@ -17,6 +18,32 @@ function pairSequential(playerIds: string[]): Pair[] {
   return pairs;
 }
 
+function pairTopVsBottom(playerIds: string[]): Pair[] {
+  const pairs: Pair[] = [];
+  let left = 0;
+  let right = playerIds.length - 1;
+
+  while (left < right) {
+    pairs.push({
+      player1Id: playerIds[left],
+      player2Id: playerIds[right],
+      isBye: false,
+    });
+    left += 1;
+    right -= 1;
+  }
+
+  if (left === right) {
+    pairs.push({
+      player1Id: playerIds[left],
+      player2Id: null,
+      isBye: true,
+    });
+  }
+
+  return pairs;
+}
+
 async function getSeasonPlayerIdsForEvent(eventId: string) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
@@ -26,7 +53,6 @@ async function getSeasonPlayerIdsForEvent(eventId: string) {
           league: {
             include: {
               memberships: {
-                where: { role: 'player' },
                 select: { userId: true },
               },
             },
@@ -40,6 +66,186 @@ async function getSeasonPlayerIdsForEvent(eventId: string) {
   }
   const ids = event.season.league.memberships.map((membership) => membership.userId);
   return { event, playerIds: ids };
+}
+
+function mergeRankedWithFallback(rankedPlayerIds: string[], fallbackPlayerIds: string[]) {
+  const rankedSet = new Set(rankedPlayerIds);
+  const merged = [...rankedPlayerIds];
+  for (const playerId of fallbackPlayerIds) {
+    if (!rankedSet.has(playerId)) {
+      merged.push(playerId);
+    }
+  }
+  return merged;
+}
+
+function rankPlayersByMatchResults(
+  playerIds: string[],
+  matches: Array<{
+    isBye: boolean;
+    player1Id: string;
+    player2Id: string | null;
+    gameResults: Array<{ winnerId: string | null; isDraw: boolean }>;
+  }>,
+) {
+  const fallbackOrder = new Map<string, number>();
+  const stats = new Map<string, PlayerRankStat>();
+
+  playerIds.forEach((playerId, index) => {
+    fallbackOrder.set(playerId, index);
+    stats.set(playerId, { userId: playerId, matchWins: 0, gameWins: 0, gameLosses: 0 });
+  });
+
+  for (const match of matches) {
+    const p1 = stats.get(match.player1Id);
+    const p2 = match.player2Id ? stats.get(match.player2Id) : undefined;
+    if (!p1) {
+      continue;
+    }
+
+    let p1GamesWon = 0;
+    let p2GamesWon = 0;
+    for (const game of match.gameResults) {
+      if (game.isDraw || !game.winnerId) {
+        continue;
+      }
+      if (game.winnerId === match.player1Id) {
+        p1GamesWon += 1;
+      } else if (match.player2Id && game.winnerId === match.player2Id) {
+        p2GamesWon += 1;
+      }
+    }
+
+    p1.gameWins += p1GamesWon;
+    p1.gameLosses += p2GamesWon;
+    if (p2) {
+      p2.gameWins += p2GamesWon;
+      p2.gameLosses += p1GamesWon;
+    }
+
+    if (match.isBye || !p2) {
+      p1.matchWins += 1;
+      continue;
+    }
+
+    if (p1GamesWon > p2GamesWon) {
+      p1.matchWins += 1;
+    } else if (p2GamesWon > p1GamesWon) {
+      p2.matchWins += 1;
+    }
+  }
+
+  return Array.from(stats.values())
+    .sort((a, b) => {
+      if (b.matchWins !== a.matchWins) {
+        return b.matchWins - a.matchWins;
+      }
+
+      const aGameTotal = a.gameWins + a.gameLosses;
+      const bGameTotal = b.gameWins + b.gameLosses;
+      const aGwPercent = aGameTotal === 0 ? 0 : a.gameWins / aGameTotal;
+      const bGwPercent = bGameTotal === 0 ? 0 : b.gameWins / bGameTotal;
+      if (bGwPercent !== aGwPercent) {
+        return bGwPercent - aGwPercent;
+      }
+
+      return (fallbackOrder.get(a.userId) ?? 0) - (fallbackOrder.get(b.userId) ?? 0);
+    })
+    .map((entry) => entry.userId);
+}
+
+async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string[]) {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    include: {
+      config: { select: { seedingSource: true } },
+      season: { select: { id: true, number: true, leagueId: true } },
+    },
+  });
+  if (!event) {
+    throw new AppError(404, 'NOT_FOUND', 'Event not found');
+  }
+
+  const source = event.config?.seedingSource ?? null;
+  if (!source) {
+    return fallbackPlayerIds;
+  }
+
+  if (source === 'manual') {
+    const seeds = await prisma.eventSeed.findMany({
+      where: { eventId: event.id },
+      select: { userId: true },
+      orderBy: { seedNum: 'asc' },
+    });
+    if (seeds.length === 0) {
+      throw new AppError(409, 'SEEDS_NOT_SET', 'Manual seeds must be set before creating rounds');
+    }
+
+    const fallbackSet = new Set(fallbackPlayerIds);
+    const ordered = seeds.map((seed) => seed.userId).filter((userId) => fallbackSet.has(userId));
+    if (ordered.length !== fallbackPlayerIds.length) {
+      throw new AppError(409, 'SEEDS_INCOMPLETE', 'Manual seeds must include all league members');
+    }
+    return ordered;
+  }
+
+  if (source === 'previous_event') {
+    const previousEvent = await prisma.event.findFirst({
+      where: {
+        seasonId: event.seasonId,
+        status: 'completed',
+        id: { not: event.id },
+      },
+      select: { id: true },
+      orderBy: { orderIndex: 'desc' },
+    });
+
+    if (!previousEvent) {
+      return fallbackPlayerIds;
+    }
+
+    const matches = await prisma.match.findMany({
+      where: {
+        round: { eventId: previousEvent.id },
+        status: { in: ['confirmed', 'resolved'] },
+      },
+      select: {
+        isBye: true,
+        player1Id: true,
+        player2Id: true,
+        gameResults: { select: { winnerId: true, isDraw: true } },
+      },
+    });
+    const ranked = rankPlayersByMatchResults(fallbackPlayerIds, matches);
+    return mergeRankedWithFallback(ranked, fallbackPlayerIds);
+  }
+
+  if (source === 'previous_season') {
+    const previousSeason = await prisma.season.findFirst({
+      where: {
+        leagueId: event.season.leagueId,
+        isActive: false,
+        id: { not: event.season.id },
+      },
+      select: { id: true },
+      orderBy: { number: 'desc' },
+    });
+    if (!previousSeason) {
+      return fallbackPlayerIds;
+    }
+
+    const previousStandings = await prisma.standing.findMany({
+      where: { seasonId: previousSeason.id },
+      orderBy: [{ points: 'desc' }, { omwPercent: 'desc' }, { gwPercent: 'desc' }, { ogwPercent: 'desc' }],
+      select: { userId: true },
+    });
+    const ranked = previousStandings
+      .map((standing) => standing.userId)
+      .filter((userId) => fallbackPlayerIds.includes(userId));
+    return mergeRankedWithFallback(ranked, fallbackPlayerIds);
+  }
+
+  return fallbackPlayerIds;
 }
 
 export async function generateSwissPairings(roundId: string) {
@@ -82,7 +288,8 @@ export async function generateSeededSwissPairings(roundId: string) {
 
   if (round.roundNumber === 1) {
     const { playerIds } = await getSeasonPlayerIdsForEvent(round.eventId);
-    return pairSequential(playerIds);
+    const orderedPlayerIds = await getRoundOneSeededOrder(round.eventId, playerIds);
+    return pairTopVsBottom(orderedPlayerIds);
   }
 
   return generateSwissPairings(roundId);

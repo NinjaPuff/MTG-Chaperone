@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
-import { createEvent } from '../services/eventService.js';
+import { createEvent, createRoundRobinEventSeries } from '../services/eventService.js';
 
 const router = Router();
 
@@ -40,7 +40,12 @@ router.get('/:seasonId/events', async (req, res, next) => {
   try {
     const events = await prisma.event.findMany({
       where: { seasonId: req.params.seasonId },
-      include: { config: true },
+      include: {
+        config: true,
+        rounds: {
+          select: { status: true },
+        },
+      },
       orderBy: { orderIndex: 'asc' },
     });
     res.json({ data: events });
@@ -52,6 +57,7 @@ router.get('/:seasonId/events', async (req, res, next) => {
 router.post(
   '/:seasonId/events',
   requireAuth,
+  requireAdmin,
   validateBody(
     z.object({
       name: z.string().min(2),
@@ -73,25 +79,11 @@ router.post(
     try {
       const season = await prisma.season.findUnique({
         where: { id: req.params.seasonId },
-        include: {
-          league: {
-            select: {
-              memberships: {
-                where: {
-                  userId: req.user!.id,
-                  role: 'admin',
-                },
-              },
-            },
-          },
-        },
+        select: { id: true },
       });
 
       if (!season) {
         throw new AppError(404, 'NOT_FOUND', 'Season not found');
-      }
-      if (season.league.memberships.length === 0) {
-        throw new AppError(403, 'FORBIDDEN', 'Admin access required');
       }
 
       const event = await createEvent({
@@ -99,6 +91,43 @@ router.post(
         ...req.body,
       });
       res.status(201).json({ data: event });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.post(
+  '/:seasonId/events/round-robin-series',
+  requireAuth,
+  requireAdmin,
+  validateBody(
+    z.object({
+      baseName: z.string().min(2),
+      roundsPerEvent: z.number().int().positive().max(20).default(3),
+      pointMultiplier: z.number().positive().optional(),
+      standingsOverride: z.boolean().optional(),
+    }),
+  ),
+  async (req, res, next) => {
+    try {
+      const season = await prisma.season.findUnique({
+        where: { id: req.params.seasonId },
+        select: { id: true },
+      });
+
+      if (!season) {
+        throw new AppError(404, 'NOT_FOUND', 'Season not found');
+      }
+
+      const events = await createRoundRobinEventSeries({
+        seasonId: req.params.seasonId,
+        baseName: req.body.baseName,
+        roundsPerEvent: req.body.roundsPerEvent,
+        pointMultiplier: req.body.pointMultiplier,
+        standingsOverride: req.body.standingsOverride,
+      });
+      res.status(201).json({ data: events });
     } catch (error) {
       next(error);
     }

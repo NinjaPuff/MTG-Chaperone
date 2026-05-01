@@ -20,6 +20,84 @@ type CreateEventInput = {
   config: EventConfigInput;
 };
 
+type CreateRoundRobinSeriesInput = {
+  seasonId: string;
+  baseName: string;
+  roundsPerEvent: number;
+  pointMultiplier?: number;
+  standingsOverride?: boolean;
+};
+
+type RoundRobinPair = { player1Id: string; player2Id: string | null; isBye: boolean };
+
+function buildRoundRobinPairs(playerIds: string[]): RoundRobinPair[][] {
+  const participants = [...playerIds];
+  if (participants.length === 0) {
+    return [];
+  }
+
+  if (participants.length % 2 === 1) {
+    participants.push('BYE');
+  }
+
+  const totalRounds = participants.length - 1;
+  const half = participants.length / 2;
+  const rotation = [...participants];
+  const rounds: RoundRobinPair[][] = [];
+
+  for (let roundIndex = 0; roundIndex < totalRounds; roundIndex += 1) {
+    const pairs: RoundRobinPair[] = [];
+    for (let index = 0; index < half; index += 1) {
+      const left = rotation[index];
+      const right = rotation[rotation.length - 1 - index];
+      if (left === 'BYE' || right === 'BYE') {
+        const byePlayer = left === 'BYE' ? right : left;
+        if (byePlayer !== 'BYE') {
+          pairs.push({
+            player1Id: byePlayer,
+            player2Id: null,
+            isBye: true,
+          });
+        }
+      } else {
+        pairs.push({
+          player1Id: left,
+          player2Id: right,
+          isBye: false,
+        });
+      }
+    }
+
+    rounds.push(pairs);
+    rotation.splice(1, 0, rotation.pop()!);
+  }
+
+  return rounds;
+}
+
+function buildRandomRoundPairs(playerIds: string[]): RoundRobinPair[] {
+  const shuffled = [...playerIds];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return pairPlayers(shuffled);
+}
+
+function pairPlayers(playerIds: string[]): RoundRobinPair[] {
+  const pairs: RoundRobinPair[] = [];
+  const queue = [...playerIds];
+  while (queue.length >= 2) {
+    const player1Id = queue.shift()!;
+    const player2Id = queue.shift()!;
+    pairs.push({ player1Id, player2Id, isBye: false });
+  }
+  if (queue.length === 1) {
+    pairs.push({ player1Id: queue[0], player2Id: null, isBye: true });
+  }
+  return pairs;
+}
+
 export async function createEvent(payload: CreateEventInput) {
   const season = await prisma.season.findUnique({
     where: { id: payload.seasonId },
@@ -59,6 +137,91 @@ export async function createEvent(payload: CreateEventInput) {
   });
 }
 
+export async function createRoundRobinEventSeries(payload: CreateRoundRobinSeriesInput) {
+  const season = await prisma.season.findUnique({
+    where: { id: payload.seasonId },
+    include: {
+      league: {
+        include: {
+          memberships: {
+            select: { userId: true },
+          },
+        },
+      },
+    },
+  });
+  if (!season) {
+    throw new AppError(404, 'NOT_FOUND', 'Season not found');
+  }
+
+  const playerIds = season.league.memberships.map((membership) => membership.userId);
+  if (playerIds.length < 2) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'At least 2 league members are required for round robin');
+  }
+
+  const roundsTemplate = buildRoundRobinPairs(playerIds);
+  const roundsPerEvent = Math.max(1, payload.roundsPerEvent);
+  const pairedRoundsNeeded = Math.max(1, playerIds.length - 1);
+  const eventCount = Math.ceil(pairedRoundsNeeded / roundsPerEvent);
+  const totalRoundsToCreate = eventCount * roundsPerEvent;
+
+  const allRoundTemplates: RoundRobinPair[][] = roundsTemplate.slice(0, pairedRoundsNeeded);
+  while (allRoundTemplates.length < totalRoundsToCreate) {
+    allRoundTemplates.push(buildRandomRoundPairs(playerIds));
+  }
+
+  const createdEvents: Awaited<ReturnType<typeof createEvent>>[] = [];
+
+  for (let eventIndex = 0; eventIndex < eventCount; eventIndex += 1) {
+    const event = await createEvent({
+      seasonId: payload.seasonId,
+      name: `${payload.baseName.trim()} ${eventIndex + 1}/${eventCount}`,
+      pointMultiplier: payload.pointMultiplier ?? 1,
+      standingsOverride: payload.standingsOverride ?? false,
+      config: {
+        format: 'round_robin',
+        bestOfN: 3,
+        deckCount: 1,
+        minDeckSize: 40,
+        sideboardRule: 'entire_pool',
+        schedulingType: 'open_window',
+        deckLockingMode: 'free_modification',
+        seedingSource: null,
+      },
+    });
+
+    await prisma.$transaction(async (tx) => {
+      for (let roundIndex = 0; roundIndex < roundsPerEvent; roundIndex += 1) {
+        const roundTemplate = allRoundTemplates[eventIndex * roundsPerEvent + roundIndex];
+        const round = await tx.round.create({
+          data: {
+            eventId: event.id,
+            roundNumber: roundIndex + 1,
+            status: 'not_started',
+          },
+        });
+
+        for (const pair of roundTemplate) {
+          await tx.match.create({
+            data: {
+              roundId: round.id,
+              player1Id: pair.player1Id,
+              player2Id: pair.player2Id,
+              isBye: pair.isBye,
+              status: pair.isBye ? 'confirmed' : 'pending',
+              confirmedAt: pair.isBye ? new Date() : null,
+            },
+          });
+        }
+      }
+    });
+
+    createdEvents.push(await getEvent(event.id));
+  }
+
+  return createdEvents;
+}
+
 export async function getEvent(eventId: string) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
@@ -66,6 +229,31 @@ export async function getEvent(eventId: string) {
       config: true,
       rounds: {
         orderBy: { roundNumber: 'asc' },
+      },
+      season: {
+        select: {
+          id: true,
+          league: {
+            select: {
+              id: true,
+              slug: true,
+              memberships: {
+                select: {
+                  userId: true,
+                  user: {
+                    select: {
+                      id: true,
+                      displayName: true,
+                      publicName: true,
+                      slug: true,
+                      avatarUrl: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     },
   });

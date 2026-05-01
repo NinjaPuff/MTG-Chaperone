@@ -128,6 +128,7 @@ model User {
   gameResultWins   GameResult[]   @relation("GameWinner")
   scheduledAs1     ScheduledPairing[] @relation("ScheduledPlayer1")
   scheduledAs2     ScheduledPairing[] @relation("ScheduledPlayer2")
+  eventSeeds       EventSeed[]
 }
 
 model League {
@@ -256,6 +257,7 @@ model Event {
   rounds             Round[]
   decklists          Decklist[]
   deckUniquenessRule DeckUniquenessRule?
+  seeds              EventSeed[]
 }
 
 model EventConfig {
@@ -271,6 +273,19 @@ model EventConfig {
   seedingSource   SeedingSource?
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model EventSeed {
+  id      String @id @default(uuid())
+  eventId String
+  userId  String
+  seedNum Int
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([eventId, userId])
+  @@unique([eventId, seedNum])
 }
 
 model Round {

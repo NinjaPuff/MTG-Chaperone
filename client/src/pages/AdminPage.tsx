@@ -1,5 +1,6 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { SetCodePicker } from '@/components/SetCodePicker';
@@ -61,6 +62,7 @@ type Event = {
   pointMultiplier: number;
   standingsOverride: boolean;
   config: EventConfig | null;
+  rounds?: Array<{ status: 'not_started' | 'in_progress' | 'completed' }>;
 };
 
 type BoosterProduct = {
@@ -113,6 +115,7 @@ type ScryfallSet = {
 
 type ApiListResponse<T> = { data: T[] };
 type ApiItemResponse<T> = { data: T };
+type ApiSeriesResponse<T> = { data: T[] };
 
 const defaultPointConfig: PointConfig = {
   matchWinPoints: 3,
@@ -217,6 +220,12 @@ export function AdminPage() {
     pointMultiplier: 1,
     standingsOverride: false,
     config: defaultEventConfig,
+  });
+  const [roundRobinSeriesForm, setRoundRobinSeriesForm] = useState({
+    baseName: 'Round Robin',
+    roundsPerEvent: 3,
+    pointMultiplier: 1,
+    standingsOverride: false,
   });
   const [boosterForm, setBoosterForm] = useState({
     name: '',
@@ -585,6 +594,32 @@ export function AdminPage() {
       setSuccess('Event created.');
     } catch (createError) {
       setError(createError instanceof ApiError ? createError.message : 'Unable to create event');
+    }
+  };
+
+  const createRoundRobinSeries = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!activeSeason) {
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await apiRequest<ApiSeriesResponse<Event>>(`/api/seasons/${activeSeason.id}/events/round-robin-series`, {
+        method: 'POST',
+        body: {
+          baseName: roundRobinSeriesForm.baseName.trim(),
+          roundsPerEvent: roundRobinSeriesForm.roundsPerEvent,
+          pointMultiplier: roundRobinSeriesForm.pointMultiplier,
+          standingsOverride: roundRobinSeriesForm.standingsOverride,
+        },
+      });
+      await loadEvents(activeSeason.id);
+      setSuccess(
+        `${response.data.length} round-robin event${response.data.length === 1 ? '' : 's'} generated with prebuilt pairings.`,
+      );
+    } catch (createError) {
+      setError(createError instanceof ApiError ? createError.message : 'Unable to generate round robin event series');
     }
   };
 
@@ -1261,6 +1296,71 @@ export function AdminPage() {
                   </button>
                 </div>
 
+                <form className="mb-4 grid gap-3 rounded-md border border-border p-3 md:grid-cols-5" onSubmit={createRoundRobinSeries}>
+                  <div className="md:col-span-5">
+                    <p className="text-sm font-medium">Auto-generate Long Round Robin</p>
+                    <p className="text-xs text-muted-foreground">
+                      Creates events in advance so the whole set collectively covers the paired rounds, based on rounds per
+                      event. Any leftover slots are filled with random pairings.
+                    </p>
+                  </div>
+                  <label className="text-sm font-medium md:col-span-2">
+                    Base Event Name
+                    <input
+                      className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      value={roundRobinSeriesForm.baseName}
+                      onChange={(event) =>
+                        setRoundRobinSeriesForm((prev) => ({
+                          ...prev,
+                          baseName: event.target.value,
+                        }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label className="text-sm font-medium">
+                    Rounds Per Event
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      value={roundRobinSeriesForm.roundsPerEvent}
+                      onChange={(event) =>
+                        setRoundRobinSeriesForm((prev) => ({
+                          ...prev,
+                          roundsPerEvent: Number(event.target.value),
+                        }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label className="text-sm font-medium">
+                    Point Multiplier
+                    <input
+                      type="number"
+                      min={0.1}
+                      step="0.1"
+                      className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      value={roundRobinSeriesForm.pointMultiplier}
+                      onChange={(event) =>
+                        setRoundRobinSeriesForm((prev) => ({
+                          ...prev,
+                          pointMultiplier: Number(event.target.value),
+                        }))
+                      }
+                    />
+                  </label>
+                  <div className="flex items-end">
+                    <button
+                      type="submit"
+                      className="w-full rounded-md border border-border px-4 py-2 text-sm font-medium"
+                    >
+                      Generate Series
+                    </button>
+                  </div>
+                </form>
+
                 {isEventFormOpen ? (
                   <form className="grid gap-4 md:grid-cols-3" onSubmit={createEvent}>
                     <label className="text-sm font-medium">
@@ -1443,7 +1543,9 @@ export function AdminPage() {
                 ) : null}
 
                 <div className="mt-4 space-y-3">
-                  {events.map((item) => (
+                  {events.map((item) => {
+                    const hasPendingRounds = (item.rounds ?? []).some((round) => round.status !== 'completed');
+                    return (
                     <div key={item.id} className="rounded-md border border-border p-3">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -1452,8 +1554,14 @@ export function AdminPage() {
                             {item.status} • {item.config?.format ?? 'unknown'} • Bo{item.config?.bestOfN ?? '-'} • x
                             {item.pointMultiplier}
                           </p>
+                          {item.status === 'active' && hasPendingRounds ? (
+                            <p className="text-xs text-muted-foreground">Complete all event rounds before completing this event.</p>
+                          ) : null}
                         </div>
                         <div className="flex gap-2">
+                          <Link to={`/events/${item.id}`} className="rounded-md border border-border px-3 py-1 text-sm">
+                            Manage
+                          </Link>
                           {item.status === 'setup' ? (
                             <button
                               type="button"
@@ -1467,7 +1575,9 @@ export function AdminPage() {
                             <button
                               type="button"
                               onClick={() => transitionEvent(item.id, 'complete')}
-                              className="rounded-md border border-border px-3 py-1 text-sm"
+                              disabled={hasPendingRounds}
+                              title={hasPendingRounds ? 'Complete all rounds first' : undefined}
+                              className="rounded-md border border-border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                             >
                               Complete
                             </button>
@@ -1475,7 +1585,8 @@ export function AdminPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                   {events.length === 0 ? <p className="text-sm text-muted-foreground">No events yet.</p> : null}
                 </div>
               </div>

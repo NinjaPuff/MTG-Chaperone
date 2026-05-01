@@ -33,28 +33,13 @@ function ensureParticipant(match: Awaited<ReturnType<typeof getMatch>>, userId: 
   }
 }
 
-async function ensureLeagueAdmin(matchId: string, userId: string) {
-  const adminMembership = await prisma.leagueMembership.findFirst({
-    where: {
-      userId,
-      role: 'admin',
-      league: {
-        seasons: {
-          some: {
-            events: {
-              some: {
-                rounds: {
-                  some: { matches: { some: { id: matchId } } },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
+async function ensureSiteAdmin(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
   });
 
-  if (!adminMembership) {
+  if (!user || user.role !== 'admin') {
     throw new AppError(403, 'FORBIDDEN', 'Admin access required');
   }
 }
@@ -136,7 +121,7 @@ export async function disputeMatch(matchId: string, disputerId: string) {
 }
 
 export async function resolveMatch(matchId: string, adminId: string, gameResults: GameInput[]) {
-  await ensureLeagueAdmin(matchId, adminId);
+  await ensureSiteAdmin(adminId);
   const match = await getMatch(matchId);
   if (!['reported', 'disputed'].includes(match.status)) {
     throw new AppError(409, 'INVALID_MATCH_STATE', 'Only reported or disputed matches can be resolved');

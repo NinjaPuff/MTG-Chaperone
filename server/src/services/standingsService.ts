@@ -22,7 +22,6 @@ export async function recomputeStandings(seasonId: string) {
       league: {
         include: {
           memberships: {
-            where: { role: 'player' },
             select: { userId: true },
           },
         },
