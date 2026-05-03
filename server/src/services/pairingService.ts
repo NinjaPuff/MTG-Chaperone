@@ -385,3 +385,15 @@ export async function regeneratePairings(roundId: string) {
   await prisma.gameResult.deleteMany({ where: { match: { roundId } } });
   await prisma.match.deleteMany({ where: { roundId } });
 }
+
+export function createPairingService() {
+  return {
+    pairSequential,
+    pairTopVsBottom,
+    generateSwissPairings,
+    generateSeededSwissPairings,
+    generateRoundRobinSchedule,
+    assignRoundRobinPairings,
+    regeneratePairings,
+  };
+}

@@ -202,3 +202,14 @@ export async function deleteRound(roundId: string) {
 
   return { seasonId: round.event.seasonId };
 }
+
+export function createRoundService() {
+  return {
+    validateRoundTransition,
+    createRound,
+    startRound,
+    completeRound,
+    regenerateRoundPairings,
+    deleteRound,
+  };
+}
