@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
+import type { AppDeps } from '../di/types.js';
 
 type BoosterMap = Record<string, string[]>;
 
@@ -26,15 +27,14 @@ function normalizeSetCodes(value: unknown) {
   );
 }
 
-async function fetchBoosterData(setCode: string) {
+async function fetchBoosterData(setCode: string, httpFetch: typeof fetch, now: number) {
   const normalizedSetCode = setCode.trim().toUpperCase();
-  const now = Date.now();
   const cached = cache.get(normalizedSetCode);
   if (cached && cached.expiresAt > now) {
     return cached.data;
   }
 
-  const response = await fetch(`https://mtgjson.com/api/v5/${normalizedSetCode}.json`, {
+  const response = await httpFetch(`https://mtgjson.com/api/v5/${normalizedSetCode}.json`, {
     headers: {
       'User-Agent': 'MtgBoxLeagueHelper/0.1',
     },
@@ -71,15 +71,22 @@ async function fetchBoosterData(setCode: string) {
   return extracted;
 }
 
-const router = Router();
+export function createMtgjsonRouter(deps?: Pick<AppDeps, 'http' | 'clock' | 'services'>) {
+  const router = Router();
+  const requireAuthMw = deps?.services.auth.requireAuth ?? requireAuth;
+  const httpFetch = deps?.http.fetch ?? fetch;
+  const getNow = () => (deps?.clock.now() ?? new Date()).getTime();
 
-router.get('/:setCode/boosters', requireAuth, async (req, res, next) => {
-  try {
-    const data = await fetchBoosterData(req.params.setCode);
-    res.json({ data });
-  } catch (error) {
-    next(error);
-  }
-});
+  router.get('/:setCode/boosters', requireAuthMw, async (req, res, next) => {
+    try {
+      const data = await fetchBoosterData(req.params.setCode, httpFetch, getNow());
+      res.json({ data });
+    } catch (error) {
+      next(error);
+    }
+  });
 
-export { router as mtgjsonRouter };
+  return router;
+}
+
+export const mtgjsonRouter = createMtgjsonRouter();

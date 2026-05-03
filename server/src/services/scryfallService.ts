@@ -1,19 +1,11 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 import { Prisma } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 
 const SCRYFALL_BASE_URL = 'https://api.scryfall.com';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const RATE_LIMIT_MS = 120;
-
-let rateLimiter = Promise.resolve();
-
-async function withRateLimit<T>(task: () => Promise<T>) {
-  const next = rateLimiter.then(() => new Promise<void>((resolve) => setTimeout(resolve, RATE_LIMIT_MS)));
-  rateLimiter = next.catch(() => Promise.resolve());
-  await next;
-  return task();
-}
 
 type ScryfallCard = {
   id: string;
@@ -49,22 +41,47 @@ function resolveImageUris(card: ScryfallCard) {
   return Prisma.JsonNull;
 }
 
-async function fetchScryfall<T>(url: string): Promise<T> {
-  return withRateLimit(async () => {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'MtgBoxLeagueHelper/0.1',
-      },
-    });
-    if (!response.ok) {
-      throw new AppError(response.status, 'SCRYFALL_ERROR', `Scryfall request failed: ${response.status}`);
-    }
-    return (await response.json()) as T;
-  });
-}
+type ScryfallDeps = {
+  prisma: PrismaClient;
+  fetch: typeof fetch;
+  now: () => Date;
+  sleep: (ms: number) => Promise<void>;
+};
 
-async function upsertCard(card: ScryfallCard) {
-  return prisma.cachedCard.upsert({
+export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
+  const deps: ScryfallDeps = {
+    prisma,
+    fetch: fetch.bind(globalThis),
+    now: () => new Date(),
+    sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    ...partialDeps,
+  };
+
+  let rateLimiter = Promise.resolve();
+
+  async function withRateLimit<T>(task: () => Promise<T>) {
+    const next = rateLimiter.then(() => deps.sleep(RATE_LIMIT_MS));
+    rateLimiter = next.catch(() => Promise.resolve());
+    await next;
+    return task();
+  }
+
+  async function fetchScryfall<T>(url: string): Promise<T> {
+    return withRateLimit(async () => {
+      const response = await deps.fetch(url, {
+        headers: {
+          'User-Agent': 'MtgBoxLeagueHelper/0.1',
+        },
+      });
+      if (!response.ok) {
+        throw new AppError(response.status, 'SCRYFALL_ERROR', `Scryfall request failed: ${response.status}`);
+      }
+      return (await response.json()) as T;
+    });
+  }
+
+  async function upsertCard(card: ScryfallCard) {
+    return deps.prisma.cachedCard.upsert({
     where: { scryfallId: card.id },
     update: {
       name: card.name,
@@ -78,7 +95,7 @@ async function upsertCard(card: ScryfallCard) {
       setCode: card.set.toUpperCase(),
       imageUris: resolveImageUris(card),
       prices: card.prices ?? Prisma.JsonNull,
-      lastFetched: new Date(),
+      lastFetched: deps.now(),
     },
     create: {
       scryfallId: card.id,
@@ -93,90 +110,104 @@ async function upsertCard(card: ScryfallCard) {
       setCode: card.set.toUpperCase(),
       imageUris: resolveImageUris(card),
       prices: card.prices ?? Prisma.JsonNull,
-      lastFetched: new Date(),
+      lastFetched: deps.now(),
     },
   });
-}
-
-export async function searchCards(query: string, setCodes: string[] = []) {
-  const normalizedSets = setCodes.map((setCode) => setCode.trim().toLowerCase()).filter(Boolean);
-  const setClause = normalizedSets.length
-    ? ` (${normalizedSets.map((setCode) => `set:${setCode}`).join(' OR ')})`
-    : '';
-  const scryfallQuery = `${query}${setClause}`.trim();
-  const encodedQuery = encodeURIComponent(scryfallQuery);
-
-  const response = await fetchScryfall<{ data: ScryfallCard[] }>(
-    `${SCRYFALL_BASE_URL}/cards/search?q=${encodedQuery}&order=name&unique=prints`,
-  );
-
-  const cards = await Promise.all(response.data.map((card) => upsertCard(card)));
-  return cards;
-}
-
-export async function getCard(scryfallId: string) {
-  const cached = await prisma.cachedCard.findUnique({ where: { scryfallId } });
-  if (cached && Date.now() - cached.lastFetched.getTime() <= CACHE_TTL_MS) {
-    return cached;
   }
 
-  const card = await fetchScryfall<ScryfallCard>(`${SCRYFALL_BASE_URL}/cards/${scryfallId}`);
-  return upsertCard(card);
-}
+  async function searchCards(query: string, setCodes: string[] = []) {
+    const normalizedSets = setCodes.map((setCode) => setCode.trim().toLowerCase()).filter(Boolean);
+    const setClause = normalizedSets.length
+      ? ` (${normalizedSets.map((setCode) => `set:${setCode}`).join(' OR ')})`
+      : '';
+    const scryfallQuery = `${query}${setClause}`.trim();
+    const encodedQuery = encodeURIComponent(scryfallQuery);
 
-export async function bulkLookupByName(names: string[]) {
-  const normalizedNames = names.map((name) => name.trim()).filter(Boolean);
-  if (normalizedNames.length === 0) {
-    return [];
+    const response = await fetchScryfall<{ data: ScryfallCard[] }>(
+      `${SCRYFALL_BASE_URL}/cards/search?q=${encodedQuery}&order=name&unique=prints`,
+    );
+
+    const cards = await Promise.all(response.data.map((card) => upsertCard(card)));
+    return cards;
   }
 
-  const cached = await prisma.cachedCard.findMany({
-    where: {
-      name: {
-        in: normalizedNames,
-        mode: 'insensitive',
-      },
-    },
-  });
-
-  const missing = normalizedNames.filter(
-    (name) => !cached.some((card) => card.name.toLowerCase() === name.toLowerCase()),
-  );
-
-  for (const name of missing) {
-    try {
-      await searchCards(`!"${name}"`);
-    } catch {
-      // Ignore unresolved names in bulk mode.
+  async function getCard(scryfallId: string) {
+    const cached = await deps.prisma.cachedCard.findUnique({ where: { scryfallId } });
+    if (cached && deps.now().getTime() - cached.lastFetched.getTime() <= CACHE_TTL_MS) {
+      return cached;
     }
+
+    const card = await fetchScryfall<ScryfallCard>(`${SCRYFALL_BASE_URL}/cards/${scryfallId}`);
+    return upsertCard(card);
   }
 
-  return prisma.cachedCard.findMany({
-    where: {
-      name: {
-        in: normalizedNames,
-        mode: 'insensitive',
+  async function bulkLookupByName(names: string[]) {
+    const normalizedNames = names.map((name) => name.trim()).filter(Boolean);
+    if (normalizedNames.length === 0) {
+      return [];
+    }
+
+    const cached = await deps.prisma.cachedCard.findMany({
+      where: {
+        name: {
+          in: normalizedNames,
+          mode: 'insensitive',
+        },
       },
-    },
-  });
-}
+    });
 
-export async function bulkImportSet(setCodes: string[]) {
-  const response = await fetchScryfall<{
-    data: Array<{
-      type: string;
-      download_uri: string;
-    }>;
-  }>(`${SCRYFALL_BASE_URL}/bulk-data`);
+    const missing = normalizedNames.filter(
+      (name) => !cached.some((card) => card.name.toLowerCase() === name.toLowerCase()),
+    );
 
-  const defaultCards = response.data.find((item) => item.type === 'default_cards');
-  if (!defaultCards) {
-    throw new AppError(500, 'SCRYFALL_ERROR', 'Unable to find Scryfall default bulk data');
+    for (const name of missing) {
+      try {
+        await searchCards(`!"${name}"`);
+      } catch {
+        // Ignore unresolved names in bulk mode.
+      }
+    }
+
+    return deps.prisma.cachedCard.findMany({
+      where: {
+        name: {
+          in: normalizedNames,
+          mode: 'insensitive',
+        },
+      },
+    });
   }
 
-  const cards = await fetchScryfall<ScryfallCard[]>(defaultCards.download_uri);
-  const normalizedSetCodes = setCodes.map((code) => code.trim().toLowerCase());
-  const filtered = cards.filter((card) => normalizedSetCodes.includes(card.set.toLowerCase()));
-  await Promise.all(filtered.map((card) => upsertCard(card)));
-  return { imported: filtered.length };
+  async function bulkImportSet(setCodes: string[]) {
+    const response = await fetchScryfall<{
+      data: Array<{
+        type: string;
+        download_uri: string;
+      }>;
+    }>(`${SCRYFALL_BASE_URL}/bulk-data`);
+
+    const defaultCards = response.data.find((item) => item.type === 'default_cards');
+    if (!defaultCards) {
+      throw new AppError(500, 'SCRYFALL_ERROR', 'Unable to find Scryfall default bulk data');
+    }
+
+    const cards = await fetchScryfall<ScryfallCard[]>(defaultCards.download_uri);
+    const normalizedSetCodes = setCodes.map((code) => code.trim().toLowerCase());
+    const filtered = cards.filter((card) => normalizedSetCodes.includes(card.set.toLowerCase()));
+    await Promise.all(filtered.map((card) => upsertCard(card)));
+    return { imported: filtered.length };
+  }
+
+  return {
+    searchCards,
+    getCard,
+    bulkLookupByName,
+    bulkImportSet,
+  };
 }
+
+const defaultScryfallService = createScryfallService();
+export const searchCards = defaultScryfallService.searchCards;
+export const getCard = defaultScryfallService.getCard;
+export const bulkLookupByName = defaultScryfallService.bulkLookupByName;
+export const bulkImportSet = defaultScryfallService.bulkImportSet;

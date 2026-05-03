@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { AppError } from '../middleware/errorHandler.js';
+import type { AppDeps } from '../di/types.js';
 
 type ScryfallSet = {
   code: string;
@@ -19,13 +20,12 @@ const EXCLUDED_SET_TYPES = new Set(['token', 'memorabilia', 'vanguard', 'planar'
 
 let cache: CachedSets | null = null;
 
-async function fetchScryfallSets() {
-  const now = Date.now();
+async function fetchScryfallSets(httpFetch: typeof fetch, now: number) {
   if (cache && cache.expiresAt > now) {
     return cache.data;
   }
 
-  const response = await fetch('https://api.scryfall.com/sets', {
+  const response = await httpFetch('https://api.scryfall.com/sets', {
     headers: {
       'User-Agent': 'MtgBoxLeagueHelper/0.1',
     },
@@ -46,15 +46,21 @@ async function fetchScryfallSets() {
   return filtered;
 }
 
-const router = Router();
+export function createSetsRouter(deps?: Pick<AppDeps, 'http' | 'clock'>) {
+  const router = Router();
+  const httpFetch = deps?.http.fetch ?? fetch;
+  const getNow = () => (deps?.clock.now() ?? new Date()).getTime();
 
-router.get('/', async (_req, res, next) => {
-  try {
-    const data = await fetchScryfallSets();
-    res.json({ data });
-  } catch (error) {
-    next(error);
-  }
-});
+  router.get('/', async (_req, res, next) => {
+    try {
+      const data = await fetchScryfallSets(httpFetch, getNow());
+      res.json({ data });
+    } catch (error) {
+      next(error);
+    }
+  });
 
-export { router as setsRouter };
+  return router;
+}
+
+export const setsRouter = createSetsRouter();
