@@ -2,26 +2,28 @@ import passport from 'passport';
 import { Strategy as DiscordStrategy } from 'passport-discord';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import type { Request } from 'express';
-import type { User } from '@prisma/client';
+import type { PrismaClient, User } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { slugify, withSlugSuffix } from '../lib/slugify.js';
+import type { AppConfig, Clock, Rng } from '../di/types.js';
+import { loadConfig } from '../di/config.js';
 
-async function ensureUniqueSlug(seed: string) {
+async function ensureUniqueSlug(seed: string, deps: { prisma: PrismaClient; rng: Rng; clock: Clock }) {
   const baseSlug = slugify(seed);
   let slug = baseSlug;
   let attempts = 0;
 
   while (attempts < 5) {
-    const existing = await prisma.user.findUnique({ where: { slug } });
+    const existing = await deps.prisma.user.findUnique({ where: { slug } });
     if (!existing) {
       return slug;
     }
 
     attempts += 1;
-    slug = withSlugSuffix(baseSlug, Math.random().toString(36).slice(2, 8));
+    slug = withSlugSuffix(baseSlug, deps.rng.next().toString(36).slice(2, 8));
   }
 
-  return withSlugSuffix(baseSlug, Date.now().toString());
+  return withSlugSuffix(baseSlug, deps.clock.now().getTime().toString());
 }
 
 type OAuthProfile = {
@@ -33,13 +35,13 @@ type OAuthProfile = {
 };
 type DoneFn = (error: Error | null, user?: User) => void;
 
-async function findOrCreateDiscordUser(profile: OAuthProfile): Promise<User> {
-  const existingByDiscord = await prisma.user.findUnique({
+async function findOrCreateDiscordUser(profile: OAuthProfile, deps: { prisma: PrismaClient; rng: Rng; clock: Clock }): Promise<User> {
+  const existingByDiscord = await deps.prisma.user.findUnique({
     where: { discordId: profile.id },
   });
 
   if (existingByDiscord) {
-    return prisma.user.update({
+    return deps.prisma.user.update({
       where: { id: existingByDiscord.id },
       data: {
         displayName: profile.username,
@@ -51,8 +53,8 @@ async function findOrCreateDiscordUser(profile: OAuthProfile): Promise<User> {
   }
 
   const displayName = profile.username || profile.displayName || 'Discord Player';
-  const slug = await ensureUniqueSlug(displayName);
-  return prisma.user.create({
+  const slug = await ensureUniqueSlug(displayName, deps);
+  return deps.prisma.user.create({
     data: {
       discordId: profile.id,
       displayName,
@@ -64,13 +66,13 @@ async function findOrCreateDiscordUser(profile: OAuthProfile): Promise<User> {
   });
 }
 
-async function findOrCreateGoogleUser(profile: OAuthProfile): Promise<User> {
-  const existingByGoogle = await prisma.user.findUnique({
+async function findOrCreateGoogleUser(profile: OAuthProfile, deps: { prisma: PrismaClient; rng: Rng; clock: Clock }): Promise<User> {
+  const existingByGoogle = await deps.prisma.user.findUnique({
     where: { googleId: profile.id },
   });
 
   if (existingByGoogle) {
-    return prisma.user.update({
+    return deps.prisma.user.update({
       where: { id: existingByGoogle.id },
       data: {
         displayName: profile.displayName,
@@ -79,8 +81,8 @@ async function findOrCreateGoogleUser(profile: OAuthProfile): Promise<User> {
     });
   }
 
-  const slug = await ensureUniqueSlug(profile.displayName || 'player');
-  return prisma.user.create({
+  const slug = await ensureUniqueSlug(profile.displayName || 'player', deps);
+  return deps.prisma.user.create({
     data: {
       googleId: profile.id,
       displayName: profile.displayName || 'Google Player',
@@ -90,14 +92,19 @@ async function findOrCreateGoogleUser(profile: OAuthProfile): Promise<User> {
   });
 }
 
-export function configurePassport() {
-  if (process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET) {
+export function configurePassportWithDeps(deps: {
+  config: AppConfig;
+  prisma: PrismaClient;
+  rng: Rng;
+  clock: Clock;
+}) {
+  if (deps.config.discordClientId && deps.config.discordClientSecret) {
     passport.use(
       new DiscordStrategy(
         {
-          clientID: process.env.DISCORD_CLIENT_ID,
-          clientSecret: process.env.DISCORD_CLIENT_SECRET,
-          callbackURL: process.env.DISCORD_CALLBACK_URL || 'http://localhost:3000/api/auth/discord/callback',
+          clientID: deps.config.discordClientId,
+          clientSecret: deps.config.discordClientSecret,
+          callbackURL: deps.config.discordCallbackUrl,
           scope: ['identify', 'email'],
           passReqToCallback: true,
         },
@@ -110,7 +117,7 @@ export function configurePassport() {
           done: DoneFn,
         ) => {
           try {
-            const user = await findOrCreateDiscordUser(profile);
+            const user = await findOrCreateDiscordUser(profile, deps);
             done(null, user);
           } catch (err) {
             done(err as Error);
@@ -120,17 +127,17 @@ export function configurePassport() {
     );
   }
 
-  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  if (deps.config.googleClientId && deps.config.googleClientSecret) {
     passport.use(
       new GoogleStrategy(
         {
-          clientID: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/api/auth/google/callback',
+          clientID: deps.config.googleClientId,
+          clientSecret: deps.config.googleClientSecret,
+          callbackURL: deps.config.googleCallbackUrl,
         },
         async (_accessToken: string, _refreshToken: string, profile: OAuthProfile, done: DoneFn) => {
           try {
-            const user = await findOrCreateGoogleUser(profile);
+            const user = await findOrCreateGoogleUser(profile, deps);
             done(null, user);
           } catch (err) {
             done(err as Error);
@@ -141,4 +148,14 @@ export function configurePassport() {
   }
 
   return passport;
+}
+
+export function configurePassport() {
+  const config = loadConfig();
+  return configurePassportWithDeps({
+    config,
+    prisma,
+    rng: { next: () => Math.random() },
+    clock: { now: () => new Date() },
+  });
 }
