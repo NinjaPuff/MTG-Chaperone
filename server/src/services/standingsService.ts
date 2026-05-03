@@ -228,3 +228,12 @@ export async function getStandings(seasonId: string) {
     orderBy: [{ points: 'desc' }, { omwPercent: 'desc' }, { gwPercent: 'desc' }, { ogwPercent: 'desc' }],
   });
 }
+
+export function createStandingsService() {
+  return {
+    floorWinPercent,
+    computeStandings,
+    recomputeStandings,
+    getStandings,
+  };
+}
