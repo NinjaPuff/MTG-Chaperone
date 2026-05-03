@@ -1,34 +1,15 @@
 import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import passport from 'passport';
-import { configurePassport } from './config/passport.js';
-import { errorHandler } from './middleware/errorHandler.js';
+import { loadConfig } from './di/config.js';
+import { createDeps } from './di/deps.js';
+import { createApp } from './app.js';
 
-const app = express();
-const PORT = process.env.SERVER_PORT || 3000;
+const config = loadConfig();
+const deps = createDeps(config);
+const app = createApp(deps);
 
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
-  credentials: true,
-}));
-app.use(express.json());
-
-configurePassport();
-app.use(passport.initialize());
-
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-import { apiRouter } from './routes/index.js';
-app.use('/api', apiRouter);
-
-app.use(errorHandler);
-
-if (process.env.NODE_ENV !== 'test') {
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+if (config.nodeEnv !== 'test') {
+  app.listen(config.serverPort, () => {
+    deps.logger.info(`Server running on http://localhost:${config.serverPort}`);
   });
 }
 
