@@ -50,7 +50,21 @@ router.post('/:roundId/complete', requireAuth, requireAdmin, async (req, res, ne
 
 router.post('/:roundId/regenerate', requireAuth, requireAdmin, async (req, res, next) => {
   try {
+    const roundMeta = await prisma.round.findUnique({
+      where: { id: req.params.roundId },
+      select: {
+        event: {
+          select: { seasonId: true },
+        },
+      },
+    });
+    if (!roundMeta) {
+      throw new AppError(404, 'NOT_FOUND', 'Round not found');
+    }
+
     await regenerateRoundPairings(req.params.roundId);
+    await recomputeStandings(roundMeta.event.seasonId);
+
     const round = await prisma.round.findUnique({
       where: { id: req.params.roundId },
       include: { matches: true },

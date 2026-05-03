@@ -36,6 +36,32 @@ type MatchCardProps = {
   footer?: ReactNode;
 };
 
+function getReportedWinner(match: MatchCardMatch): 'player1' | 'player2' | null {
+  if (match.status !== 'reported' || !match.player2) {
+    return null;
+  }
+
+  let p1Wins = 0;
+  let p2Wins = 0;
+  for (const game of match.gameResults) {
+    if (game.isDraw || !game.winnerId) {
+      continue;
+    }
+    if (game.winnerId === match.player1.id) {
+      p1Wins += 1;
+      continue;
+    }
+    if (game.winnerId === match.player2.id) {
+      p2Wins += 1;
+    }
+  }
+
+  if (p1Wins === p2Wins) {
+    return null;
+  }
+  return p1Wins > p2Wins ? 'player1' : 'player2';
+}
+
 const avatarColorClasses = [
   'bg-sky-600',
   'bg-violet-600',
@@ -83,6 +109,7 @@ function StatsBox({ title, record, points, align = 'left' }: { title: string; re
 export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }: MatchCardProps) {
   const p1Record = eventRecords.get(match.player1.id) ?? { wins: 0, losses: 0, draws: 0 };
   const p1Points = seasonPoints.get(match.player1.id) ?? 0;
+  const reportedWinner = getReportedWinner(match);
 
   if (match.isBye || !match.player2) {
     return (
@@ -112,16 +139,29 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
 
   const p2Record = eventRecords.get(match.player2.id) ?? { wins: 0, losses: 0, draws: 0 };
   const p2Points = seasonPoints.get(match.player2.id) ?? 0;
+  const p1IsReportedWinner = reportedWinner === 'player1';
+  const p2IsReportedWinner = reportedWinner === 'player2';
 
   return (
     <div className="rounded-lg border-2 border-border bg-card p-3 text-sm">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch">
         <div className="flex-1 grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
-          <div className="rounded-lg border border-border p-3">
+          <div
+            className={`rounded-lg border p-3 ${
+              p1IsReportedWinner ? 'border-emerald-500 bg-emerald-500/10 shadow-sm' : 'border-border'
+            }`}
+          >
             <div className="flex items-center gap-3">
               <Avatar user={match.player1} sizeClass="h-14 w-14" />
               <div className="min-w-0">
-                <p className="font-semibold truncate">{primaryName(match.player1)}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold truncate">{primaryName(match.player1)}</p>
+                  {p1IsReportedWinner ? (
+                    <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                      Winner
+                    </span>
+                  ) : null}
+                </div>
                 {secondaryName(match.player1) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(match.player1)}</p> : null}
               </div>
             </div>
@@ -136,10 +176,21 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
             </span>
           </div>
 
-          <div className="rounded-lg border border-border p-3">
+          <div
+            className={`rounded-lg border p-3 ${
+              p2IsReportedWinner ? 'border-emerald-500 bg-emerald-500/10 shadow-sm' : 'border-border'
+            }`}
+          >
             <div className="flex items-center justify-end gap-3">
               <div className="text-right min-w-0">
-                <p className="font-semibold truncate">{primaryName(match.player2)}</p>
+                <div className="flex items-center justify-end gap-2">
+                  {p2IsReportedWinner ? (
+                    <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                      Winner
+                    </span>
+                  ) : null}
+                  <p className="font-semibold truncate">{primaryName(match.player2)}</p>
+                </div>
                 {secondaryName(match.player2) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(match.player2)}</p> : null}
               </div>
               <Avatar user={match.player2} sizeClass="h-14 w-14" />

@@ -7,6 +7,38 @@ type GameInput = {
   notes?: string;
 };
 
+type MatchAction = 'report' | 'confirm' | 'dispute' | 'resolve';
+
+export function validateMatchStateTransition(
+  currentStatus: 'pending' | 'reported' | 'confirmed' | 'disputed' | 'resolved',
+  action: MatchAction,
+  reporterId: string | null,
+  actingUserId: string,
+) {
+  if (action === 'report' && currentStatus !== 'pending') {
+    throw new AppError(409, 'INVALID_MATCH_STATE', 'Only pending matches can be reported');
+  }
+  if (action === 'confirm') {
+    if (currentStatus !== 'reported') {
+      throw new AppError(409, 'INVALID_MATCH_STATE', 'Only reported matches can be confirmed');
+    }
+    if (reporterId === actingUserId) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Reporter cannot confirm their own match');
+    }
+  }
+  if (action === 'dispute') {
+    if (currentStatus !== 'reported') {
+      throw new AppError(409, 'INVALID_MATCH_STATE', 'Only reported matches can be disputed');
+    }
+    if (reporterId === actingUserId) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Reporter cannot dispute their own report');
+    }
+  }
+  if (action === 'resolve' && !['reported', 'disputed'].includes(currentStatus)) {
+    throw new AppError(409, 'INVALID_MATCH_STATE', 'Only reported or disputed matches can be resolved');
+  }
+}
+
 async function getMatch(matchId: string) {
   const match = await prisma.match.findUnique({
     where: { id: matchId },
@@ -44,6 +76,13 @@ async function ensureSiteAdmin(userId: string) {
   }
 }
 
+async function ensureParticipantOrSiteAdmin(match: Awaited<ReturnType<typeof getMatch>>, userId: string) {
+  if (match.player1Id === userId || match.player2Id === userId) {
+    return;
+  }
+  await ensureSiteAdmin(userId);
+}
+
 async function writeGameResults(matchId: string, gameResults: GameInput[]) {
   await prisma.gameResult.deleteMany({ where: { matchId } });
   await Promise.all(
@@ -63,10 +102,8 @@ async function writeGameResults(matchId: string, gameResults: GameInput[]) {
 
 export async function reportMatch(matchId: string, reporterId: string, gameResults: GameInput[]) {
   const match = await getMatch(matchId);
-  ensureParticipant(match, reporterId);
-  if (match.status !== 'pending') {
-    throw new AppError(409, 'INVALID_MATCH_STATE', 'Only pending matches can be reported');
-  }
+  await ensureParticipantOrSiteAdmin(match, reporterId);
+  validateMatchStateTransition(match.status, 'report', match.reportedById ?? null, reporterId);
   if (gameResults.length === 0) {
     throw new AppError(400, 'VALIDATION_ERROR', 'At least one game result is required');
   }
@@ -86,12 +123,7 @@ export async function reportMatch(matchId: string, reporterId: string, gameResul
 export async function confirmMatch(matchId: string, confirmerId: string) {
   const match = await getMatch(matchId);
   ensureParticipant(match, confirmerId);
-  if (match.status !== 'reported') {
-    throw new AppError(409, 'INVALID_MATCH_STATE', 'Only reported matches can be confirmed');
-  }
-  if (match.reportedById === confirmerId) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'Reporter cannot confirm their own match');
-  }
+  validateMatchStateTransition(match.status, 'confirm', match.reportedById ?? null, confirmerId);
 
   return prisma.match.update({
     where: { id: matchId },
@@ -106,12 +138,7 @@ export async function confirmMatch(matchId: string, confirmerId: string) {
 export async function disputeMatch(matchId: string, disputerId: string) {
   const match = await getMatch(matchId);
   ensureParticipant(match, disputerId);
-  if (match.status !== 'reported') {
-    throw new AppError(409, 'INVALID_MATCH_STATE', 'Only reported matches can be disputed');
-  }
-  if (match.reportedById === disputerId) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'Reporter cannot dispute their own report');
-  }
+  validateMatchStateTransition(match.status, 'dispute', match.reportedById ?? null, disputerId);
 
   return prisma.match.update({
     where: { id: matchId },
@@ -123,9 +150,7 @@ export async function disputeMatch(matchId: string, disputerId: string) {
 export async function resolveMatch(matchId: string, adminId: string, gameResults: GameInput[]) {
   await ensureSiteAdmin(adminId);
   const match = await getMatch(matchId);
-  if (!['reported', 'disputed'].includes(match.status)) {
-    throw new AppError(409, 'INVALID_MATCH_STATE', 'Only reported or disputed matches can be resolved');
-  }
+  validateMatchStateTransition(match.status, 'resolve', match.reportedById ?? null, adminId);
 
   await writeGameResults(matchId, gameResults);
 

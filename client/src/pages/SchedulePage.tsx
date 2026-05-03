@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MatchCard } from '@/components/MatchCard';
 import { ApiError, apiRequest } from '@/lib/api';
@@ -40,6 +40,7 @@ type StandingRow = {
 
 export function SchedulePage() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { activeSeasonId } = useCurrentLeague();
   const [events, setEvents] = useState<Event[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
@@ -48,6 +49,7 @@ export function SchedulePage() {
   const [reportCounts, setReportCounts] = useState({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
   const [error, setError] = useState<string | null>(null);
+  const reportInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId) ?? null,
@@ -112,6 +114,13 @@ export function SchedulePage() {
 
     void loadStandings();
   }, [activeSeasonId]);
+
+  useEffect(() => {
+    if (!selectedMatch) {
+      return;
+    }
+    reportInputRef.current?.focus();
+  }, [selectedMatch]);
 
   const reportMatch = async (event: FormEvent) => {
     event.preventDefault();
@@ -213,7 +222,7 @@ export function SchedulePage() {
                 <div className="mt-3 space-y-2">
                   {round.matches.map((match) => {
                     const isParticipant = user && (match.player1.id === user.id || match.player2?.id === user.id);
-                    const canReport = isParticipant && match.status === 'pending';
+                    const canReport = (isParticipant || isAdmin) && match.status === 'pending';
                     const canConfirmOrDispute =
                       isParticipant && match.status === 'reported' && match.reportedById !== user?.id;
                     return (
@@ -265,77 +274,89 @@ export function SchedulePage() {
       </div>
 
       {selectedMatch ? (
-        <form onSubmit={reportMatch} className="rounded-lg border border-border bg-card p-6 space-y-3">
-          <h3 className="text-lg font-semibold">Report Match</h3>
-          <p className="text-sm text-muted-foreground">
-            {primaryName(selectedMatch.player1)} vs {selectedMatch.player2 ? primaryName(selectedMatch.player2) : ''}
-          </p>
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="text-sm">
-              {primaryName(selectedMatch.player1)} wins
-              <input
-                type="number"
-                min={0}
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                value={reportCounts.player1Wins}
-                onChange={(event) =>
-                  setReportCounts((prev) => ({
-                    ...prev,
-                    player1Wins: Math.max(0, Number(event.target.value) || 0),
-                  }))
-                }
-              />
-            </label>
-            <label className="text-sm">
-              {selectedMatch.player2 ? primaryName(selectedMatch.player2) : 'Opponent'} wins
-              <input
-                type="number"
-                min={0}
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                value={reportCounts.player2Wins}
-                onChange={(event) =>
-                  setReportCounts((prev) => ({
-                    ...prev,
-                    player2Wins: Math.max(0, Number(event.target.value) || 0),
-                  }))
-                }
-              />
-            </label>
-            <label className="text-sm">
-              Game draws
-              <input
-                type="number"
-                min={0}
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                value={reportCounts.gameDraws}
-                onChange={(event) =>
-                  setReportCounts((prev) => ({
-                    ...prev,
-                    gameDraws: Math.max(0, Number(event.target.value) || 0),
-                  }))
-                }
-              />
-            </label>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-            >
-              Submit Report
-            </button>
-            <button
-              type="button"
-              className="rounded-md border border-border px-4 py-2 text-sm"
-              onClick={() => {
-                setSelectedMatchId(null);
-                setReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close report dialog"
+            className="absolute inset-0 bg-black/70"
+            onClick={() => {
+              setSelectedMatchId(null);
+              setReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+            }}
+          />
+          <form onSubmit={reportMatch} className="relative w-full max-w-2xl rounded-lg border border-border bg-card p-6 space-y-3 shadow-lg">
+            <h3 className="text-lg font-semibold">Report Match</h3>
+            <p className="text-sm text-muted-foreground">
+              {primaryName(selectedMatch.player1)} vs {selectedMatch.player2 ? primaryName(selectedMatch.player2) : ''}
+            </p>
+            <div className="grid gap-3 md:grid-cols-3">
+              <label className="text-sm">
+                {primaryName(selectedMatch.player1)} wins
+                <input
+                  ref={reportInputRef}
+                  type="number"
+                  min={0}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={reportCounts.player1Wins}
+                  onChange={(event) =>
+                    setReportCounts((prev) => ({
+                      ...prev,
+                      player1Wins: Math.max(0, Number(event.target.value) || 0),
+                    }))
+                  }
+                />
+              </label>
+              <label className="text-sm">
+                {selectedMatch.player2 ? primaryName(selectedMatch.player2) : 'Opponent'} wins
+                <input
+                  type="number"
+                  min={0}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={reportCounts.player2Wins}
+                  onChange={(event) =>
+                    setReportCounts((prev) => ({
+                      ...prev,
+                      player2Wins: Math.max(0, Number(event.target.value) || 0),
+                    }))
+                  }
+                />
+              </label>
+              <label className="text-sm">
+                Game draws
+                <input
+                  type="number"
+                  min={0}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={reportCounts.gameDraws}
+                  onChange={(event) =>
+                    setReportCounts((prev) => ({
+                      ...prev,
+                      gameDraws: Math.max(0, Number(event.target.value) || 0),
+                    }))
+                  }
+                />
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              >
+                Submit Report
+              </button>
+              <button
+                type="button"
+                className="rounded-md border border-border px-4 py-2 text-sm"
+                onClick={() => {
+                  setSelectedMatchId(null);
+                  setReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
       ) : null}
     </div>
   );

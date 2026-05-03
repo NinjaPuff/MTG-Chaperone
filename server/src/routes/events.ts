@@ -6,6 +6,7 @@ import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { completeEvent, createEvent, getEvent, startEvent, updateEvent } from '../services/eventService.js';
 import { createRound } from '../services/roundService.js';
+import { recomputeStandings } from '../services/standingsService.js';
 
 const router = Router();
 
@@ -50,7 +51,11 @@ router.get('/:eventId', async (req, res, next) => {
 
 router.patch('/:eventId', requireAuth, requireAdmin, validateBody(eventSchema), async (req, res, next) => {
   try {
+    const shouldRecompute = req.body.pointMultiplier !== undefined || req.body.standingsOverride !== undefined;
     const event = await updateEvent(req.params.eventId, req.body);
+    if (shouldRecompute) {
+      await recomputeStandings(event.season.id);
+    }
     res.json({ data: event });
   } catch (error) {
     next(error);
@@ -68,7 +73,16 @@ router.post('/:eventId/start', requireAuth, requireAdmin, async (req, res, next)
 
 router.post('/:eventId/complete', requireAuth, requireAdmin, async (req, res, next) => {
   try {
+    const eventMeta = await prisma.event.findUnique({
+      where: { id: req.params.eventId },
+      select: { seasonId: true },
+    });
+    if (!eventMeta) {
+      throw new AppError(404, 'NOT_FOUND', 'Event not found');
+    }
+
     const event = await completeEvent(req.params.eventId);
+    await recomputeStandings(eventMeta.seasonId);
     res.json({ data: event });
   } catch (error) {
     next(error);
@@ -79,7 +93,7 @@ router.delete('/:eventId', requireAuth, requireAdmin, async (req, res, next) => 
   try {
     const event = await prisma.event.findUnique({
       where: { id: req.params.eventId },
-      select: { id: true },
+      select: { id: true, seasonId: true },
     });
     if (!event) {
       throw new AppError(404, 'NOT_FOUND', 'Event not found');
@@ -88,6 +102,7 @@ router.delete('/:eventId', requireAuth, requireAdmin, async (req, res, next) => 
     await prisma.event.delete({
       where: { id: req.params.eventId },
     });
+    await recomputeStandings(event.seasonId);
 
     res.status(204).send();
   } catch (error) {

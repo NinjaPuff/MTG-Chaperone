@@ -7,6 +7,27 @@ function generateInviteToken() {
   return crypto.randomBytes(18).toString('base64url');
 }
 
+type InviteStateInput = {
+  status: 'active' | 'revoked';
+  expiresAt: Date | null;
+  maxUses: number | null;
+  useCount: number;
+};
+
+export function validateInviteState(invite: InviteStateInput, now = new Date()) {
+  if (invite.status !== 'active') {
+    throw new AppError(404, 'INVALID_INVITE', 'Invite token is invalid');
+  }
+
+  if (invite.expiresAt && invite.expiresAt < now) {
+    throw new AppError(400, 'INVITE_EXPIRED', 'Invite token has expired');
+  }
+
+  if (invite.maxUses !== null && invite.useCount >= invite.maxUses) {
+    throw new AppError(400, 'INVITE_EXHAUSTED', 'Invite token has reached max uses');
+  }
+}
+
 export async function createInvite(leagueSlug: string, createdById: string, options: {
   maxUses?: number | null;
   expiresAt?: string | null;
@@ -84,17 +105,10 @@ export async function validateInviteToken(token: string) {
     },
   });
 
-  if (!invite || invite.status !== 'active') {
+  if (!invite) {
     throw new AppError(404, 'INVALID_INVITE', 'Invite token is invalid');
   }
-
-  if (invite.expiresAt && invite.expiresAt < new Date()) {
-    throw new AppError(400, 'INVITE_EXPIRED', 'Invite token has expired');
-  }
-
-  if (invite.maxUses !== null && invite.useCount >= invite.maxUses) {
-    throw new AppError(400, 'INVITE_EXHAUSTED', 'Invite token has reached max uses');
-  }
+  validateInviteState(invite, new Date());
 
   return invite;
 }

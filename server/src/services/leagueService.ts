@@ -1,6 +1,7 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 import { slugify, withSlugSuffix } from '../lib/slugify.js';
+import { recomputeStandings } from './standingsService.js';
 
 type LeaguePayload = {
   name: string;
@@ -23,6 +24,28 @@ async function uniqueLeagueSlug(seed: string) {
   }
 
   return withSlugSuffix(base, Date.now().toString());
+}
+
+async function recomputeActiveSeasonStandingsForLeague(leagueId: string) {
+  const seasons = await prisma.season.findMany({
+    where: {
+      leagueId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      pointConfig: {
+        select: { id: true },
+      },
+    },
+  });
+
+  for (const season of seasons) {
+    if (!season.pointConfig) {
+      continue;
+    }
+    await recomputeStandings(season.id);
+  }
 }
 
 export async function listLeagues() {
@@ -141,7 +164,7 @@ export async function addMember(slug: string, userId: string) {
     throw new AppError(404, 'NOT_FOUND', 'League not found');
   }
 
-  return prisma.leagueMembership.upsert({
+  const membership = await prisma.leagueMembership.upsert({
     where: {
       userId_leagueId: {
         userId,
@@ -154,6 +177,9 @@ export async function addMember(slug: string, userId: string) {
       leagueId: league.id,
     },
   });
+
+  await recomputeActiveSeasonStandingsForLeague(league.id);
+  return membership;
 }
 
 export async function removeMember(slug: string, userId: string) {
@@ -187,4 +213,6 @@ export async function removeMember(slug: string, userId: string) {
 
     await tx.leagueMembership.delete({ where: { id: membership.id } });
   });
+
+  await recomputeActiveSeasonStandingsForLeague(league.id);
 }

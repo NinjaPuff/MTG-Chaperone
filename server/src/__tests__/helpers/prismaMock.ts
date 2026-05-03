@@ -1,0 +1,105 @@
+import { vi } from 'vitest';
+
+export const prismaMock = {
+  $transaction: vi.fn(async (arg: unknown) => {
+    if (typeof arg === 'function') {
+      return arg(prismaMock);
+    }
+    return arg;
+  }),
+  user: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    update: vi.fn(),
+  },
+  league: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
+  leagueMembership: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+  },
+  season: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+  },
+  standing: {
+    findMany: vi.fn(),
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
+  },
+  event: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
+  eventConfig: {
+    update: vi.fn(),
+  },
+  eventSeed: {
+    findMany: vi.fn(),
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
+  },
+  round: {
+    create: vi.fn(),
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    findMany: vi.fn(),
+  },
+  roundRobinSchedule: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    deleteMany: vi.fn(),
+  },
+  scheduledPairing: {
+    createMany: vi.fn(),
+    findMany: vi.fn(),
+    updateMany: vi.fn(),
+    update: vi.fn(),
+  },
+  match: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    deleteMany: vi.fn(),
+  },
+  gameResult: {
+    create: vi.fn(),
+    deleteMany: vi.fn(),
+  },
+  inviteLink: {
+    create: vi.fn(),
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+    update: vi.fn(),
+  },
+  cardPool: {
+    deleteMany: vi.fn(),
+  },
+};
+
+export function resetPrismaMock() {
+  for (const model of Object.values(prismaMock)) {
+    if (model && typeof model === 'object') {
+      for (const method of Object.values(model)) {
+        if (typeof method === 'function' && 'mockReset' in method) {
+          (method as ReturnType<typeof vi.fn>).mockReset();
+        }
+      }
+    }
+  }
+}

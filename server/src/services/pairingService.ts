@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma.js';
 type Pair = { player1Id: string; player2Id: string | null; isBye: boolean };
 type PlayerRankStat = { userId: string; matchWins: number; gameWins: number; gameLosses: number };
 
-function pairSequential(playerIds: string[]): Pair[] {
+export function pairSequential(playerIds: string[]): Pair[] {
   const pairs: Pair[] = [];
   const queue = [...playerIds];
   while (queue.length >= 2) {
@@ -18,7 +18,7 @@ function pairSequential(playerIds: string[]): Pair[] {
   return pairs;
 }
 
-function pairTopVsBottom(playerIds: string[]): Pair[] {
+export function pairTopVsBottom(playerIds: string[]): Pair[] {
   const pairs: Pair[] = [];
   let left = 0;
   let right = playerIds.length - 1;
@@ -79,7 +79,7 @@ function mergeRankedWithFallback(rankedPlayerIds: string[], fallbackPlayerIds: s
   return merged;
 }
 
-function rankPlayersByMatchResults(
+export function rankPlayersByMatchResults(
   playerIds: string[],
   matches: Array<{
     isBye: boolean;

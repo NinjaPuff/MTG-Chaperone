@@ -30,7 +30,29 @@ type CreateRoundRobinSeriesInput = {
 
 type RoundRobinPair = { player1Id: string; player2Id: string | null; isBye: boolean };
 
-function buildRoundRobinPairs(playerIds: string[]): RoundRobinPair[][] {
+type EventTransitionTarget = 'active' | 'completed';
+
+export function validateEventTransition(
+  currentStatus: 'setup' | 'active' | 'completed',
+  targetStatus: EventTransitionTarget,
+  rounds: Array<{ status: 'not_started' | 'in_progress' | 'completed' }> = [],
+) {
+  if (targetStatus === 'active' && currentStatus !== 'setup') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Only setup events can be started');
+  }
+
+  if (targetStatus === 'completed') {
+    if (currentStatus !== 'active') {
+      throw new AppError(409, 'INVALID_EVENT_STATE', 'Only active events can be completed');
+    }
+    const unresolvedRound = rounds.find((round) => round.status !== 'completed');
+    if (unresolvedRound) {
+      throw new AppError(409, 'ROUND_INCOMPLETE', 'All rounds must be completed first');
+    }
+  }
+}
+
+export function buildRoundRobinPairs(playerIds: string[]): RoundRobinPair[][] {
   const participants = [...playerIds];
   if (participants.length === 0) {
     return [];
@@ -75,7 +97,7 @@ function buildRoundRobinPairs(playerIds: string[]): RoundRobinPair[][] {
   return rounds;
 }
 
-function buildRandomRoundPairs(playerIds: string[]): RoundRobinPair[] {
+export function buildRandomRoundPairs(playerIds: string[]): RoundRobinPair[] {
   const shuffled = [...playerIds];
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
     const swapIndex = Math.floor(Math.random() * (index + 1));
@@ -84,7 +106,7 @@ function buildRandomRoundPairs(playerIds: string[]): RoundRobinPair[] {
   return pairPlayers(shuffled);
 }
 
-function pairPlayers(playerIds: string[]): RoundRobinPair[] {
+export function pairPlayers(playerIds: string[]): RoundRobinPair[] {
   const pairs: RoundRobinPair[] = [];
   const queue = [...playerIds];
   while (queue.length >= 2) {
@@ -308,9 +330,7 @@ export async function startEvent(eventId: string) {
   if (!event) {
     throw new AppError(404, 'NOT_FOUND', 'Event not found');
   }
-  if (event.status !== 'setup') {
-    throw new AppError(409, 'INVALID_EVENT_STATE', 'Only setup events can be started');
-  }
+  validateEventTransition(event.status, 'active');
 
   const activeEvent = await prisma.event.findFirst({
     where: {
@@ -338,14 +358,7 @@ export async function completeEvent(eventId: string) {
   if (!event) {
     throw new AppError(404, 'NOT_FOUND', 'Event not found');
   }
-  if (event.status !== 'active') {
-    throw new AppError(409, 'INVALID_EVENT_STATE', 'Only active events can be completed');
-  }
-
-  const unresolvedRound = event.rounds.find((round) => round.status !== 'completed');
-  if (unresolvedRound) {
-    throw new AppError(409, 'ROUND_INCOMPLETE', 'All rounds must be completed first');
-  }
+  validateEventTransition(event.status, 'completed', event.rounds);
 
   return prisma.event.update({
     where: { id: eventId },

@@ -8,6 +8,32 @@ import {
   regeneratePairings,
 } from './pairingService.js';
 
+type RoundTransitionAction = 'start' | 'complete' | 'delete';
+
+export function validateRoundTransition(
+  currentStatus: 'not_started' | 'in_progress' | 'completed',
+  action: RoundTransitionAction,
+  matches: Array<{ status: 'pending' | 'reported' | 'confirmed' | 'disputed' | 'resolved' }> = [],
+) {
+  if (action === 'start' && currentStatus !== 'not_started') {
+    throw new AppError(409, 'INVALID_ROUND_STATE', 'Round already started');
+  }
+
+  if (action === 'complete') {
+    if (currentStatus !== 'in_progress') {
+      throw new AppError(409, 'INVALID_ROUND_STATE', 'Round is not in progress');
+    }
+    const unresolved = matches.find((match) => !['confirmed', 'resolved'].includes(match.status));
+    if (unresolved) {
+      throw new AppError(409, 'MATCH_INCOMPLETE', 'All matches must be confirmed before completing the round');
+    }
+  }
+
+  if (action === 'delete' && !['in_progress', 'completed'].includes(currentStatus)) {
+    throw new AppError(409, 'INVALID_ROUND_STATE', 'Only in-progress or completed rounds can be deleted');
+  }
+}
+
 async function createMatchesForRound(roundId: string, pairs: Array<{ player1Id: string; player2Id: string | null; isBye: boolean }>) {
   return Promise.all(
     pairs.map((pair) =>
@@ -99,9 +125,7 @@ export async function startRound(roundId: string) {
   if (!round) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
   }
-  if (round.status !== 'not_started') {
-    throw new AppError(409, 'INVALID_ROUND_STATE', 'Round already started');
-  }
+  validateRoundTransition(round.status, 'start');
   return prisma.round.update({
     where: { id: roundId },
     data: { status: 'in_progress' },
@@ -116,14 +140,7 @@ export async function completeRound(roundId: string) {
   if (!round) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
   }
-  if (round.status !== 'in_progress') {
-    throw new AppError(409, 'INVALID_ROUND_STATE', 'Round is not in progress');
-  }
-
-  const unresolved = round.matches.find((match) => !['confirmed', 'resolved'].includes(match.status));
-  if (unresolved) {
-    throw new AppError(409, 'MATCH_INCOMPLETE', 'All matches must be confirmed before completing the round');
-  }
+  validateRoundTransition(round.status, 'complete', round.matches);
 
   return prisma.round.update({
     where: { id: roundId },
@@ -168,9 +185,7 @@ export async function deleteRound(roundId: string) {
   if (!round) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
   }
-  if (!['in_progress', 'completed'].includes(round.status)) {
-    throw new AppError(409, 'INVALID_ROUND_STATE', 'Only in-progress or completed rounds can be deleted');
-  }
+  validateRoundTransition(round.status, 'delete');
 
   await prisma.$transaction(async (tx) => {
     if (round.event.config?.format === 'round_robin') {
