@@ -87,3 +87,13 @@ export async function deleteBoosterProduct(id: string) {
   await getBoosterProduct(id);
   await prisma.boosterProduct.delete({ where: { id } });
 }
+
+export function createBoosterProductService() {
+  return {
+    listBoosterProducts,
+    createBoosterProduct,
+    getBoosterProduct,
+    updateBoosterProduct,
+    deleteBoosterProduct,
+  };
+}

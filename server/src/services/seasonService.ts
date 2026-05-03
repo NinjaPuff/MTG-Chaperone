@@ -147,3 +147,13 @@ export async function setActive(seasonId: string) {
     }),
   ]);
 }
+
+export function createSeasonService() {
+  return {
+    listSeasonsByLeague,
+    createSeason,
+    getSeason,
+    updateSeason,
+    setActive,
+  };
+}

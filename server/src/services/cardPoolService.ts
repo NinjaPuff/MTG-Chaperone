@@ -354,3 +354,17 @@ export async function deleteAcquisition(acquisitionId: string) {
     where: { id: acquisitionId },
   });
 }
+
+export function createCardPoolService() {
+  return {
+    listPoolsBySeason,
+    createPool,
+    updatePool,
+    deletePool,
+    getPoolDetail,
+    listAcquisitions,
+    createAcquisition,
+    bulkCreateAcquisition,
+    deleteAcquisition,
+  };
+}
