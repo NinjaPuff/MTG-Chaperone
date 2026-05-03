@@ -18,8 +18,9 @@ describe('matchService', () => {
       status: 'pending',
       player1Id: 'u1',
       player2Id: 'u2',
+      roundId: 'r1',
       reportedById: null,
-      round: { event: { season: {} } },
+      round: { status: 'in_progress', event: { season: {} } },
       gameResults: [],
     });
 
@@ -37,9 +38,15 @@ describe('matchService', () => {
       status: 'reported',
       player1Id: 'u1',
       player2Id: 'u2',
+      roundId: 'r1',
       reportedById: 'u1',
-      round: { event: { season: {} } },
+      round: { status: 'in_progress', event: { season: {} } },
       gameResults: [],
+    });
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      status: 'in_progress',
+      matches: [{ status: 'confirmed' }, { status: 'resolved' }],
     });
     prismaMock.match.update.mockResolvedValue({ id: 'm1', status: 'confirmed', gameResults: [] });
 
@@ -54,5 +61,28 @@ describe('matchService', () => {
       },
       include: { gameResults: true },
     });
+    expect(prismaMock.round.update).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      data: { status: 'completed' },
+    });
+  });
+
+  it('blocks reporting when round has not started', async () => {
+    prismaMock.match.findUnique.mockResolvedValue({
+      id: 'm1',
+      status: 'pending',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      roundId: 'r1',
+      reportedById: null,
+      round: { status: 'not_started', event: { season: {} } },
+      gameResults: [],
+    });
+
+    await expect(reportMatch('m1', 'u1', [{ winnerId: 'u1', isDraw: false }])).rejects.toMatchObject({
+      code: 'INVALID_ROUND_STATE',
+      message: 'Round must be in progress to report matches',
+    });
+    expect(prismaMock.match.update).not.toHaveBeenCalled();
   });
 });

@@ -23,9 +23,9 @@ export function validateRoundTransition(
     if (currentStatus !== 'in_progress') {
       throw new AppError(409, 'INVALID_ROUND_STATE', 'Round is not in progress');
     }
-    const unresolved = matches.find((match) => !['confirmed', 'resolved'].includes(match.status));
+    const unresolved = matches.find((match) => !['reported', 'confirmed', 'resolved'].includes(match.status));
     if (unresolved) {
-      throw new AppError(409, 'MATCH_INCOMPLETE', 'All matches must be confirmed before completing the round');
+      throw new AppError(409, 'MATCH_INCOMPLETE', 'All matches must be reported before completing the round');
     }
   }
 
@@ -77,18 +77,16 @@ export async function createRound(eventId: string) {
   if (!event || !event.config) {
     throw new AppError(404, 'NOT_FOUND', 'Event not found');
   }
-
   if (event.config.format === 'round_robin') {
-    const existingPreparedRound = await prisma.round.findFirst({
-      where: {
-        eventId,
-        status: 'not_started',
-      },
-      select: { id: true },
-    });
-    if (existingPreparedRound) {
-      throw new AppError(409, 'ROUND_ALREADY_PREPARED', 'A round is already prepared for this event');
-    }
+    throw new AppError(409, 'INVALID_OPERATION', 'Round robin events do not support manual round creation');
+  }
+
+  const existingRoundCount = await prisma.round.findMany({
+    where: { eventId },
+    select: { id: true },
+  });
+  if (event.totalRounds !== null && event.totalRounds !== undefined && existingRoundCount.length >= event.totalRounds) {
+    throw new AppError(409, 'MAX_ROUNDS_REACHED', 'Event has reached its maximum number of rounds');
   }
 
   const round = await prisma.round.create({
@@ -142,9 +140,19 @@ export async function completeRound(roundId: string) {
   }
   validateRoundTransition(round.status, 'complete', round.matches);
 
-  return prisma.round.update({
-    where: { id: roundId },
-    data: { status: 'completed' },
+  return prisma.$transaction(async (tx) => {
+    await tx.match.updateMany({
+      where: { roundId, status: 'reported' },
+      data: {
+        status: 'confirmed',
+        confirmedAt: new Date(),
+      },
+    });
+
+    return tx.round.update({
+      where: { id: roundId },
+      data: { status: 'completed' },
+    });
   });
 }
 

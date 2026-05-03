@@ -84,4 +84,36 @@ describe('events routes', () => {
     expect(response.body.error.message).toBe('Seed users and seed numbers must be unique');
     expect(prismaMock.eventSeed.createMany).not.toHaveBeenCalled();
   });
+
+  it('returns event results for completed events', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'event-1',
+      status: 'completed',
+      rounds: [],
+      season: {
+        league: {
+          memberships: [
+            {
+              user: {
+                id: 'user-1',
+                displayName: 'Player One',
+                publicName: null,
+                slug: 'player-one',
+                avatarUrl: null,
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    const response = await request(app).get('/api/events/event-1/results');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data[0]).toMatchObject({
+      rank: 1,
+      userId: 'user-1',
+      matchPoints: 0,
+    });
+  });
 });

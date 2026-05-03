@@ -7,6 +7,7 @@ import { validateBody } from '../lib/validate.js';
 import { completeEvent, createEvent, getEvent, startEvent, updateEvent } from '../services/eventService.js';
 import { createRound } from '../services/roundService.js';
 import { recomputeStandings } from '../services/standingsService.js';
+import { getEventResults } from '../services/eventRankingService.js';
 
 const router = Router();
 
@@ -44,6 +45,15 @@ router.get('/:eventId', async (req, res, next) => {
   try {
     const event = await getEvent(req.params.eventId);
     res.json({ data: event });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:eventId/results', async (req, res, next) => {
+  try {
+    const results = await getEventResults(req.params.eventId);
+    res.json({ data: results });
   } catch (error) {
     next(error);
   }

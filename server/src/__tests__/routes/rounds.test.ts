@@ -6,6 +6,7 @@ process.env.NODE_ENV = 'test';
 
 const mocks = vi.hoisted(() => ({
   startRound: vi.fn(),
+  completeRound: vi.fn(),
   deleteRound: vi.fn(),
   recomputeStandings: vi.fn(),
 }));
@@ -31,6 +32,7 @@ vi.mock('../../services/roundService.js', async (importOriginal) => {
   return {
     ...actual,
     startRound: mocks.startRound,
+    completeRound: mocks.completeRound,
     deleteRound: mocks.deleteRound,
   };
 });
@@ -45,6 +47,7 @@ describe('rounds routes', () => {
   beforeEach(() => {
     resetPrismaMock();
     mocks.startRound.mockReset();
+    mocks.completeRound.mockReset();
     mocks.deleteRound.mockReset();
     mocks.recomputeStandings.mockReset();
   });
@@ -64,6 +67,19 @@ describe('rounds routes', () => {
 
     expect(response.status).toBe(204);
     expect(mocks.deleteRound).toHaveBeenCalledWith('round-1');
+    expect(mocks.recomputeStandings).toHaveBeenCalledWith('season-1');
+  });
+
+  it('completes round and recomputes standings', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      event: { seasonId: 'season-1' },
+    });
+    mocks.completeRound.mockResolvedValue({ id: 'round-1', status: 'completed' });
+
+    const response = await request(app).post('/api/rounds/round-1/complete');
+
+    expect(response.status).toBe(200);
+    expect(mocks.completeRound).toHaveBeenCalledWith('round-1');
     expect(mocks.recomputeStandings).toHaveBeenCalledWith('season-1');
   });
 });

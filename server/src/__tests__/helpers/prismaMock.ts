@@ -23,6 +23,7 @@ export const prismaMock = {
   leagueMembership: {
     findUnique: vi.fn(),
     findMany: vi.fn(),
+    count: vi.fn(),
     upsert: vi.fn(),
     delete: vi.fn(),
   },
@@ -75,6 +76,7 @@ export const prismaMock = {
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
     deleteMany: vi.fn(),
   },
   gameResult: {

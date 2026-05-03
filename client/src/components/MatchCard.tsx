@@ -36,8 +36,8 @@ type MatchCardProps = {
   footer?: ReactNode;
 };
 
-function getReportedWinner(match: MatchCardMatch): 'player1' | 'player2' | null {
-  if (match.status !== 'reported' || !match.player2) {
+function getMatchOutcome(match: MatchCardMatch): 'player1' | 'player2' | 'draw' | null {
+  if (!['reported', 'confirmed', 'resolved'].includes(match.status) || !match.player2) {
     return null;
   }
 
@@ -57,7 +57,7 @@ function getReportedWinner(match: MatchCardMatch): 'player1' | 'player2' | null 
   }
 
   if (p1Wins === p2Wins) {
-    return null;
+    return match.gameResults.length > 0 ? 'draw' : null;
   }
   return p1Wins > p2Wins ? 'player1' : 'player2';
 }
@@ -94,11 +94,10 @@ function Avatar({ user, sizeClass }: { user: MatchCardUser; sizeClass: string })
   );
 }
 
-function StatsBox({ title, record, points, align = 'left' }: { title: string; record: MatchRecord; points: number; align?: 'left' | 'right' }) {
+function StatsBox({ record, points, align = 'left' }: { record: MatchRecord; points: number; align?: 'left' | 'right' }) {
   return (
     <div className={`rounded-md border border-border bg-background px-3 py-2 text-xs ${align === 'right' ? 'text-right' : ''}`}>
-      <p className="font-semibold text-foreground">{title}</p>
-      <p className="text-muted-foreground mt-1">
+      <p className="text-muted-foreground">
         Event W/L/D: {record.wins}-{record.losses}-{record.draws}
       </p>
       <p className="text-muted-foreground">Season Points: {points}</p>
@@ -109,7 +108,7 @@ function StatsBox({ title, record, points, align = 'left' }: { title: string; re
 export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }: MatchCardProps) {
   const p1Record = eventRecords.get(match.player1.id) ?? { wins: 0, losses: 0, draws: 0 };
   const p1Points = seasonPoints.get(match.player1.id) ?? 0;
-  const reportedWinner = getReportedWinner(match);
+  const matchOutcome = getMatchOutcome(match);
 
   if (match.isBye || !match.player2) {
     return (
@@ -124,7 +123,7 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
               </div>
             </div>
             <div className="mt-3">
-              <StatsBox title={primaryName(match.player1)} record={p1Record} points={p1Points} />
+              <StatsBox record={p1Record} points={p1Points} />
             </div>
           </div>
           <div className="w-full md:w-44 rounded-md border border-border px-3 py-2 text-xs flex h-full flex-col gap-2">
@@ -139,8 +138,9 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
 
   const p2Record = eventRecords.get(match.player2.id) ?? { wins: 0, losses: 0, draws: 0 };
   const p2Points = seasonPoints.get(match.player2.id) ?? 0;
-  const p1IsReportedWinner = reportedWinner === 'player1';
-  const p2IsReportedWinner = reportedWinner === 'player2';
+  const p1IsReportedWinner = matchOutcome === 'player1';
+  const p2IsReportedWinner = matchOutcome === 'player2';
+  const isReportedDraw = matchOutcome === 'draw';
 
   return (
     <div className="rounded-lg border-2 border-border bg-card p-3 text-sm">
@@ -148,7 +148,11 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
         <div className="flex-1 grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
           <div
             className={`rounded-lg border p-3 ${
-              p1IsReportedWinner ? 'border-emerald-500 bg-emerald-500/10 shadow-sm' : 'border-border'
+              p1IsReportedWinner
+                ? 'border-emerald-500 bg-emerald-500/10 shadow-sm'
+                : isReportedDraw
+                  ? 'border-amber-500 bg-amber-500/10 shadow-sm'
+                  : 'border-border'
             }`}
           >
             <div className="flex items-center gap-3">
@@ -160,13 +164,17 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
                     <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
                       Winner
                     </span>
+                  ) : isReportedDraw ? (
+                    <span className="rounded-full border border-amber-600 bg-amber-600/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                      Draw
+                    </span>
                   ) : null}
                 </div>
                 {secondaryName(match.player1) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(match.player1)}</p> : null}
               </div>
             </div>
             <div className="mt-3">
-              <StatsBox title={primaryName(match.player1)} record={p1Record} points={p1Points} />
+              <StatsBox record={p1Record} points={p1Points} />
             </div>
           </div>
 
@@ -178,7 +186,11 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
 
           <div
             className={`rounded-lg border p-3 ${
-              p2IsReportedWinner ? 'border-emerald-500 bg-emerald-500/10 shadow-sm' : 'border-border'
+              p2IsReportedWinner
+                ? 'border-emerald-500 bg-emerald-500/10 shadow-sm'
+                : isReportedDraw
+                  ? 'border-amber-500 bg-amber-500/10 shadow-sm'
+                  : 'border-border'
             }`}
           >
             <div className="flex items-center justify-end gap-3">
@@ -188,6 +200,10 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
                     <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
                       Winner
                     </span>
+                  ) : isReportedDraw ? (
+                    <span className="rounded-full border border-amber-600 bg-amber-600/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                      Draw
+                    </span>
                   ) : null}
                   <p className="font-semibold truncate">{primaryName(match.player2)}</p>
                 </div>
@@ -196,7 +212,7 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
               <Avatar user={match.player2} sizeClass="h-14 w-14" />
             </div>
             <div className="mt-3">
-              <StatsBox title={primaryName(match.player2)} record={p2Record} points={p2Points} align="right" />
+              <StatsBox record={p2Record} points={p2Points} align="right" />
             </div>
           </div>
         </div>

@@ -100,9 +100,37 @@ async function writeGameResults(matchId: string, gameResults: GameInput[]) {
   );
 }
 
+async function tryAutoCompleteRound(tx: typeof prisma, roundId: string) {
+  const round = await tx.round.findUnique({
+    where: { id: roundId },
+    include: {
+      matches: {
+        select: { status: true },
+      },
+    },
+  });
+
+  if (!round || round.status !== 'in_progress') {
+    return;
+  }
+
+  const allMatchesFinished = round.matches.every((roundMatch) => ['confirmed', 'resolved'].includes(roundMatch.status));
+  if (!allMatchesFinished) {
+    return;
+  }
+
+  await tx.round.update({
+    where: { id: roundId },
+    data: { status: 'completed' },
+  });
+}
+
 export async function reportMatch(matchId: string, reporterId: string, gameResults: GameInput[]) {
   const match = await getMatch(matchId);
   await ensureParticipantOrSiteAdmin(match, reporterId);
+  if (match.round.status !== 'in_progress') {
+    throw new AppError(409, 'INVALID_ROUND_STATE', 'Round must be in progress to report matches');
+  }
   validateMatchStateTransition(match.status, 'report', match.reportedById ?? null, reporterId);
   if (gameResults.length === 0) {
     throw new AppError(400, 'VALIDATION_ERROR', 'At least one game result is required');
@@ -125,13 +153,19 @@ export async function confirmMatch(matchId: string, confirmerId: string) {
   ensureParticipant(match, confirmerId);
   validateMatchStateTransition(match.status, 'confirm', match.reportedById ?? null, confirmerId);
 
-  return prisma.match.update({
-    where: { id: matchId },
-    data: {
-      status: 'confirmed',
-      confirmedAt: new Date(),
-    },
-    include: { gameResults: true },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.match.update({
+      where: { id: matchId },
+      data: {
+        status: 'confirmed',
+        confirmedAt: new Date(),
+      },
+      include: { gameResults: true },
+    });
+
+    await tryAutoCompleteRound(tx, match.roundId);
+
+    return updated;
   });
 }
 
@@ -154,13 +188,19 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
 
   await writeGameResults(matchId, gameResults);
 
-  return prisma.match.update({
-    where: { id: matchId },
-    data: {
-      status: 'resolved',
-      confirmedAt: new Date(),
-    },
-    include: { gameResults: true },
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.match.update({
+      where: { id: matchId },
+      data: {
+        status: 'resolved',
+        confirmedAt: new Date(),
+      },
+      include: { gameResults: true },
+    });
+
+    await tryAutoCompleteRound(tx, match.roundId);
+
+    return updated;
   });
 }
 

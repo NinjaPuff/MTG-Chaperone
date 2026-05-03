@@ -142,6 +142,7 @@ export async function createEvent(payload: CreateEventInput) {
       pointMultiplier: payload.pointMultiplier ?? 1,
       standingsOverride: payload.standingsOverride ?? false,
       orderIndex: (lastEvent?.orderIndex || 0) + 1,
+      totalRounds: null,
       config: {
         create: {
           format: payload.config.format,
@@ -236,6 +237,11 @@ export async function createRoundRobinEventSeries(payload: CreateRoundRobinSerie
           });
         }
       }
+
+      await tx.event.update({
+        where: { id: event.id },
+        data: { totalRounds: roundsPerEvent },
+      });
     });
 
     createdEvents.push(await getEvent(event.id));
@@ -325,7 +331,10 @@ export async function updateEvent(eventId: string, updates: Partial<CreateEventI
 export async function startEvent(eventId: string) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    include: { season: true },
+    include: {
+      season: true,
+      config: true,
+    },
   });
   if (!event) {
     throw new AppError(404, 'NOT_FOUND', 'Event not found');
@@ -343,9 +352,18 @@ export async function startEvent(eventId: string) {
     throw new AppError(409, 'ACTIVE_EVENT_EXISTS', 'Only one active event is allowed per season');
   }
 
+  const playerCount = await prisma.leagueMembership.count({
+    where: { leagueId: event.season.leagueId },
+  });
+
+  const totalRounds =
+    event.config && ['swiss', 'seeded_swiss'].includes(event.config.format)
+      ? Math.max(1, Math.ceil(Math.log2(playerCount)))
+      : event.totalRounds;
+
   return prisma.event.update({
     where: { id: event.id },
-    data: { status: 'active' },
+    data: { status: 'active', totalRounds },
     include: { config: true },
   });
 }

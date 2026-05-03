@@ -5,7 +5,7 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
 
-import { deleteRound, startRound } from '../../services/roundService.js';
+import { completeRound, createRound, deleteRound, startRound } from '../../services/roundService.js';
 
 describe('roundService', () => {
   beforeEach(() => {
@@ -38,5 +38,42 @@ describe('roundService', () => {
       message: 'Only in-progress or completed rounds can be deleted',
     });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('completes round when all matches are reported or better and auto-confirms reported matches', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      status: 'in_progress',
+      matches: [{ status: 'reported' }, { status: 'confirmed' }],
+    });
+    prismaMock.match.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.round.update.mockResolvedValue({ id: 'r1', status: 'completed' });
+
+    const result = await completeRound('r1');
+
+    expect(result.status).toBe('completed');
+    expect(prismaMock.match.updateMany).toHaveBeenCalledWith({
+      where: { roundId: 'r1', status: 'reported' },
+      data: { status: 'confirmed', confirmedAt: expect.any(Date) },
+    });
+    expect(prismaMock.round.update).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      data: { status: 'completed' },
+    });
+  });
+
+  it('rejects manual round creation for round robin events', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      totalRounds: null,
+      config: { format: 'round_robin' },
+      rounds: [],
+      season: { league: { memberships: [] } },
+    });
+
+    await expect(createRound('e1')).rejects.toMatchObject({
+      code: 'INVALID_OPERATION',
+      message: 'Round robin events do not support manual round creation',
+    });
   });
 });

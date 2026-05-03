@@ -17,9 +17,12 @@ describe('eventService', () => {
       id: 'e1',
       seasonId: 's1',
       status: 'setup',
-      season: {},
+      totalRounds: null,
+      config: { format: 'swiss' },
+      season: { leagueId: 'l1' },
     });
     prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.leagueMembership.count.mockResolvedValue(8);
     prismaMock.event.update.mockResolvedValue({ id: 'e1', status: 'active', config: {} });
 
     const result = await startEvent('e1');
@@ -34,7 +37,7 @@ describe('eventService', () => {
     });
     expect(prismaMock.event.update).toHaveBeenCalledWith({
       where: { id: 'e1' },
-      data: { status: 'active' },
+      data: { status: 'active', totalRounds: 3 },
       include: { config: true },
     });
   });

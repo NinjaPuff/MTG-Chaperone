@@ -31,7 +31,7 @@ describe('validateRoundTransition', () => {
     expect(invalidStartError.code).toBe('INVALID_ROUND_STATE');
 
     const incompleteMatchError = getAppError(() =>
-      validateRoundTransition('in_progress', 'complete', [{ status: 'reported' }]),
+      validateRoundTransition('in_progress', 'complete', [{ status: 'pending' }]),
     );
     expect(incompleteMatchError.code).toBe('MATCH_INCOMPLETE');
 

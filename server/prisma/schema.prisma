@@ -249,6 +249,7 @@ model Event {
   pointMultiplier   Float       @default(1.0)
   standingsOverride Boolean     @default(false)
   orderIndex        Int
+  totalRounds       Int?
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 

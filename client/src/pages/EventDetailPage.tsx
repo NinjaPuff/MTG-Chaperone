@@ -1,10 +1,11 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { ApiError, apiRequest } from '@/lib/api';
 import { MatchCard } from '@/components/MatchCard';
 import { computeEventRecords } from '@/lib/eventRecords';
 import { primaryName } from '@/lib/userDisplay';
+import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
 
 type ApiResponse<T> = { data: T };
 type ApiListResponse<T> = { data: T[] };
@@ -13,8 +14,6 @@ type EventStatus = 'setup' | 'active' | 'completed';
 type RoundStatus = 'not_started' | 'in_progress' | 'completed';
 type MatchStatus = 'pending' | 'reported' | 'confirmed' | 'disputed' | 'resolved';
 type SeedingSource = 'previous_season' | 'previous_event' | 'manual' | null;
-type MatchInputCounts = { player1Wins: number; player2Wins: number; gameDraws: number };
-
 type EventConfig = {
   format: 'swiss' | 'seeded_swiss' | 'round_robin';
   bestOfN: number;
@@ -39,6 +38,7 @@ type EventDetail = {
   name: string;
   status: EventStatus;
   pointMultiplier: number;
+  totalRounds: number | null;
   config: EventConfig | null;
   season: {
     id: string;
@@ -136,6 +136,19 @@ function matchResultSummary(match: Match) {
   return `${p1Name} ${p1Wins} - ${p2Wins} ${p2Name}`;
 }
 
+function matchResultVerdict(match: Match) {
+  if (!['reported', 'confirmed', 'resolved'].includes(match.status) || match.gameResults.length === 0 || !match.player2) {
+    return null;
+  }
+  const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
+  const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
+  if (p1Wins === p2Wins) {
+    return { text: 'Match Draw.', tone: 'draw' as const };
+  }
+  const winner = p1Wins > p2Wins ? primaryName(match.player1) : primaryName(match.player2);
+  return { text: `${winner} won.`, tone: 'winner' as const };
+}
+
 type PendingConfirmation =
   | { type: 'delete_event'; message: string }
   | { type: 'delete_round'; roundId: string; message: string }
@@ -153,13 +166,12 @@ export function EventDetailPage() {
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [selectedMatchMode, setSelectedMatchMode] = useState<'report' | 'resolve' | null>(null);
-  const [reportCounts, setReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+  const [initialReportCounts, setInitialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
-  const reportInputRef = useRef<HTMLInputElement | null>(null);
 
   const isAdmin = user?.role === 'admin';
   const bestOfN = event?.config?.bestOfN ?? 3;
@@ -236,13 +248,6 @@ export function EventDetailPage() {
     });
     setSeedInputs(nextInputs);
   }, [canEditSeeds, event, leagueMembers, seeds]);
-
-  useEffect(() => {
-    if (!selectedMatch || !selectedMatchMode) {
-      return;
-    }
-    reportInputRef.current?.focus();
-  }, [selectedMatch, selectedMatchMode]);
 
   const mutate = async (label: string, action: () => Promise<void>) => {
     setIsMutating(true);
@@ -347,25 +352,26 @@ export function EventDetailPage() {
     setSelectedMatchId(match.id);
     setSelectedMatchMode(mode);
     if (mode === 'resolve') {
-      setReportCounts(countsFromGameResults(match));
+      setInitialReportCounts(countsFromGameResults(match));
       return;
     }
-    setReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+    setInitialReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
   };
 
   const closeMatchForm = () => {
     setSelectedMatchId(null);
     setSelectedMatchMode(null);
-    setReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+    setInitialReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
   };
 
-  const submitMatchForm = async (submitEvent: FormEvent) => {
-    submitEvent.preventDefault();
+  const submitMatchForm = async (reportCounts: MatchInputCounts) => {
     if (!selectedMatch || !selectedMatchMode) {
       return;
     }
 
     const payload = toGameResultBody(selectedMatch, reportCounts);
+    const winsTotal = reportCounts.player1Wins + reportCounts.player2Wins;
+    const requiredWins = Math.ceil(bestOfN / 2);
     if (!Number.isInteger(reportCounts.player1Wins) || !Number.isInteger(reportCounts.player2Wins) || !Number.isInteger(reportCounts.gameDraws)) {
       setError('Wins and draws must be whole numbers.');
       return;
@@ -374,8 +380,16 @@ export function EventDetailPage() {
       setError('Enter at least one game result before submitting.');
       return;
     }
-    if (payload.length > bestOfN) {
-      setError(`Total games cannot exceed best-of-${bestOfN}.`);
+    if (winsTotal > bestOfN) {
+      setError(`Total wins cannot exceed best-of-${bestOfN}. Draws are tracked separately.`);
+      return;
+    }
+    if (reportCounts.player1Wins > requiredWins || reportCounts.player2Wins > requiredWins) {
+      setError(`A player cannot exceed ${requiredWins} wins in best-of-${bestOfN}.`);
+      return;
+    }
+    if (reportCounts.gameDraws > 5) {
+      setError('Game draws cannot exceed 5.');
       return;
     }
 
@@ -418,9 +432,9 @@ export function EventDetailPage() {
     return <p className="text-sm text-destructive">{error ?? 'Event not found.'}</p>;
   }
 
-  const score = reportCounts;
-  const totalGames = reportCounts.player1Wins + reportCounts.player2Wins + reportCounts.gameDraws;
-  const requiredWins = Math.ceil(bestOfN / 2);
+  const hasRoundLimit = event.totalRounds !== null;
+  const hasReachedRoundLimit = hasRoundLimit && rounds.length >= (event.totalRounds ?? 0);
+  const allRoundsCompleted = rounds.length > 0 && rounds.every((round) => round.status === 'completed');
 
   return (
     <div className="space-y-6">
@@ -437,8 +451,17 @@ export function EventDetailPage() {
             {event.status} • {event.config?.format ?? 'unknown'} • Bo{event.config?.bestOfN ?? '-'} • x
             {event.pointMultiplier}
             {event.config?.seedingSource ? ` • Seeding: ${event.config.seedingSource}` : ''}
+            {event.totalRounds !== null ? ` • Rounds: ${Math.min(rounds.length, event.totalRounds)} of ${event.totalRounds}` : ''}
           </p>
         </div>
+        {event.status === 'completed' ? (
+          <Link
+            to={`/events/${event.id}/results`}
+            className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            View Final Results
+          </Link>
+        ) : null}
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
@@ -460,19 +483,25 @@ export function EventDetailPage() {
             ) : null}
             {event.status === 'active' ? (
               <>
-                <button
-                  type="button"
-                  disabled={isMutating}
-                  onClick={() => void createRound()}
-                  className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-60"
-                >
-                  Create Next Round
-                </button>
+                {event.config?.format !== 'round_robin' && !hasReachedRoundLimit ? (
+                  <button
+                    type="button"
+                    disabled={isMutating}
+                    onClick={() => void createRound()}
+                    className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-60"
+                  >
+                    Create Next Round
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   disabled={isMutating || rounds.some((round) => round.status !== 'completed')}
                   onClick={() => void transitionEvent('complete')}
-                  className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-60"
+                  className={`rounded-md px-3 py-2 text-sm disabled:opacity-60 ${
+                    hasReachedRoundLimit && allRoundsCompleted
+                      ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                      : 'border border-border'
+                  }`}
                 >
                   Complete Event
                 </button>
@@ -487,6 +516,12 @@ export function EventDetailPage() {
               Delete Event
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {isAdmin && event.status === 'active' && hasReachedRoundLimit && allRoundsCompleted ? (
+        <div className="rounded-lg border border-amber-500 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+          All rounds complete - crown a winner and complete the event.
         </div>
       ) : null}
 
@@ -547,9 +582,29 @@ export function EventDetailPage() {
           <div className="space-y-4">
             {rounds.map((round) => (
               <details key={round.id} className="rounded-md border border-border p-3" open>
+                {(() => {
+                  const pendingCount = round.matches.filter((match) => match.status === 'pending').length;
+                  const disputedCount = round.matches.filter((match) => match.status === 'disputed').length;
+                  const reportedCount = round.matches.filter((match) => match.status === 'reported').length;
+                  const canCompleteRound = pendingCount === 0 && disputedCount === 0;
+                  const roundBlockedReason =
+                    pendingCount > 0
+                      ? `Not ready: ${pendingCount} match(es) are not reported yet.`
+                      : disputedCount > 0
+                        ? `Not ready: ${disputedCount} disputed match(es) need resolution.`
+                        : null;
+
+                  return (
+                    <>
                 <summary className="cursor-pointer flex flex-wrap items-center justify-between gap-3">
                   <span className="font-medium">
-                    Round {round.roundNumber}{' '}
+                    Round {round.roundNumber}
+                    {event.totalRounds !== null ? ` of ${event.totalRounds}` : ''}{' '}
+                    {event.totalRounds !== null && round.roundNumber === event.totalRounds ? (
+                      <span className="ml-2 rounded-full bg-amber-500/15 border border-amber-600 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                        Last Round
+                      </span>
+                    ) : null}{' '}
                     <span className="text-xs text-muted-foreground">({round.status.replace('_', ' ')})</span>
                   </span>
                   {isAdmin ? (
@@ -583,10 +638,16 @@ export function EventDetailPage() {
                       {round.status === 'in_progress' ? (
                         <button
                           type="button"
-                          className="rounded-md border border-border px-2 py-1 text-xs"
-                          disabled={isMutating || round.matches.some((match) => !['confirmed', 'resolved'].includes(match.status))}
+                          className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${
+                            canCompleteRound
+                              ? 'border-emerald-600 bg-emerald-600/10 text-emerald-700 hover:bg-emerald-600/20 dark:text-emerald-300'
+                              : 'border-amber-600 bg-amber-600/10 text-amber-700 dark:text-amber-300'
+                          } disabled:cursor-not-allowed disabled:opacity-70`}
+                          disabled={isMutating || !canCompleteRound}
+                          title={roundBlockedReason ?? (reportedCount > 0 ? `Ready: will auto-confirm ${reportedCount} reported match(es).` : 'Ready to complete this round.')}
                           onClick={(clickEvent) => {
                             clickEvent.preventDefault();
+                            clickEvent.stopPropagation();
                             void transitionRound(round.id, 'complete');
                           }}
                         >
@@ -598,6 +659,21 @@ export function EventDetailPage() {
                 </summary>
 
                 <div className="mt-3 space-y-2">
+                  {isAdmin && round.status === 'in_progress' ? (
+                    <div
+                      className={`rounded-md border px-2 py-1 text-xs ${
+                        canCompleteRound
+                          ? 'border-emerald-600/40 bg-emerald-600/5 text-emerald-700 dark:text-emerald-300'
+                          : 'border-amber-600/40 bg-amber-600/5 text-amber-700 dark:text-amber-300'
+                      }`}
+                    >
+                      {!canCompleteRound
+                        ? roundBlockedReason
+                        : reportedCount > 0
+                          ? `Ready to complete. ${reportedCount} reported match(es) will be auto-confirmed.`
+                          : 'Ready to complete. All matches are already confirmed/resolved.'}
+                    </div>
+                  ) : null}
                   {isAdmin && ['in_progress', 'completed'].includes(round.status) ? (
                     <div className="flex justify-end">
                       <button
@@ -612,9 +688,10 @@ export function EventDetailPage() {
                   ) : null}
                   {round.matches.map((match) => {
                     const isParticipant = Boolean(user && (match.player1.id === user.id || match.player2?.id === user.id));
-                    const canReport = (isParticipant || isAdmin) && match.status === 'pending';
+                    const canReport = (isParticipant || isAdmin) && match.status === 'pending' && round.status === 'in_progress';
                     const canConfirmOrDispute = isParticipant && match.status === 'reported' && match.reportedById !== user?.id;
                     const canResolve = isAdmin && match.status === 'disputed';
+                    const verdict = matchResultVerdict(match);
 
                     return (
                       <MatchCard
@@ -626,6 +703,9 @@ export function EventDetailPage() {
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground capitalize">{match.status.replace('_', ' ')}</p>
                             <p className="text-xs text-muted-foreground">{matchResultSummary(match)}</p>
+                            {verdict ? (
+                              <p className={`text-xs font-medium ${verdict.tone === 'winner' ? 'text-emerald-600' : 'text-amber-600'}`}>{verdict.text}</p>
+                            ) : null}
                           </div>
                         }
                         actions={
@@ -672,6 +752,9 @@ export function EventDetailPage() {
                     );
                   })}
                 </div>
+                    </>
+                  );
+                })()}
               </details>
             ))}
           </div>
@@ -679,95 +762,15 @@ export function EventDetailPage() {
       </div>
 
       {selectedMatch && selectedMatchMode ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-          <button
-            type="button"
-            aria-label="Close report dialog"
-            className="absolute inset-0 bg-black/70"
-            onClick={closeMatchForm}
-            disabled={isMutating}
-          />
-          <form
-            onSubmit={submitMatchForm}
-            className="relative w-full max-w-2xl rounded-lg border border-border bg-card p-4 space-y-3 shadow-lg"
-          >
-            <h2 className="text-lg font-semibold">{selectedMatchMode === 'resolve' ? 'Resolve Match' : 'Report Match'}</h2>
-            <p className="text-sm text-muted-foreground">
-              {primaryName(selectedMatch.player1)} vs {selectedMatch.player2 ? primaryName(selectedMatch.player2) : 'TBD'}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Score: {score.player1Wins} - {score.player2Wins} • Draws: {score.gameDraws} (first to {requiredWins})
-            </p>
-            <p className="text-xs text-muted-foreground">Total games: {totalGames} / {bestOfN}</p>
-
-            <div className="grid gap-3 md:grid-cols-3">
-              <label className="text-sm">
-                {primaryName(selectedMatch.player1)} wins
-                <input
-                  ref={reportInputRef}
-                  type="number"
-                  min={0}
-                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  value={reportCounts.player1Wins}
-                  onChange={(changeEvent) =>
-                    setReportCounts((prev) => ({
-                      ...prev,
-                      player1Wins: Math.max(0, Number(changeEvent.target.value) || 0),
-                    }))
-                  }
-                />
-              </label>
-              <label className="text-sm">
-                {selectedMatch.player2 ? primaryName(selectedMatch.player2) : 'Opponent'} wins
-                <input
-                  type="number"
-                  min={0}
-                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  value={reportCounts.player2Wins}
-                  onChange={(changeEvent) =>
-                    setReportCounts((prev) => ({
-                      ...prev,
-                      player2Wins: Math.max(0, Number(changeEvent.target.value) || 0),
-                    }))
-                  }
-                />
-              </label>
-              <label className="text-sm">
-                Game draws
-                <input
-                  type="number"
-                  min={0}
-                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  value={reportCounts.gameDraws}
-                  onChange={(changeEvent) =>
-                    setReportCounts((prev) => ({
-                      ...prev,
-                      gameDraws: Math.max(0, Number(changeEvent.target.value) || 0),
-                    }))
-                  }
-                />
-              </label>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={isMutating}
-                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-              >
-                {selectedMatchMode === 'resolve' ? 'Submit Resolution' : 'Submit Report'}
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-border px-4 py-2 text-sm"
-                onClick={closeMatchForm}
-                disabled={isMutating}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
+        <ReportMatchDialog
+          match={selectedMatch}
+          bestOfN={bestOfN}
+          mode={selectedMatchMode}
+          initialCounts={initialReportCounts}
+          isMutating={isMutating}
+          onClose={closeMatchForm}
+          onSubmit={submitMatchForm}
+        />
       ) : null}
 
       {pendingConfirmation ? (
