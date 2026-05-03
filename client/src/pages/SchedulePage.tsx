@@ -40,6 +40,16 @@ type StandingRow = {
   points: number;
 };
 
+function matchResultRecord(match: Match) {
+  if (!['reported', 'confirmed', 'resolved'].includes(match.status) || match.gameResults.length === 0 || !match.player2) {
+    return null;
+  }
+  const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
+  const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
+  const draws = match.gameResults.filter((game) => game.isDraw || !game.winnerId).length;
+  return `${p1Wins}-${p2Wins}-${draws}`;
+}
+
 export function SchedulePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -50,6 +60,7 @@ export function SchedulePage() {
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
+  const [isMutatingRound, setIsMutatingRound] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedEvent = useMemo(
@@ -96,7 +107,31 @@ export function SchedulePage() {
     () => rounds.flatMap((round) => round.matches).find((match) => match.id === selectedMatchId) ?? null,
     [rounds, selectedMatchId],
   );
+  const orderedRounds = useMemo(() => {
+    const priority = (status: Round['status']) => {
+      if (status === 'in_progress') {
+        return 0;
+      }
+      if (status === 'not_started') {
+        return 1;
+      }
+      return 2;
+    };
+    return [...rounds].sort((a, b) => {
+      const statusDiff = priority(a.status) - priority(b.status);
+      if (statusDiff !== 0) {
+        return statusDiff;
+      }
+      return a.roundNumber - b.roundNumber;
+    });
+  }, [rounds]);
   const eventRecords = useMemo(() => computeEventRecords(rounds), [rounds]);
+  const roundLimit =
+    selectedEvent && typeof selectedEvent.totalRounds === 'number'
+      ? selectedEvent.totalRounds
+      : selectedEvent?.config?.format === 'round_robin'
+        ? rounds.length
+        : null;
 
   useEffect(() => {
     if (!activeSeasonId) {
@@ -177,6 +212,26 @@ export function SchedulePage() {
     }
   };
 
+  const transitionRound = async (roundId: string, action: 'start' | 'complete') => {
+    if (selectedEvent?.status !== 'active') {
+      setError('You can only start or complete rounds in active events.');
+      return;
+    }
+    setIsMutatingRound(true);
+    setError(null);
+    try {
+      await apiRequest(`/api/rounds/${roundId}/${action}`, { method: 'POST' });
+      if (selectedEventId) {
+        const response = await apiRequest<ApiListResponse<Round>>(`/api/events/${selectedEventId}/rounds`);
+        setRounds(response.data);
+      }
+    } catch (roundError) {
+      setError(roundError instanceof ApiError ? roundError.message : `Unable to ${action} round`);
+    } finally {
+      setIsMutatingRound(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -194,7 +249,7 @@ export function SchedulePage() {
                 <p className="font-semibold">{selectedEvent.name}</p>
                 <p className="text-xs text-muted-foreground">
                   {selectedEvent.status} • {selectedEvent.config?.format ?? 'unknown format'}
-                  {selectedEvent.totalRounds !== null ? ` • Rounds: ${Math.min(rounds.length, selectedEvent.totalRounds)} of ${selectedEvent.totalRounds}` : ''}
+                  {typeof roundLimit === 'number' ? ` • Rounds: ${Math.min(rounds.length, roundLimit)} of ${roundLimit}` : ''}
                 </p>
                 <Link to={`/events/${selectedEvent.id}`} className="text-xs underline text-muted-foreground">
                   View Event Details
@@ -213,18 +268,76 @@ export function SchedulePage() {
               </select>
             </div>
 
-            {rounds.map((round) => (
+            {orderedRounds.map((round) => {
+              const pendingCount = round.matches.filter((match) => match.status === 'pending').length;
+              const disputedCount = round.matches.filter((match) => match.status === 'disputed').length;
+              const reportedCount = round.matches.filter((match) => match.status === 'reported').length;
+              const canCompleteRound = pendingCount === 0 && disputedCount === 0;
+              const roundBlockedReason =
+                pendingCount > 0
+                  ? `Not ready: ${pendingCount} match(es) are not reported yet.`
+                  : disputedCount > 0
+                    ? `Not ready: ${disputedCount} disputed match(es) need resolution.`
+                    : null;
+
+              return (
               <div key={round.id} className="rounded-md border border-border p-3">
-                <p className="font-medium">
-                  Round {round.roundNumber}
-                  {selectedEvent.totalRounds !== null ? ` of ${selectedEvent.totalRounds}` : ''}{' '}
-                  {selectedEvent.totalRounds !== null && round.roundNumber === selectedEvent.totalRounds ? (
-                    <span className="ml-2 rounded-full bg-amber-500/15 border border-amber-600 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-                      Last Round
-                    </span>
-                  ) : null}{' '}
-                  <span className="text-xs text-muted-foreground">({round.status})</span>
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-medium">
+                    Round {round.roundNumber}
+                    {typeof roundLimit === 'number' ? ` of ${roundLimit}` : ''}{' '}
+                    {typeof roundLimit === 'number' && round.roundNumber === roundLimit ? (
+                      <span className="ml-2 rounded-full bg-amber-500/15 border border-amber-600 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                        Last Round
+                      </span>
+                    ) : null}{' '}
+                    <span className="text-xs text-muted-foreground">({round.status})</span>
+                  </p>
+                  {isAdmin && selectedEvent.status === 'active' ? (
+                    <div className="flex items-center gap-2">
+                      {round.status === 'not_started' ? (
+                        <button
+                          type="button"
+                          className="rounded-md border border-border px-2 py-1 text-xs disabled:opacity-70"
+                          disabled={isMutatingRound}
+                          onClick={() => void transitionRound(round.id, 'start')}
+                        >
+                          Start Round
+                        </button>
+                      ) : null}
+                      {round.status === 'in_progress' ? (
+                        <button
+                          type="button"
+                          className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${
+                            canCompleteRound
+                              ? 'border-emerald-600 bg-emerald-600/10 text-emerald-700 hover:bg-emerald-600/20 dark:text-emerald-300'
+                              : 'border-amber-600 bg-amber-600/10 text-amber-700 dark:text-amber-300'
+                          } disabled:cursor-not-allowed disabled:opacity-70`}
+                          disabled={isMutatingRound || !canCompleteRound}
+                          title={roundBlockedReason ?? (reportedCount > 0 ? `Ready: will auto-confirm ${reportedCount} reported match(es).` : 'Ready to complete this round.')}
+                          onClick={() => void transitionRound(round.id, 'complete')}
+                        >
+                          Complete Round
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                {isAdmin && round.status === 'in_progress' ? (
+                  <div
+                    className={`mt-2 rounded-md border px-2 py-1 text-xs ${
+                      canCompleteRound
+                        ? 'border-emerald-600/40 bg-emerald-600/5 text-emerald-700 dark:text-emerald-300'
+                        : 'border-amber-600/40 bg-amber-600/5 text-amber-700 dark:text-amber-300'
+                    }`}
+                  >
+                    {!canCompleteRound
+                      ? roundBlockedReason
+                      : reportedCount > 0
+                        ? `Ready to complete. ${reportedCount} reported match(es) will be auto-confirmed.`
+                        : 'Ready to complete. All matches are already confirmed/resolved.'}
+                  </div>
+                ) : null}
                 <div className="mt-3 space-y-2">
                   {round.matches.map((match) => {
                     const isParticipant = user && (match.player1.id === user.id || match.player2?.id === user.id);
@@ -233,6 +346,7 @@ export function SchedulePage() {
                       isParticipant && match.status === 'reported' && match.reportedById !== user?.id;
                     const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
                     const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
+                    const record = matchResultRecord(match);
                     const verdict =
                       ['reported', 'confirmed', 'resolved'].includes(match.status) && match.gameResults.length > 0
                         ? p1Wins === p2Wins
@@ -248,6 +362,7 @@ export function SchedulePage() {
                         footer={
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground capitalize">{match.status.replace('_', ' ')}</p>
+                            {record ? <p className="text-xs text-muted-foreground">Result: {record}</p> : null}
                             {verdict ? (
                               <p className={`text-xs font-medium ${verdict.tone === 'winner' ? 'text-emerald-600' : 'text-amber-600'}`}>{verdict.text}</p>
                             ) : null}
@@ -289,7 +404,8 @@ export function SchedulePage() {
                   })}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </>
         )}
       </div>

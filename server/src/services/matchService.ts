@@ -123,6 +123,29 @@ async function tryAutoCompleteRound(tx: typeof prisma, roundId: string) {
     where: { id: roundId },
     data: { status: 'completed' },
   });
+
+  const event = await tx.event.findUnique({
+    where: { id: round.eventId },
+    include: {
+      rounds: {
+        select: { status: true },
+      },
+    },
+  });
+  if (!event || event.status !== 'active' || event.totalRounds === null) {
+    return;
+  }
+  if (event.rounds.length < event.totalRounds) {
+    return;
+  }
+  if (!event.rounds.every((eventRound) => eventRound.status === 'completed')) {
+    return;
+  }
+
+  await tx.event.update({
+    where: { id: event.id },
+    data: { status: 'completed' },
+  });
 }
 
 export async function reportMatch(matchId: string, reporterId: string, gameResults: GameInput[]) {

@@ -355,11 +355,14 @@ export async function startEvent(eventId: string) {
   const playerCount = await prisma.leagueMembership.count({
     where: { leagueId: event.season.leagueId },
   });
+  const roundCount = await prisma.round.count({
+    where: { eventId: event.id },
+  });
 
   const totalRounds =
     event.config && ['swiss', 'seeded_swiss'].includes(event.config.format)
       ? Math.max(1, Math.ceil(Math.log2(playerCount)))
-      : event.totalRounds;
+      : event.totalRounds ?? roundCount;
 
   return prisma.event.update({
     where: { id: event.id },

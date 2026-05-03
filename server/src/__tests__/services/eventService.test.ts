@@ -23,6 +23,7 @@ describe('eventService', () => {
     });
     prismaMock.event.findFirst.mockResolvedValue(null);
     prismaMock.leagueMembership.count.mockResolvedValue(8);
+    prismaMock.round.count.mockResolvedValue(0);
     prismaMock.event.update.mockResolvedValue({ id: 'e1', status: 'active', config: {} });
 
     const result = await startEvent('e1');

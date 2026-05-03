@@ -51,6 +51,33 @@ async function createMatchesForRound(roundId: string, pairs: Array<{ player1Id: 
   );
 }
 
+async function tryAutoCompleteEvent(tx: typeof prisma, eventId: string) {
+  const event = await tx.event.findUnique({
+    where: { id: eventId },
+    include: {
+      rounds: {
+        select: { status: true },
+      },
+    },
+  });
+  if (!event || event.status !== 'active' || event.totalRounds === null) {
+    return;
+  }
+
+  if (event.rounds.length < event.totalRounds) {
+    return;
+  }
+
+  if (!event.rounds.every((round) => round.status === 'completed')) {
+    return;
+  }
+
+  await tx.event.update({
+    where: { id: eventId },
+    data: { status: 'completed' },
+  });
+}
+
 export async function createRound(eventId: string) {
   const event = await prisma.event.findUnique({
     where: { id: eventId },
@@ -119,9 +146,19 @@ export async function createRound(eventId: string) {
 }
 
 export async function startRound(roundId: string) {
-  const round = await prisma.round.findUnique({ where: { id: roundId } });
+  const round = await prisma.round.findUnique({
+    where: { id: roundId },
+    include: {
+      event: {
+        select: { status: true },
+      },
+    },
+  });
   if (!round) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
+  }
+  if (round.event.status !== 'active') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Event must be active before starting rounds');
   }
   validateRoundTransition(round.status, 'start');
   return prisma.round.update({
@@ -149,10 +186,14 @@ export async function completeRound(roundId: string) {
       },
     });
 
-    return tx.round.update({
+    const updatedRound = await tx.round.update({
       where: { id: roundId },
       data: { status: 'completed' },
     });
+
+    await tryAutoCompleteEvent(tx, round.eventId);
+
+    return updatedRound;
   });
 }
 

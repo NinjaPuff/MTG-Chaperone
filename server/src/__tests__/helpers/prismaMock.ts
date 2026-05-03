@@ -56,6 +56,7 @@ export const prismaMock = {
     create: vi.fn(),
     findUnique: vi.fn(),
     findFirst: vi.fn(),
+    count: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
     findMany: vi.fn(),

@@ -136,6 +136,16 @@ function matchResultSummary(match: Match) {
   return `${p1Name} ${p1Wins} - ${p2Wins} ${p2Name}`;
 }
 
+function matchResultRecord(match: Match) {
+  if (!['reported', 'confirmed', 'resolved'].includes(match.status) || match.gameResults.length === 0 || !match.player2) {
+    return null;
+  }
+  const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
+  const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
+  const draws = match.gameResults.filter((game) => game.isDraw || !game.winnerId).length;
+  return `${p1Wins}-${p2Wins}-${draws}`;
+}
+
 function matchResultVerdict(match: Match) {
   if (!['reported', 'confirmed', 'resolved'].includes(match.status) || match.gameResults.length === 0 || !match.player2) {
     return null;
@@ -183,6 +193,24 @@ export function EventDetailPage() {
 
   const leagueMembers = useMemo(() => event?.season.league.memberships ?? [], [event]);
   const eventRecords = useMemo(() => computeEventRecords(rounds), [rounds]);
+  const orderedRounds = useMemo(() => {
+    const priority = (status: RoundStatus) => {
+      if (status === 'in_progress') {
+        return 0;
+      }
+      if (status === 'not_started') {
+        return 1;
+      }
+      return 2;
+    };
+    return [...rounds].sort((a, b) => {
+      const statusDiff = priority(a.status) - priority(b.status);
+      if (statusDiff !== 0) {
+        return statusDiff;
+      }
+      return a.roundNumber - b.roundNumber;
+    });
+  }, [rounds]);
 
   const canEditSeeds = Boolean(
     isAdmin &&
@@ -432,8 +460,14 @@ export function EventDetailPage() {
     return <p className="text-sm text-destructive">{error ?? 'Event not found.'}</p>;
   }
 
-  const hasRoundLimit = event.totalRounds !== null;
-  const hasReachedRoundLimit = hasRoundLimit && rounds.length >= (event.totalRounds ?? 0);
+  const roundLimit =
+    typeof event.totalRounds === 'number'
+      ? event.totalRounds
+      : event.config?.format === 'round_robin'
+        ? rounds.length
+        : null;
+  const hasRoundLimit = typeof roundLimit === 'number';
+  const hasReachedRoundLimit = hasRoundLimit && rounds.length >= (roundLimit ?? 0);
   const allRoundsCompleted = rounds.length > 0 && rounds.every((round) => round.status === 'completed');
 
   return (
@@ -451,7 +485,7 @@ export function EventDetailPage() {
             {event.status} • {event.config?.format ?? 'unknown'} • Bo{event.config?.bestOfN ?? '-'} • x
             {event.pointMultiplier}
             {event.config?.seedingSource ? ` • Seeding: ${event.config.seedingSource}` : ''}
-            {event.totalRounds !== null ? ` • Rounds: ${Math.min(rounds.length, event.totalRounds)} of ${event.totalRounds}` : ''}
+            {hasRoundLimit ? ` • Rounds: ${Math.min(rounds.length, roundLimit ?? 0)} of ${roundLimit}` : ''}
           </p>
         </div>
         {event.status === 'completed' ? (
@@ -580,7 +614,7 @@ export function EventDetailPage() {
           <p className="text-sm text-muted-foreground">No rounds yet. An admin can create the first round.</p>
         ) : (
           <div className="space-y-4">
-            {rounds.map((round) => (
+            {orderedRounds.map((round) => (
               <details key={round.id} className="rounded-md border border-border p-3" open>
                 {(() => {
                   const pendingCount = round.matches.filter((match) => match.status === 'pending').length;
@@ -599,8 +633,8 @@ export function EventDetailPage() {
                 <summary className="cursor-pointer flex flex-wrap items-center justify-between gap-3">
                   <span className="font-medium">
                     Round {round.roundNumber}
-                    {event.totalRounds !== null ? ` of ${event.totalRounds}` : ''}{' '}
-                    {event.totalRounds !== null && round.roundNumber === event.totalRounds ? (
+                    {hasRoundLimit ? ` of ${roundLimit}` : ''}{' '}
+                    {hasRoundLimit && round.roundNumber === roundLimit ? (
                       <span className="ml-2 rounded-full bg-amber-500/15 border border-amber-600 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                         Last Round
                       </span>
@@ -691,6 +725,7 @@ export function EventDetailPage() {
                     const canReport = (isParticipant || isAdmin) && match.status === 'pending' && round.status === 'in_progress';
                     const canConfirmOrDispute = isParticipant && match.status === 'reported' && match.reportedById !== user?.id;
                     const canResolve = isAdmin && match.status === 'disputed';
+                    const record = matchResultRecord(match);
                     const verdict = matchResultVerdict(match);
 
                     return (
@@ -702,6 +737,7 @@ export function EventDetailPage() {
                         footer={
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground capitalize">{match.status.replace('_', ' ')}</p>
+                            {record ? <p className="text-xs text-muted-foreground">Result: {record}</p> : null}
                             <p className="text-xs text-muted-foreground">{matchResultSummary(match)}</p>
                             {verdict ? (
                               <p className={`text-xs font-medium ${verdict.tone === 'winner' ? 'text-emerald-600' : 'text-amber-600'}`}>{verdict.text}</p>

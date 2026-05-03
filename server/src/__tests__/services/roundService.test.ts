@@ -13,7 +13,7 @@ describe('roundService', () => {
   });
 
   it('starts a round from not_started state', async () => {
-    prismaMock.round.findUnique.mockResolvedValue({ id: 'r1', status: 'not_started' });
+    prismaMock.round.findUnique.mockResolvedValue({ id: 'r1', status: 'not_started', event: { status: 'active' } });
     prismaMock.round.update.mockResolvedValue({ id: 'r1', status: 'in_progress' });
 
     const result = await startRound('r1');
@@ -23,7 +23,20 @@ describe('roundService', () => {
       where: { id: 'r1' },
       data: { status: 'in_progress' },
     });
-    expect(prismaMock.round.findUnique).toHaveBeenCalledWith({ where: { id: 'r1' } });
+    expect(prismaMock.round.findUnique).toHaveBeenCalledWith({
+      where: { id: 'r1' },
+      include: { event: { select: { status: true } } },
+    });
+  });
+
+  it('blocks starting rounds when event is not active', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({ id: 'r1', status: 'not_started', event: { status: 'setup' } });
+
+    await expect(startRound('r1')).rejects.toMatchObject({
+      code: 'INVALID_EVENT_STATE',
+      message: 'Event must be active before starting rounds',
+    });
+    expect(prismaMock.round.update).not.toHaveBeenCalled();
   });
 
   it('does not allow deleting not_started rounds', async () => {
