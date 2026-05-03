@@ -164,4 +164,8 @@ router.get('/:seasonId/card-pools', async (req, res, next) => {
   }
 });
 
-export { router as seasonsRouter };
+export function createSeasonsRouter() {
+  return router;
+}
+
+export const seasonsRouter = createSeasonsRouter();

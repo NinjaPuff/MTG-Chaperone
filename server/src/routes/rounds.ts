@@ -101,4 +101,8 @@ router.get('/:roundId/matches', async (req, res, next) => {
   }
 });
 
-export { router as roundsRouter };
+export function createRoundsRouter() {
+  return router;
+}
+
+export const roundsRouter = createRoundsRouter();

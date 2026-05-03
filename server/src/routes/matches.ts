@@ -89,4 +89,8 @@ router.post('/:matchId/resolve', requireAuth, validateBody(matchResultsSchema), 
   }
 });
 
-export { router as matchesRouter };
+export function createMatchesRouter() {
+  return router;
+}
+
+export const matchesRouter = createMatchesRouter();

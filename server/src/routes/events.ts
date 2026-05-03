@@ -270,4 +270,8 @@ router.get('/:eventId/decklists', async (req, res, next) => {
   }
 });
 
-export { router as eventsRouter };
+export function createEventsRouter() {
+  return router;
+}
+
+export const eventsRouter = createEventsRouter();

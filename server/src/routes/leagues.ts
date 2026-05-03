@@ -378,4 +378,8 @@ router.patch(
   },
 );
 
-export { router as leaguesRouter };
+export function createLeaguesRouter() {
+  return router;
+}
+
+export const leaguesRouter = createLeaguesRouter();

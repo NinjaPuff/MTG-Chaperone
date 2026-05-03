@@ -23,4 +23,8 @@ router.post('/:seasonId/recompute', requireAuth, async (req, res, next) => {
   }
 });
 
-export { router as standingsRouter };
+export function createStandingsRouter() {
+  return router;
+}
+
+export const standingsRouter = createStandingsRouter();
