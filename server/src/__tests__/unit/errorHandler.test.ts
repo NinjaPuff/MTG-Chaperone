@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppError, errorHandler } from '../../middleware/errorHandler.js';
+import { AppError, createErrorHandler } from '../../middleware/errorHandler.js';
 
 describe('errorHandler', () => {
+  const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const errorHandler = createErrorHandler(logger);
   const json = vi.fn();
   const status = vi.fn(() => ({ json }));
   const res = { status } as unknown as Parameters<typeof errorHandler>[2];
@@ -9,6 +11,7 @@ describe('errorHandler', () => {
   beforeEach(() => {
     json.mockReset();
     status.mockClear();
+    logger.error.mockReset();
   });
 
   it('formats AppError responses', () => {
@@ -30,23 +33,15 @@ describe('errorHandler', () => {
 
   it('returns generic 500 for unknown errors', () => {
     const err = new Error('boom');
-    const consoleErrorMock = vi.fn();
-    const originalConsoleError = console.error;
+    errorHandler(err, {} as never, res, {} as never);
 
-    (console as { error: typeof console.error }).error = consoleErrorMock;
-    try {
-      errorHandler(err, {} as never, res, {} as never);
-
-      expect(status).toHaveBeenCalledWith(500);
-      expect(json).toHaveBeenCalledWith({
-        error: {
-          code: 'INTERNAL_SERVER_ERROR',
-          message: 'An unexpected error occurred',
-        },
-      });
-      expect(consoleErrorMock).toHaveBeenCalledWith('Unhandled error:', err);
-    } finally {
-      (console as { error: typeof console.error }).error = originalConsoleError;
-    }
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledWith({
+      error: {
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    });
+    expect(logger.error).toHaveBeenCalledWith('Unhandled error:', err);
   });
 });
