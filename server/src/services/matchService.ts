@@ -163,3 +163,13 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
     include: { gameResults: true },
   });
 }
+
+export function createMatchService() {
+  return {
+    validateMatchStateTransition,
+    reportMatch,
+    confirmMatch,
+    disputeMatch,
+    resolveMatch,
+  };
+}

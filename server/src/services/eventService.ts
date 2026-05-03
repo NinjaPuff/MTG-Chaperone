@@ -366,3 +366,15 @@ export async function completeEvent(eventId: string) {
     include: { config: true },
   });
 }
+
+export function createEventService() {
+  return {
+    validateEventTransition,
+    createEvent,
+    createRoundRobinEventSeries,
+    getEvent,
+    updateEvent,
+    startEvent,
+    completeEvent,
+  };
+}
