@@ -1,6 +1,38 @@
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { bulkLookupByName } from './scryfallService.js';
+import { bulkLookupByName, getCard } from './scryfallService.js';
+
+async function refreshStaleDfcManaCost(cachedCardIds: string[]) {
+  if (cachedCardIds.length === 0) {
+    return;
+  }
+
+  const cards = await prisma.cachedCard.findMany({
+    where: {
+      scryfallId: {
+        in: cachedCardIds,
+      },
+    },
+    select: {
+      scryfallId: true,
+      name: true,
+      manaCost: true,
+      cmc: true,
+    },
+  });
+
+  const staleIds = cards
+    .filter((card) => card.manaCost === null && card.cmc > 0 && card.name.includes('//'))
+    .map((card) => card.scryfallId);
+
+  for (const scryfallId of staleIds) {
+    try {
+      await getCard(scryfallId);
+    } catch {
+      // Ignore refresh failures; create flow will still use cached row.
+    }
+  }
+}
 
 export async function listPoolsBySeason(seasonId: string) {
   return prisma.cardPool.findMany({
@@ -182,6 +214,9 @@ export async function listAcquisitions(poolId: string) {
               manaCost: true,
               typeLine: true,
               rarity: true,
+              cmc: true,
+              colors: true,
+              colorIdentity: true,
             },
           },
         },
@@ -207,6 +242,7 @@ export async function createAcquisition(poolId: string, phaseLabel: string, card
   }
 
   const uniqueCachedCardIds = [...new Set(cards.map((card) => card.cachedCardId))];
+  await refreshStaleDfcManaCost(uniqueCachedCardIds);
   const existingCards = await prisma.cachedCard.findMany({
     where: {
       scryfallId: {
@@ -252,6 +288,9 @@ export async function createAcquisition(poolId: string, phaseLabel: string, card
               manaCost: true,
               typeLine: true,
               rarity: true,
+              cmc: true,
+              colors: true,
+              colorIdentity: true,
             },
           },
         },
@@ -355,6 +394,100 @@ export async function deleteAcquisition(acquisitionId: string) {
   });
 }
 
+type AdjustCardQuantityAction = 'add' | 'remove_one' | 'remove_all';
+
+export async function adjustCardQuantityInPhase(
+  poolId: string,
+  phaseLabel: string,
+  cachedCardId: string,
+  action: AdjustCardQuantityAction,
+) {
+  const normalizedPhaseLabel = phaseLabel.trim();
+  if (!normalizedPhaseLabel) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Phase label is required');
+  }
+
+  if (!cachedCardId.trim()) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Card id is required');
+  }
+
+  if (action === 'add') {
+    await refreshStaleDfcManaCost([cachedCardId]);
+    await createAcquisition(poolId, normalizedPhaseLabel, [{ cachedCardId, quantity: 1 }]);
+    return;
+  }
+
+  const entries = await prisma.cardPoolEntry.findMany({
+    where: {
+      cachedCardId,
+      acquisition: {
+        cardPoolId: poolId,
+        phaseLabel: normalizedPhaseLabel,
+      },
+    },
+    select: {
+      id: true,
+      quantity: true,
+      acquisitionId: true,
+      acquisition: {
+        select: {
+          addedAt: true,
+        },
+      },
+    },
+    orderBy: [{ acquisition: { addedAt: 'desc' } }, { id: 'desc' }],
+  });
+
+  if (entries.length === 0) {
+    throw new AppError(404, 'NOT_FOUND', 'Card not found in selected acquisition group');
+  }
+
+  let remainingToRemove = action === 'remove_one' ? 1 : Number.POSITIVE_INFINITY;
+  const affectedAcquisitionIds = new Set<string>();
+
+  await prisma.$transaction(async (tx) => {
+    for (const entry of entries) {
+      if (remainingToRemove <= 0) {
+        break;
+      }
+
+      const removeAmount = Number.isFinite(remainingToRemove) ? Math.min(entry.quantity, remainingToRemove) : entry.quantity;
+      const nextQuantity = entry.quantity - removeAmount;
+      affectedAcquisitionIds.add(entry.acquisitionId);
+
+      if (nextQuantity > 0) {
+        await tx.cardPoolEntry.update({
+          where: { id: entry.id },
+          data: { quantity: nextQuantity },
+        });
+      } else {
+        await tx.cardPoolEntry.delete({
+          where: { id: entry.id },
+        });
+      }
+
+      if (Number.isFinite(remainingToRemove)) {
+        remainingToRemove -= removeAmount;
+      }
+    }
+
+    if (remainingToRemove > 0 && Number.isFinite(remainingToRemove)) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Not enough copies in selected acquisition group');
+    }
+
+    for (const acquisitionId of affectedAcquisitionIds) {
+      const remainingEntries = await tx.cardPoolEntry.count({
+        where: { acquisitionId },
+      });
+      if (remainingEntries === 0) {
+        await tx.poolAcquisition.delete({
+          where: { id: acquisitionId },
+        });
+      }
+    }
+  });
+}
+
 export function createCardPoolService() {
   return {
     listPoolsBySeason,
@@ -366,5 +499,6 @@ export function createCardPoolService() {
     createAcquisition,
     bulkCreateAcquisition,
     deleteAcquisition,
+    adjustCardQuantityInPhase,
   };
 }

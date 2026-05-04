@@ -86,7 +86,7 @@ function StatsBox({
   return (
     <div
       className={`rounded-md border border-border px-3 py-2 text-xs ${align === 'right' ? 'text-right' : ''} ${
-        translucent ? 'bg-background/72 backdrop-blur-[1px]' : 'bg-background'
+        translucent ? 'bg-background/80' : 'bg-background'
       }`}
     >
       <p className="text-muted-foreground">
@@ -98,15 +98,13 @@ function StatsBox({
 }
 
 function OutcomeWatermark({ isDraw }: { isDraw: boolean }) {
-  const pattern = isDraw
-    ? 'radial-gradient(circle, rgba(217,119,6,0.09) 1px, transparent 1px)'
-    : 'repeating-linear-gradient(135deg, rgba(16,185,129,0.09) 0 1px, transparent 1px 8px)';
+  const overlay = isDraw ? 'bg-amber-500/10' : 'bg-emerald-500/10';
 
   return (
-    <div className="absolute inset-0 pointer-events-none flex items-center justify-center" style={{ backgroundImage: pattern, backgroundSize: isDraw ? '8px 8px' : undefined }}>
+    <div className={`absolute inset-0 pointer-events-none flex items-center justify-center ${overlay}`}>
       {isDraw ? (
         <svg
-          className="h-[64%] w-[64%] opacity-[0.28] text-amber-500"
+          className="h-[58%] w-[58%] opacity-[0.18] text-amber-500"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -120,7 +118,7 @@ function OutcomeWatermark({ isDraw }: { isDraw: boolean }) {
           <line x1="8.5" y1="13.7" x2="15.5" y2="13.7" />
         </svg>
       ) : (
-        <svg className="h-[64%] w-[64%] opacity-[0.22] text-emerald-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <svg className="h-[58%] w-[58%] opacity-[0.16] text-emerald-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d={TROPHY_PATH} />
         </svg>
       )}

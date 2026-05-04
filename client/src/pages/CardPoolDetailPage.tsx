@@ -1,8 +1,18 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest, getStoredToken } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { primaryName, secondaryName } from '@/lib/userDisplay';
+import { CardHoverPreview } from '@/components/cardpool/CardHoverPreview';
+import { CardPreviewProvider } from '@/components/cardpool/CardPreviewContext';
+import { CurveView } from '@/components/cardpool/CurveView';
+import { GridView } from '@/components/cardpool/GridView';
+import { ListView } from '@/components/cardpool/ListView';
+import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
+import { StacksView } from '@/components/cardpool/StacksView';
+import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
+import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
+import { flattenEntries, getCardColorCode, getPrimaryType, sortCards } from '@/lib/cardPoolSort';
 
 type PoolDetail = {
   id: string;
@@ -42,6 +52,9 @@ type CachedCardSummary = {
   manaCost: string | null;
   typeLine: string;
   rarity: string;
+  cmc: number;
+  colors: string[];
+  colorIdentity: string[];
 };
 
 type AcquisitionEntry = {
@@ -89,6 +102,16 @@ type BulkResponse = {
   };
 };
 
+type AdjustCardAction = 'add' | 'remove_one' | 'remove_all';
+type StagedPoolChange = {
+  id: string;
+  cachedCardId: string;
+  cardName: string;
+  phaseLabel: string;
+  action: AdjustCardAction;
+  quantity: number;
+};
+
 type SeasonEvent = {
   id: string;
 };
@@ -104,15 +127,14 @@ type StagedCard = {
   manaCost: string | null;
   imageUri: string | null;
   quantity: number;
+  phaseLabel: string;
 };
 
-type PhaseGroupedCard = {
-  key: string;
-  name: string;
-  quantity: number;
-  setCodes: string[];
-  manaCost: string | null;
-  imageUri: string | null;
+type AdminContextMenuState = {
+  pageX: number;
+  pageY: number;
+  card: PoolCard;
+  phaseLabel: string;
 };
 
 function getSmallImage(imageUris: unknown): string | null {
@@ -121,6 +143,30 @@ function getSmallImage(imageUris: unknown): string | null {
   }
   const maybeSmall = (imageUris as Record<string, unknown>).small;
   return typeof maybeSmall === 'string' ? maybeSmall : null;
+}
+
+const VIEW_PREFERENCES_KEY = 'cardpool-view-prefs';
+const VISUAL_VIEW_MAX_CARDS = 180;
+const STACK_CARD_WIDTH_DEFAULT = 220;
+const STACKS_ORGANIZE_DEFAULT: StacksOrganizeBy = 'type';
+const CARD_TYPE_FILTERS = ['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker', 'Land', 'Other'] as const;
+const COLOR_FILTERS = ['W', 'U', 'B', 'R', 'G', 'C'] as const;
+
+function parseViewPreferences(rawValue: string | null): { viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode } {
+  if (!rawValue) {
+    return { viewMode: 'list', sortKey: 'type', groupMode: 'flat' };
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as Partial<{ viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode }>;
+    return {
+      viewMode: parsed.viewMode ?? 'list',
+      sortKey: parsed.sortKey ?? 'type',
+      groupMode: parsed.groupMode ?? 'flat',
+    };
+  } catch {
+    return { viewMode: 'list', sortKey: 'type', groupMode: 'flat' };
+  }
 }
 
 function parseBulkItems(input: string) {
@@ -168,12 +214,22 @@ export function CardPoolDetailPage() {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [stagedCards, setStagedCards] = useState<StagedCard[]>([]);
-  const [savingCards, setSavingCards] = useState(false);
 
   const [bulkText, setBulkText] = useState('');
   const [bulkUnresolved, setBulkUnresolved] = useState<string[]>([]);
   const [bulkAddedCount, setBulkAddedCount] = useState(0);
   const [importing, setImporting] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [sortKey, setSortKey] = useState<SortKey>('type');
+  const [groupMode, setGroupMode] = useState<GroupMode>('flat');
+  const [stackCardWidth, setStackCardWidth] = useState(STACK_CARD_WIDTH_DEFAULT);
+  const [stacksOrganizeBy, setStacksOrganizeBy] = useState<StacksOrganizeBy>(STACKS_ORGANIZE_DEFAULT);
+  const [selectedTypeFilters, setSelectedTypeFilters] = useState<string[]>([...CARD_TYPE_FILTERS]);
+  const [selectedColorFilters, setSelectedColorFilters] = useState<string[]>([...COLOR_FILTERS]);
+  const [adminContextMenu, setAdminContextMenu] = useState<AdminContextMenuState | null>(null);
+  const [stagedPoolChanges, setStagedPoolChanges] = useState<StagedPoolChange[]>([]);
+  const [applyingStagedChanges, setApplyingStagedChanges] = useState(false);
+  const bulkImportSectionRef = useRef<HTMLFormElement | null>(null);
 
   const loadPool = async () => {
     if (!poolId) {
@@ -201,6 +257,7 @@ export function CardPoolDetailPage() {
   }, [poolId]);
 
   const isOwner = Boolean(user && pool && user.id === pool.user.id);
+  const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
     const loadSeasonEvents = async () => {
@@ -228,11 +285,82 @@ export function CardPoolDetailPage() {
     return options;
   }, [seasonEvents.length]);
 
+  const availablePhaseOptions = useMemo(() => {
+    const ordered = [...phaseOptions];
+    for (const acquisition of acquisitions) {
+      if (!ordered.includes(acquisition.phaseLabel)) {
+        ordered.push(acquisition.phaseLabel);
+      }
+    }
+    return ordered;
+  }, [acquisitions, phaseOptions]);
+
   useEffect(() => {
     if (!phaseOptions.includes(phaseLabel)) {
       setPhaseLabel(phaseOptions[0]);
     }
   }, [phaseLabel, phaseOptions]);
+
+  useEffect(() => {
+    if (!adminContextMenu) {
+      return;
+    }
+
+    const closeMenu = () => {
+      setAdminContextMenu(null);
+    };
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeMenu();
+      }
+    };
+    window.addEventListener('click', closeMenu);
+    window.addEventListener('contextmenu', closeMenu);
+    window.addEventListener('keydown', onEscape);
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      window.removeEventListener('contextmenu', closeMenu);
+      window.removeEventListener('keydown', onEscape);
+    };
+  }, [adminContextMenu]);
+
+  useEffect(() => {
+    const stored = parseViewPreferences(window.localStorage.getItem(VIEW_PREFERENCES_KEY));
+    setViewMode(stored.viewMode);
+    setSortKey(stored.sortKey);
+    setGroupMode(stored.groupMode);
+    const storedStackWidth = window.localStorage.getItem('cardpool-stacks-width');
+    if (storedStackWidth) {
+      const parsed = Number(storedStackWidth);
+      if (Number.isFinite(parsed)) {
+        setStackCardWidth(Math.max(160, Math.min(280, parsed)));
+      }
+    }
+    const storedStacksOrganize = window.localStorage.getItem('cardpool-stacks-organize');
+    if (
+      storedStacksOrganize === 'type' ||
+      storedStacksOrganize === 'color' ||
+      storedStacksOrganize === 'cmc' ||
+      storedStacksOrganize === 'creature_split'
+    ) {
+      setStacksOrganizeBy(storedStacksOrganize);
+    } else if (storedStacksOrganize === 'type_cmc') {
+      // Backward compatibility with prior organize key.
+      setStacksOrganizeBy('creature_split');
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(VIEW_PREFERENCES_KEY, JSON.stringify({ viewMode, sortKey, groupMode }));
+  }, [groupMode, sortKey, viewMode]);
+
+  useEffect(() => {
+    window.localStorage.setItem('cardpool-stacks-width', String(stackCardWidth));
+  }, [stackCardWidth]);
+
+  useEffect(() => {
+    window.localStorage.setItem('cardpool-stacks-organize', stacksOrganizeBy);
+  }, [stacksOrganizeBy]);
 
   useEffect(() => {
     if (!pool) {
@@ -276,47 +404,41 @@ export function CardPoolDetailPage() {
     [acquisitions],
   );
 
-  const acquisitionsByPhase = useMemo(() => {
-    const phaseGroups = new Map<string, Map<string, PhaseGroupedCard>>();
+  const poolCards = useMemo(() => flattenEntries(acquisitions, groupMode), [acquisitions, groupMode]);
+  const sortedCards = useMemo(() => sortCards(poolCards, sortKey), [poolCards, sortKey]);
+  const filteredCards = useMemo(
+    () =>
+      sortedCards.filter((card) => {
+        const allTypesSelected = selectedTypeFilters.length === CARD_TYPE_FILTERS.length;
+        const typeMatch = allTypesSelected || selectedTypeFilters.includes(getPrimaryType(card.typeLine));
 
-    for (const acquisition of acquisitions) {
-      const phaseLabel = acquisition.phaseLabel;
-      const groupedCards = phaseGroups.get(phaseLabel) ?? new Map<string, PhaseGroupedCard>();
-
-      for (const entry of acquisition.entries) {
-        const name = entry.cachedCard.name.trim();
-        if (!name) {
-          continue;
-        }
-
-        const normalizedName = name.toLowerCase();
-        const existingGroup = groupedCards.get(normalizedName);
-        if (existingGroup) {
-          existingGroup.quantity += entry.quantity;
-          if (!existingGroup.setCodes.includes(entry.cachedCard.setCode)) {
-            existingGroup.setCodes.push(entry.cachedCard.setCode);
+        const allColorsSelected = selectedColorFilters.length === COLOR_FILTERS.length;
+        let colorMatch = allColorsSelected;
+        if (!allColorsSelected) {
+          const cardColorCode = getCardColorCode(card);
+          if (!cardColorCode) {
+            colorMatch = selectedColorFilters.includes('C');
+          } else {
+            const selectedColorSet = new Set(selectedColorFilters.filter((color) => color !== 'C'));
+            const cardColorSet = new Set(cardColorCode.split(''));
+            colorMatch = selectedColorSet.size > 0 && [...cardColorSet].every((color) => selectedColorSet.has(color));
           }
-          continue;
         }
+        return typeMatch && colorMatch;
+      }),
+    [selectedColorFilters, selectedTypeFilters, sortedCards],
+  );
+  const filteredCardCount = useMemo(
+    () => filteredCards.reduce((sum, card) => sum + card.quantity, 0),
+    [filteredCards],
+  );
+  const disableVisualViews = totalCards > VISUAL_VIEW_MAX_CARDS;
 
-        groupedCards.set(normalizedName, {
-          key: normalizedName,
-          name,
-          quantity: entry.quantity,
-          setCodes: [entry.cachedCard.setCode],
-          manaCost: entry.cachedCard.manaCost,
-          imageUri: getSmallImage(entry.cachedCard.imageUris),
-        });
-      }
-
-      phaseGroups.set(phaseLabel, groupedCards);
+  useEffect(() => {
+    if (disableVisualViews && viewMode !== 'list') {
+      setViewMode('list');
     }
-
-    return [...phaseGroups.entries()].map(([phaseLabel, groupedCards]) => [
-      phaseLabel,
-      [...groupedCards.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })),
-    ] as const);
-  }, [acquisitions]);
+  }, [disableVisualViews, viewMode]);
 
   const addSearchResultToStage = (card: SearchResult) => {
     setSuccess(null);
@@ -326,8 +448,11 @@ export function CardPoolDetailPage() {
 
     const quantity = 1;
     const imageUri = getSmallImage(card.imageUris);
+    const targetPhaseLabel = phaseLabel;
     setStagedCards((prev) => {
-      const existingIndex = prev.findIndex((entry) => entry.cachedCardId === card.scryfallId);
+      const existingIndex = prev.findIndex(
+        (entry) => entry.cachedCardId === card.scryfallId && entry.phaseLabel === targetPhaseLabel,
+      );
       if (existingIndex === -1) {
         return [
           ...prev,
@@ -338,6 +463,7 @@ export function CardPoolDetailPage() {
             manaCost: card.manaCost,
             imageUri,
             quantity,
+            phaseLabel: targetPhaseLabel,
           },
         ];
       }
@@ -351,49 +477,18 @@ export function CardPoolDetailPage() {
     });
   };
 
-  const updateStagedQuantity = (cachedCardId: string, quantity: number) => {
+  const updateStagedQuantity = (cachedCardId: string, phase: string, quantity: number) => {
     setStagedCards((prev) =>
-      prev.map((entry) => (entry.cachedCardId === cachedCardId ? { ...entry, quantity } : entry)),
+      prev.map((entry) =>
+        entry.cachedCardId === cachedCardId && entry.phaseLabel === phase ? { ...entry, quantity } : entry,
+      ),
     );
   };
 
-  const removeStagedCard = (cachedCardId: string) => {
-    setStagedCards((prev) => prev.filter((entry) => entry.cachedCardId !== cachedCardId));
-  };
-
-  const saveStagedCards = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!poolId || stagedCards.length === 0) {
-      return;
-    }
-
-    setSavingCards(true);
-    setError(null);
-    setSuccess(null);
-    setBulkUnresolved([]);
-    setBulkAddedCount(0);
-
-    try {
-      await apiRequest<CreateAcquisitionResponse>(`/api/card-pools/${poolId}/acquisitions`, {
-        method: 'POST',
-        body: {
-          phaseLabel,
-          cards: stagedCards.map((card) => ({
-            cachedCardId: card.cachedCardId,
-            quantity: card.quantity,
-          })),
-        },
-      });
-      setStagedCards([]);
-      setSearchQuery('');
-      setSearchResults([]);
-      setSuccess('Cards added to pool.');
-      await loadPool();
-    } catch (saveError) {
-      setError(saveError instanceof ApiError ? saveError.message : 'Unable to add cards');
-    } finally {
-      setSavingCards(false);
-    }
+  const removeStagedCard = (cachedCardId: string, phase: string) => {
+    setStagedCards((prev) =>
+      prev.filter((entry) => !(entry.cachedCardId === cachedCardId && entry.phaseLabel === phase)),
+    );
   };
 
   const importBulkCards = async (event: FormEvent) => {
@@ -472,6 +567,203 @@ export function CardPoolDetailPage() {
     }
   };
 
+  const handleAdminCardContextMenu = (event: MouseEvent, card: PoolCard) => {
+    if (!isAdmin) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const matchingPhases = Object.keys(card.phaseQuantities);
+    const defaultPhase = matchingPhases[0] ?? card.phaseLabel ?? availablePhaseOptions[0] ?? 'Initial Pool';
+    setAdminContextMenu({
+      pageX: event.pageX,
+      pageY: event.pageY,
+      card,
+      phaseLabel: defaultPhase,
+    });
+  };
+
+  const selectedPhaseQuantity = adminContextMenu
+    ? (adminContextMenu.card.phaseQuantities[adminContextMenu.phaseLabel] ?? 0)
+    : 0;
+  const stagedRemovalForSelection = adminContextMenu
+    ? stagedPoolChanges.find(
+        (change) =>
+          change.cachedCardId === adminContextMenu.card.scryfallId &&
+          change.phaseLabel === adminContextMenu.phaseLabel &&
+          change.action !== 'add',
+      )
+    : null;
+  const stagedContextAddsForSelection = adminContextMenu
+    ? stagedPoolChanges
+        .filter(
+          (change) =>
+            change.cachedCardId === adminContextMenu.card.scryfallId &&
+            change.phaseLabel === adminContextMenu.phaseLabel &&
+            change.action === 'add',
+        )
+        .reduce((sum, change) => sum + change.quantity, 0)
+    : 0;
+  const stagedCardAddsForSelection = adminContextMenu
+    ? stagedCards
+        .filter(
+          (card) =>
+            card.cachedCardId === adminContextMenu.card.scryfallId && card.phaseLabel === adminContextMenu.phaseLabel,
+        )
+        .reduce((sum, card) => sum + card.quantity, 0)
+    : 0;
+  const totalAvailableForSelection = selectedPhaseQuantity + stagedContextAddsForSelection + stagedCardAddsForSelection;
+  const stagedRemovalQuantityForSelection =
+    stagedRemovalForSelection?.action === 'remove_one'
+      ? stagedRemovalForSelection.quantity
+      : stagedRemovalForSelection?.action === 'remove_all'
+        ? totalAvailableForSelection
+        : 0;
+  const canStageAnotherSingleRemoval =
+    totalAvailableForSelection > 0 &&
+    (!stagedRemovalForSelection || stagedRemovalForSelection.action !== 'remove_all') &&
+    stagedRemovalQuantityForSelection < totalAvailableForSelection;
+
+  const stagePoolChange = (action: AdjustCardAction) => {
+    if (!adminContextMenu) {
+      return;
+    }
+
+    if (action !== 'add') {
+      const existingRemovalIndex = stagedPoolChanges.findIndex(
+        (change) =>
+          change.cachedCardId === adminContextMenu.card.scryfallId &&
+          change.phaseLabel === adminContextMenu.phaseLabel &&
+          change.action !== 'add',
+      );
+
+      if (action === 'remove_one' && !canStageAnotherSingleRemoval) {
+        setError('Cannot stage more removals than available copies in this acquisition group.');
+        setSuccess(null);
+        setAdminContextMenu(null);
+        return;
+      }
+
+      if (action === 'remove_all' && totalAvailableForSelection < 1) {
+        setError('No copies are available to remove in this acquisition group.');
+        setSuccess(null);
+        setAdminContextMenu(null);
+        return;
+      }
+
+      if (existingRemovalIndex >= 0) {
+        setStagedPoolChanges((prev) => {
+          const next = [...prev];
+          const existing = next[existingRemovalIndex];
+          if (action === 'remove_one' && existing.action === 'remove_one') {
+            next[existingRemovalIndex] = { ...existing, quantity: existing.quantity + 1 };
+          } else {
+            next[existingRemovalIndex] = { ...existing, action, quantity: 1 };
+          }
+          return next;
+        });
+        setAdminContextMenu(null);
+        setSuccess('Updated staged removal for this card.');
+        setError(null);
+        return;
+      }
+    }
+
+    if (action === 'add') {
+      const existingAddIndex = stagedPoolChanges.findIndex(
+        (change) =>
+          change.cachedCardId === adminContextMenu.card.scryfallId &&
+          change.phaseLabel === adminContextMenu.phaseLabel &&
+          change.action === 'add',
+      );
+      if (existingAddIndex >= 0) {
+        setStagedPoolChanges((prev) => {
+          const next = [...prev];
+          const existing = next[existingAddIndex];
+          next[existingAddIndex] = { ...existing, quantity: existing.quantity + 1 };
+          return next;
+        });
+        setAdminContextMenu(null);
+        setSuccess('Updated staged add for this card.');
+        setError(null);
+        return;
+      }
+    }
+
+    setStagedPoolChanges((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        cachedCardId: adminContextMenu.card.scryfallId,
+        cardName: adminContextMenu.card.name,
+        phaseLabel: adminContextMenu.phaseLabel,
+        action,
+        quantity: 1,
+      },
+    ]);
+    setAdminContextMenu(null);
+    setSuccess(action === 'add' ? 'Add staged. Apply staged changes when ready.' : 'Removal staged. Apply staged changes when ready.');
+    setError(null);
+  };
+
+  const removeStagedPoolChange = (id: string) => {
+    setStagedPoolChanges((prev) => prev.filter((change) => change.id !== id));
+  };
+
+  const applyStagedPoolChanges = async () => {
+    if (!poolId || (stagedPoolChanges.length === 0 && stagedCards.length === 0)) {
+      return;
+    }
+
+    setApplyingStagedChanges(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const cardsByPhase = new Map<string, Array<{ cachedCardId: string; quantity: number }>>();
+      for (const card of stagedCards) {
+        const existing = cardsByPhase.get(card.phaseLabel) ?? [];
+        existing.push({ cachedCardId: card.cachedCardId, quantity: card.quantity });
+        cardsByPhase.set(card.phaseLabel, existing);
+      }
+
+      for (const [stagedPhaseLabel, cards] of cardsByPhase.entries()) {
+        await apiRequest<CreateAcquisitionResponse>(`/api/card-pools/${poolId}/acquisitions`, {
+          method: 'POST',
+          body: {
+            phaseLabel: stagedPhaseLabel,
+            cards,
+          },
+        });
+      }
+
+      const stagedAddChanges = stagedPoolChanges.filter((change) => change.action === 'add');
+      const stagedRemovalChanges = stagedPoolChanges.filter((change) => change.action !== 'add');
+      const orderedChanges = [...stagedAddChanges, ...stagedRemovalChanges];
+
+      for (const change of orderedChanges) {
+        const repeatCount = change.action === 'remove_all' ? 1 : Math.max(1, change.quantity);
+        for (let index = 0; index < repeatCount; index += 1) {
+          await apiRequest(`/api/card-pools/${poolId}/cards/adjust`, {
+            method: 'PATCH',
+            body: {
+              phaseLabel: change.phaseLabel,
+              cachedCardId: change.cachedCardId,
+              action: change.action,
+            },
+          });
+        }
+      }
+      setStagedCards([]);
+      setStagedPoolChanges([]);
+      await loadPool();
+      setSuccess('Staged changes applied.');
+    } catch (applyError) {
+      setError(applyError instanceof ApiError ? applyError.message : 'Unable to apply staged changes');
+    } finally {
+      setApplyingStagedChanges(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="rounded-lg border border-border bg-card p-6">
@@ -527,6 +819,15 @@ export function CardPoolDetailPage() {
           >
             Export Pool
           </button>
+          {isOwner ? (
+            <button
+              type="button"
+              onClick={() => bulkImportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              Import Cards
+            </button>
+          ) : null}
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Booster Product</p>
@@ -543,46 +844,107 @@ export function CardPoolDetailPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">Acquisitions</h2>
-        {acquisitions.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">
-            No cards added yet{isOwner ? '. Use search or bulk import below to add cards.' : '.'}
-          </p>
-        ) : (
-          <div className="mt-4 space-y-5">
-            {acquisitionsByPhase.map(([phase, cards]) => (
-              <div key={phase} className="space-y-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{phase}</h3>
-                <div className="rounded-md border border-border p-3">
-                  <div className="space-y-2">
-                    {cards.map((card) => (
-                      <div key={card.key} className="flex items-center justify-between rounded-md border border-border p-2">
-                        <div className="flex items-center gap-3">
-                          {card.imageUri ? (
-                            <img src={card.imageUri} alt={card.name} className="h-10 w-8 rounded border border-border object-cover" />
-                          ) : null}
-                          <div>
-                            <p className="text-sm font-medium">{card.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {card.setCodes.join(', ')} {card.manaCost ? `- ${card.manaCost}` : ''}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="rounded bg-muted px-2 py-1 text-xs font-semibold">x{card.quantity}</span>
-                      </div>
-                    ))}
+      {isOwner || isAdmin ? (
+        <div className="rounded-md border border-border/70 bg-card px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">Staged Changes</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                onClick={() => {
+                  setStagedCards([]);
+                  setStagedPoolChanges([]);
+                }}
+                disabled={applyingStagedChanges || (stagedCards.length === 0 && stagedPoolChanges.length === 0)}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                onClick={() => void applyStagedPoolChanges()}
+                disabled={applyingStagedChanges || (stagedCards.length === 0 && stagedPoolChanges.length === 0)}
+              >
+                {applyingStagedChanges ? 'Applying...' : 'Apply Changes'}
+              </button>
+            </div>
+          </div>
+
+          {stagedCards.length === 0 && stagedPoolChanges.length === 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground">No staged changes yet.</p>
+          ) : (
+            <div className="mt-2 space-y-1">
+              {stagedCards.map((card) => (
+                <div
+                  key={`${card.cachedCardId}-${card.phaseLabel}`}
+                  className="flex items-center justify-between gap-2 rounded border border-border/60 px-2 py-1.5 text-xs"
+                >
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium">Add</span> - {card.name} ({card.phaseLabel})
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={card.quantity}
+                      onChange={(event) =>
+                        updateStagedQuantity(
+                          card.cachedCardId,
+                          card.phaseLabel,
+                          Math.max(1, Number(event.target.value) || 1),
+                        )
+                      }
+                      disabled={applyingStagedChanges}
+                      className="w-14 rounded border border-border bg-background px-1 py-0.5 text-xs"
+                    />
+                    <button
+                      type="button"
+                      className="rounded border border-border px-1.5 py-0.5 text-[11px] font-medium hover:bg-muted"
+                      onClick={() => removeStagedCard(card.cachedCardId, card.phaseLabel)}
+                      disabled={applyingStagedChanges}
+                    >
+                      Remove
+                    </button>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+
+              {stagedPoolChanges.map((change) => {
+                const actionLabel =
+                  change.action === 'add'
+                    ? `Add +${change.quantity}`
+                    : change.action === 'remove_one'
+                      ? `Remove -${change.quantity}`
+                      : 'Remove all';
+                return (
+                  <div key={change.id} className="flex items-center justify-between gap-2 rounded border border-border/60 px-2 py-1.5 text-xs">
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{actionLabel}</span> - {change.cardName} ({change.phaseLabel})
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded border border-border px-1.5 py-0.5 text-[11px] font-medium hover:bg-muted"
+                      onClick={() => removeStagedPoolChange(change.id)}
+                      disabled={applyingStagedChanges}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {isOwner ? (
         <>
-          <form className="rounded-lg border border-border bg-card p-6 space-y-4" onSubmit={saveStagedCards}>
+          <form
+            className="rounded-lg border border-border bg-card p-6 space-y-4"
+            onSubmit={(event) => event.preventDefault()}
+          >
             <h2 className="text-lg font-semibold">Add Cards</h2>
 
             <label className="block text-sm font-medium">
@@ -631,7 +993,8 @@ export function CardPoolDetailPage() {
                       <div>
                         <p className="text-sm font-medium">{card.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          {card.setCode} {card.manaCost ? `- ${card.manaCost}` : ''}
+                          <span className="uppercase">{card.setCode}</span>{' '}
+                          <ManaCostSymbols manaCost={card.manaCost} className="inline-flex align-middle" />
                         </p>
                       </div>
                     </div>
@@ -641,55 +1004,185 @@ export function CardPoolDetailPage() {
               </div>
             ) : null}
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Staged Cards</p>
-              {stagedCards.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No cards staged yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {stagedCards.map((card) => (
-                    <div key={card.cachedCardId} className="flex items-center justify-between gap-3 rounded border p-2">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium">{card.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {card.setCode} {card.manaCost ? `- ${card.manaCost}` : ''}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min={1}
-                          max={99}
-                          value={card.quantity}
-                          onChange={(event) =>
-                            updateStagedQuantity(card.cachedCardId, Math.max(1, Number(event.target.value) || 1))
-                          }
-                          className="w-16 rounded-md border border-border bg-background px-2 py-1 text-sm"
-                        />
-                        <button
-                          type="button"
-                          className="rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-muted"
-                          onClick={() => removeStagedCard(card.cachedCardId)}
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <button
-              type="submit"
-              disabled={savingCards || stagedCards.length === 0}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-            >
-              {savingCards ? 'Saving...' : 'Save to Pool'}
-            </button>
+            <p className="text-xs text-muted-foreground">Selected cards are staged and appear in the shared staged changes panel.</p>
           </form>
+        </>
+      ) : null}
 
-          <form className="rounded-lg border border-border bg-card p-6 space-y-4" onSubmit={importBulkCards}>
+      <div className="space-y-3 rounded-lg border border-border bg-card p-6">
+        {isAdmin ? (
+          <p className="text-xs text-muted-foreground">Admin tip: right-click any card to stage add/remove changes in a specific acquisition group.</p>
+        ) : null}
+        <ViewToolbar
+          viewMode={viewMode}
+          sortKey={sortKey}
+          groupMode={groupMode}
+          stacksOrganizeBy={stacksOrganizeBy}
+          totalCards={filteredCardCount}
+          disableVisualViews={disableVisualViews}
+          selectedColorFilters={selectedColorFilters}
+          selectedTypeFilters={selectedTypeFilters}
+          onToggleColorFilter={(value) =>
+            setSelectedColorFilters((prev) =>
+              prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
+            )
+          }
+          onToggleTypeFilter={(value) =>
+            setSelectedTypeFilters((prev) =>
+              prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
+            )
+          }
+          onResetFilters={() => {
+            setSelectedTypeFilters([...CARD_TYPE_FILTERS]);
+            setSelectedColorFilters([...COLOR_FILTERS]);
+          }}
+          onChange={(next) => {
+            if (next.viewMode) {
+              setViewMode(next.viewMode);
+            }
+            if (next.sortKey) {
+              setSortKey(next.sortKey);
+            }
+            if (next.groupMode) {
+              setGroupMode(next.groupMode);
+            }
+            if (next.stacksOrganizeBy) {
+              setStacksOrganizeBy(next.stacksOrganizeBy);
+            }
+          }}
+        />
+        {viewMode === 'stacks' ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-md border border-border/70 bg-card px-3 py-2">
+            <label htmlFor="stacks-size" className="text-xs font-medium text-muted-foreground">
+              Card Size
+            </label>
+            <input
+              id="stacks-size"
+              type="range"
+              min={160}
+              max={280}
+              step={10}
+              value={stackCardWidth}
+              onChange={(event) => setStackCardWidth(Number(event.target.value))}
+              className="w-44 accent-primary"
+            />
+            <span className="text-xs text-muted-foreground">{stackCardWidth}px</span>
+          </div>
+        ) : null}
+        <CardPreviewProvider>
+          {viewMode === 'list' ? (
+            <ListView
+              cards={filteredCards}
+              sortKey={sortKey}
+              groupMode={groupMode}
+              organizeBy={stacksOrganizeBy}
+              onCardContextMenu={handleAdminCardContextMenu}
+            />
+          ) : null}
+          {viewMode === 'grid' && !disableVisualViews ? (
+            <GridView
+              cards={filteredCards}
+              sortKey={sortKey}
+              groupMode={groupMode}
+              organizeBy={stacksOrganizeBy}
+              onCardContextMenu={handleAdminCardContextMenu}
+            />
+          ) : null}
+          {viewMode === 'stacks' && !disableVisualViews ? (
+            <StacksView
+              cards={filteredCards}
+              sortKey={sortKey}
+              groupMode={groupMode}
+              cardWidth={stackCardWidth}
+              organizeBy={stacksOrganizeBy}
+              onCardContextMenu={handleAdminCardContextMenu}
+            />
+          ) : null}
+          {viewMode === 'curve' && !disableVisualViews ? (
+            <CurveView
+              cards={filteredCards}
+              sortKey={sortKey}
+              groupMode={groupMode}
+              organizeBy={stacksOrganizeBy}
+              onCardContextMenu={handleAdminCardContextMenu}
+            />
+          ) : null}
+          <CardHoverPreview />
+        </CardPreviewProvider>
+        {isAdmin && adminContextMenu ? (
+          <div
+            className="absolute z-50 w-72 rounded-md border border-border bg-popover p-3 shadow-xl"
+            style={{ left: Math.max(8, adminContextMenu.pageX), top: Math.max(8, adminContextMenu.pageY) }}
+            onClick={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <p className="text-sm font-semibold">{adminContextMenu.card.name}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Manage this card in a specific acquisition group.</p>
+            <label className="mt-3 block text-xs font-medium text-muted-foreground">
+              Acquisition Group
+              <select
+                className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+                value={adminContextMenu.phaseLabel}
+                onChange={(event) =>
+                  setAdminContextMenu((prev) => (prev ? { ...prev, phaseLabel: event.target.value } : prev))
+                }
+                disabled={applyingStagedChanges}
+              >
+                {availablePhaseOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="mt-2 text-xs text-muted-foreground">Copies in selected group: {selectedPhaseQuantity}</p>
+            <p className="mt-1 text-xs text-muted-foreground">Total available after staged adds: {totalAvailableForSelection}</p>
+            {stagedRemovalForSelection ? (
+              <p className="mt-1 text-xs text-amber-600">
+                Current staged removal:{' '}
+                {stagedRemovalForSelection.action === 'remove_all'
+                  ? 'Remove all'
+                  : `Remove -${stagedRemovalForSelection.quantity}`}
+              </p>
+            ) : null}
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                onClick={() => stagePoolChange('add')}
+                disabled={applyingStagedChanges}
+              >
+                Stage +1
+              </button>
+              <button
+                type="button"
+                className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                onClick={() => stagePoolChange('remove_one')}
+                disabled={applyingStagedChanges || !canStageAnotherSingleRemoval}
+              >
+                Stage -1
+              </button>
+              <button
+                type="button"
+                className="rounded border border-destructive/50 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                onClick={() => stagePoolChange('remove_all')}
+                disabled={applyingStagedChanges || totalAvailableForSelection < 1}
+              >
+                Stage All
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {isOwner ? (
+        <>
+
+          <form
+            ref={bulkImportSectionRef}
+            className="rounded-lg border border-border bg-card p-6 space-y-4"
+            onSubmit={importBulkCards}
+          >
             <h2 className="text-lg font-semibold">Bulk Import</h2>
             <p className="text-sm text-muted-foreground">
               Paste one card name per line. You can prefix with a quantity, e.g. "2 Lightning Bolt".

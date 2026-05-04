@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
-import { bulkImportSet, bulkLookupByName, getCard, searchCards } from '../services/scryfallService.js';
+import { bulkImportSet, bulkLookupByName, getCard, getCardFaces, searchCards } from '../services/scryfallService.js';
 
 const router = Router();
 
@@ -25,6 +25,15 @@ router.get('/:scryfallId', async (req, res, next) => {
   try {
     const card = await getCard(req.params.scryfallId);
     res.json({ data: card });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:scryfallId/faces', async (req, res, next) => {
+  try {
+    const faces = await getCardFaces(req.params.scryfallId);
+    res.json({ data: { faces } });
   } catch (error) {
     next(error);
   }

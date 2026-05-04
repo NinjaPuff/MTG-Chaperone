@@ -20,10 +20,30 @@ type ScryfallCard = {
   set: string;
   image_uris?: Record<string, string>;
   card_faces?: Array<{
+    name?: string;
+    mana_cost?: string;
     image_uris?: Record<string, string>;
   }>;
   prices?: Record<string, string | null>;
 };
+
+function resolveManaCost(card: ScryfallCard) {
+  const topLevel = card.mana_cost?.trim();
+  if (topLevel) {
+    return topLevel;
+  }
+
+  if (card.card_faces) {
+    for (const face of card.card_faces) {
+      const faceCost = face.mana_cost?.trim();
+      if (faceCost) {
+        return faceCost;
+      }
+    }
+  }
+
+  return null;
+}
 
 function resolveImageUris(card: ScryfallCard) {
   if (card.image_uris) {
@@ -81,11 +101,12 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
   }
 
   async function upsertCard(card: ScryfallCard) {
+    const manaCost = resolveManaCost(card);
     return deps.prisma.cachedCard.upsert({
     where: { scryfallId: card.id },
     update: {
       name: card.name,
-      manaCost: card.mana_cost ?? null,
+      manaCost,
       typeLine: card.type_line,
       oracleText: card.oracle_text ?? null,
       colors: card.colors ?? [],
@@ -100,7 +121,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     create: {
       scryfallId: card.id,
       name: card.name,
-      manaCost: card.mana_cost ?? null,
+      manaCost,
       typeLine: card.type_line,
       oracleText: card.oracle_text ?? null,
       colors: card.colors ?? [],
@@ -141,6 +162,24 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     return upsertCard(card);
   }
 
+  async function getCardFaces(scryfallId: string) {
+    const card = await fetchScryfall<ScryfallCard>(`${SCRYFALL_BASE_URL}/cards/${scryfallId}`);
+
+    if (card.card_faces && card.card_faces.length > 1) {
+      return card.card_faces.map((face) => ({
+        name: face.name ?? card.name,
+        imageUris: face.image_uris ?? null,
+      }));
+    }
+
+    return [
+      {
+        name: card.name,
+        imageUris: card.image_uris ?? null,
+      },
+    ];
+  }
+
   async function bulkLookupByName(names: string[]) {
     const normalizedNames = names.map((name) => name.trim()).filter(Boolean);
     if (normalizedNames.length === 0) {
@@ -160,11 +199,26 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       (name) => !cached.some((card) => card.name.toLowerCase() === name.toLowerCase()),
     );
 
+    const staleDoubleFacedIds = [...new Set(
+      cached
+        .filter((card) => card.manaCost === null && card.cmc > 0 && card.name.includes('//'))
+        .map((card) => card.scryfallId),
+    )];
+
     for (const name of missing) {
       try {
         await searchCards(`!"${name}"`);
       } catch {
         // Ignore unresolved names in bulk mode.
+      }
+    }
+
+    for (const scryfallId of staleDoubleFacedIds) {
+      try {
+        const card = await fetchScryfall<ScryfallCard>(`${SCRYFALL_BASE_URL}/cards/${scryfallId}`);
+        await upsertCard(card);
+      } catch {
+        // Ignore refresh failures and preserve current cache row.
       }
     }
 
@@ -201,6 +255,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
   return {
     searchCards,
     getCard,
+    getCardFaces,
     bulkLookupByName,
     bulkImportSet,
   };
@@ -209,5 +264,6 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 const defaultScryfallService = createScryfallService();
 export const searchCards = defaultScryfallService.searchCards;
 export const getCard = defaultScryfallService.getCard;
+export const getCardFaces = defaultScryfallService.getCardFaces;
 export const bulkLookupByName = defaultScryfallService.bulkLookupByName;
 export const bulkImportSet = defaultScryfallService.bulkImportSet;

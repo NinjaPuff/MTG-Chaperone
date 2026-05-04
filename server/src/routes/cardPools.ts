@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { validateBody } from '../lib/validate.js';
 import {
+  adjustCardQuantityInPhase,
   bulkCreateAcquisition,
   createAcquisition,
   deleteAcquisition,
@@ -38,13 +39,20 @@ const bulkAcquisitionSchema = z.object({
     .min(1),
 });
 
-async function assertPoolOwner(poolId: string, userId: string) {
+async function assertCanModifyPool(poolId: string, userId: string, userRole: 'admin' | 'user') {
   const pool = await getPoolDetail(poolId);
-  if (pool.user.id !== userId) {
+  const isAdmin = userRole === 'admin';
+  if (!isAdmin && pool.user.id !== userId) {
     throw new AppError(403, 'FORBIDDEN', 'Only the pool owner can modify this pool');
   }
   return pool;
 }
+
+const adjustCardQuantitySchema = z.object({
+  phaseLabel: z.string().trim().min(1).max(100),
+  cachedCardId: z.string().trim().min(1),
+  action: z.enum(['add', 'remove_one', 'remove_all']),
+});
 
 function sanitizeFileNamePart(value: string) {
   return value
@@ -110,7 +118,7 @@ router.post(
   validateBody(createAcquisitionSchema),
   async (req, res, next) => {
     try {
-      await assertPoolOwner(req.params.poolId, req.user!.id);
+      await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
       const acquisition = await createAcquisition(req.params.poolId, req.body.phaseLabel, req.body.cards);
       res.status(201).json({ data: acquisition });
     } catch (error) {
@@ -125,7 +133,7 @@ router.post(
   validateBody(bulkAcquisitionSchema),
   async (req, res, next) => {
     try {
-      const pool = await assertPoolOwner(req.params.poolId, req.user!.id);
+      const pool = await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
       const setCodes = pool.boosterProduct.setCodes.map((setCode) => setCode.setCode);
       const result = await bulkCreateAcquisition(req.params.poolId, req.body.phaseLabel, req.body.items, setCodes);
       res.json({ data: result });
@@ -137,7 +145,7 @@ router.post(
 
 router.delete('/:poolId/acquisitions/:acqId', requireAuth, async (req, res, next) => {
   try {
-    await assertPoolOwner(req.params.poolId, req.user!.id);
+    await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
     const acquisition = await prisma.poolAcquisition.findUnique({
       where: { id: req.params.acqId },
       select: { id: true, cardPoolId: true },
@@ -153,5 +161,20 @@ router.delete('/:poolId/acquisitions/:acqId', requireAuth, async (req, res, next
     next(error);
   }
 });
+
+router.patch(
+  '/:poolId/cards/adjust',
+  requireAuth,
+  validateBody(adjustCardQuantitySchema),
+  async (req, res, next) => {
+    try {
+      await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
+      await adjustCardQuantityInPhase(req.params.poolId, req.body.phaseLabel, req.body.cachedCardId, req.body.action);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 export { router as cardPoolsRouter };
