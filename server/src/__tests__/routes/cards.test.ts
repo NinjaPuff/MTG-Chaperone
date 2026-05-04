@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   getCardFaces: vi.fn(),
   searchCards: vi.fn(),
   bulkLookupByName: vi.fn(),
+  lookupCanonicalByName: vi.fn(),
   bulkImportSet: vi.fn(),
 }));
 
@@ -29,6 +30,7 @@ vi.mock('../../services/scryfallService.js', () => ({
   getCardFaces: mocks.getCardFaces,
   searchCards: mocks.searchCards,
   bulkLookupByName: mocks.bulkLookupByName,
+  lookupCanonicalByName: mocks.lookupCanonicalByName,
   bulkImportSet: mocks.bulkImportSet,
 }));
 
@@ -40,6 +42,7 @@ describe('cards routes', () => {
     mocks.getCardFaces.mockReset();
     mocks.searchCards.mockReset();
     mocks.bulkLookupByName.mockReset();
+    mocks.lookupCanonicalByName.mockReset();
     mocks.bulkImportSet.mockReset();
   });
 

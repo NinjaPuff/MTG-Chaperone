@@ -5,11 +5,18 @@ type PreviewState = {
   name: string;
   imageUrl: string | null;
   anchorRect: DOMRect;
+  anchorPoint: { x: number; y: number };
 } | null;
 
 type CardPreviewContextValue = {
   preview: PreviewState;
-  showPreview: (scryfallId: string, name: string, imageUrl: string | null, anchorRect: DOMRect) => void;
+  showPreview: (
+    scryfallId: string,
+    name: string,
+    imageUrl: string | null,
+    anchorRect: DOMRect,
+    anchorPoint: { x: number; y: number },
+  ) => void;
   hidePreview: () => void;
 };
 
@@ -25,12 +32,13 @@ export function CardPreviewProvider({ children }: CardPreviewProviderProps) {
   const value = useMemo<CardPreviewContextValue>(
     () => ({
       preview,
-      showPreview: (scryfallId, name, imageUrl, anchorRect) =>
+      showPreview: (scryfallId, name, imageUrl, anchorRect, anchorPoint) =>
         setPreview({
           scryfallId,
           name,
           imageUrl,
           anchorRect,
+          anchorPoint,
         }),
       hidePreview: () => setPreview(null),
     }),
@@ -79,8 +87,10 @@ export function HoverTarget({ scryfallId, name, imageUrl, className, element = '
       onMouseEnter={(event) => {
         clearHoverTimer();
         const target = event.currentTarget;
+        const mouseX = event.clientX;
+        const mouseY = event.clientY;
         hoverTimerRef.current = window.setTimeout(() => {
-          showPreview(scryfallId, name, imageUrl, target.getBoundingClientRect());
+          showPreview(scryfallId, name, imageUrl, target.getBoundingClientRect(), { x: mouseX, y: mouseY });
         }, 200);
       }}
       onMouseLeave={() => {

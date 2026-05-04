@@ -6,6 +6,7 @@ import { validateBody } from '../lib/validate.js';
 import {
   adjustCardQuantityInPhase,
   bulkCreateAcquisition,
+  clearPhaseAcquisitions,
   createAcquisition,
   deleteAcquisition,
   getPoolDetail,
@@ -52,6 +53,10 @@ const adjustCardQuantitySchema = z.object({
   phaseLabel: z.string().trim().min(1).max(100),
   cachedCardId: z.string().trim().min(1),
   action: z.enum(['add', 'remove_one', 'remove_all']),
+});
+
+const clearPhaseSchema = z.object({
+  phaseLabel: z.string().trim().min(1).max(100),
 });
 
 function sanitizeFileNamePart(value: string) {
@@ -170,6 +175,24 @@ router.patch(
     try {
       await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
       await adjustCardQuantityInPhase(req.params.poolId, req.body.phaseLabel, req.body.cachedCardId, req.body.action);
+      res.status(204).send();
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.delete(
+  '/:poolId/phases',
+  requireAuth,
+  validateBody(clearPhaseSchema),
+  async (req, res, next) => {
+    try {
+      if (req.user!.role !== 'admin') {
+        throw new AppError(403, 'FORBIDDEN', 'Only admins can clear an entire phase');
+      }
+      await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
+      await clearPhaseAcquisitions(req.params.poolId, req.body.phaseLabel);
       res.status(204).send();
     } catch (error) {
       next(error);

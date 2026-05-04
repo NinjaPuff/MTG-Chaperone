@@ -1,7 +1,8 @@
-import type { MouseEvent } from 'react';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
+import { HoverTarget } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
-import { getPrimaryType, groupByCmc, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { getImageUrl, getPrimaryType, groupByCmc, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
 
 type CurveViewProps = {
   cards: PoolCard[];
@@ -30,34 +31,107 @@ function CurveColumns({
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
 }) {
   const byCmc = groupByCmc(cards);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [cardWidth, setCardWidth] = useState(118);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateWidth = (containerWidth: number) => {
+      const columns = 8;
+      const gapPx = 12; // Matches gap-3
+      const bucketPadding = 16; // Matches p-2
+      const bucketWidth = (containerWidth - gapPx * (columns - 1)) / columns;
+      const targetCardWidth = Math.floor(bucketWidth - bucketPadding);
+      setCardWidth(Math.max(88, Math.min(170, targetCardWidth)));
+    };
+
+    updateWidth(element.clientWidth);
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) {
+        return;
+      }
+      updateWidth(entry.contentRect.width);
+    });
+
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const cardHeight = Math.round((cardWidth * 680) / 488);
+  const peekHeight = 30;
 
   return (
-    <div className="grid grid-cols-8 gap-2 pb-3">
+    <div ref={containerRef} className="grid grid-cols-2 gap-3 pb-3 sm:grid-cols-4 lg:grid-cols-8">
       {[...byCmc.entries()].map(([cmc, bucket]) => {
         const ordered = sortCurveColumn(bucket);
+        const stackHeight = ordered.length > 0 ? (ordered.length - 1) * peekHeight + cardHeight + 4 : cardHeight;
         return (
-          <div key={cmc} className="min-w-0 space-y-1 rounded-md border border-border/60 bg-card/30 p-2">
+          <div key={cmc} className="min-w-0 space-y-2 rounded-md border border-border/60 bg-card/30 p-2">
             <div className="text-center text-sm font-semibold">
               {cmc === 7 ? '7+' : cmc} <span className="text-muted-foreground">({ordered.length})</span>
             </div>
             {ordered.length === 0 ? (
-              <div className="py-2 text-center text-[11px] text-muted-foreground">--</div>
+              <div className="py-6 text-center text-[11px] text-muted-foreground">--</div>
             ) : (
-              <div className="space-y-1">
-                {ordered.map((card) => (
-                  <div
-                    key={`${card.phaseLabel}-${card.scryfallId}`}
-                    className="rounded border border-border/60 px-1.5 py-1 text-[11px]"
-                    onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
-                  >
-                    <div className="flex items-start gap-1.5">
-                      <span className="shrink-0 rounded bg-muted px-1 py-0.5 font-semibold text-muted-foreground">
-                        {card.quantity}x
-                      </span>
-                      <span className="min-w-0 truncate">{card.name}</span>
-                    </div>
-                  </div>
-                ))}
+              <div className="mx-auto" style={{ width: cardWidth }}>
+                <div className="relative" style={{ height: stackHeight }}>
+                  {ordered.map((card, index) => {
+                    const image = getImageUrl(card, 'normal') ?? getImageUrl(card, 'border_crop');
+                    const isTop = index === ordered.length - 1;
+                    const visibleHeight = isTop ? cardHeight : peekHeight;
+                    const stackSliceClass = isTop
+                      ? 'rounded-md border border-border'
+                      : 'rounded-t-md rounded-b-none border-x border-t border-border';
+
+                    return (
+                      <HoverTarget
+                        key={`${card.phaseLabel}-${card.scryfallId}`}
+                        scryfallId={card.scryfallId}
+                        name={card.name}
+                        imageUrl={image}
+                        element="div"
+                      >
+                        <div
+                          className={`absolute left-0 right-0 overflow-hidden ${stackSliceClass}`}
+                          style={{ top: index * peekHeight, height: visibleHeight }}
+                          onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+                        >
+                          {image ? (
+                            <img
+                              src={image}
+                              alt={card.name}
+                              loading="lazy"
+                              decoding="async"
+                              className={`h-full w-full bg-black object-contain object-top shadow-sm ${
+                                isTop ? 'rounded-md' : 'rounded-t-md rounded-b-none'
+                              }`}
+                              style={{ height: cardHeight }}
+                            />
+                          ) : (
+                            <div
+                              className="w-full rounded-md border border-border bg-muted p-2 text-center text-xs text-muted-foreground"
+                              style={{ height: cardHeight }}
+                            >
+                              {card.name}
+                            </div>
+                          )}
+                          {card.quantity > 1 ? (
+                            <span className="absolute right-1 top-1 rounded-full border border-white/35 bg-black/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                              x{card.quantity}
+                            </span>
+                          ) : null}
+                        </div>
+                      </HoverTarget>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>

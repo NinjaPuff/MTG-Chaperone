@@ -100,6 +100,11 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     });
   }
 
+  function buildSetClause(setCodes: string[]) {
+    const normalizedSets = setCodes.map((setCode) => setCode.trim().toLowerCase()).filter(Boolean);
+    return normalizedSets.length ? ` (${normalizedSets.map((setCode) => `set:${setCode}`).join(' OR ')})` : '';
+  }
+
   async function upsertCard(card: ScryfallCard) {
     const manaCost = resolveManaCost(card);
     return deps.prisma.cachedCard.upsert({
@@ -137,10 +142,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
   }
 
   async function searchCards(query: string, setCodes: string[] = []) {
-    const normalizedSets = setCodes.map((setCode) => setCode.trim().toLowerCase()).filter(Boolean);
-    const setClause = normalizedSets.length
-      ? ` (${normalizedSets.map((setCode) => `set:${setCode}`).join(' OR ')})`
-      : '';
+    const setClause = buildSetClause(setCodes);
     const scryfallQuery = `${query}${setClause}`.trim();
     const encodedQuery = encodeURIComponent(scryfallQuery);
 
@@ -150,6 +152,27 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 
     const cards = await Promise.all(response.data.map((card) => upsertCard(card)));
     return cards;
+  }
+
+  async function lookupCanonicalByName(name: string, setCodes: string[] = []) {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return null;
+    }
+
+    const setClause = buildSetClause(setCodes);
+    const scryfallQuery = `!"${trimmedName}"${setClause}`.trim();
+    const encodedQuery = encodeURIComponent(scryfallQuery);
+    const response = await fetchScryfall<{ data: ScryfallCard[] }>(
+      `${SCRYFALL_BASE_URL}/cards/search?q=${encodedQuery}&order=name&unique=cards`,
+    );
+
+    const canonical = response.data[0];
+    if (!canonical) {
+      return null;
+    }
+
+    return upsertCard(canonical);
   }
 
   async function getCard(scryfallId: string) {
@@ -254,6 +277,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 
   return {
     searchCards,
+    lookupCanonicalByName,
     getCard,
     getCardFaces,
     bulkLookupByName,
@@ -263,6 +287,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 
 const defaultScryfallService = createScryfallService();
 export const searchCards = defaultScryfallService.searchCards;
+export const lookupCanonicalByName = defaultScryfallService.lookupCanonicalByName;
 export const getCard = defaultScryfallService.getCard;
 export const getCardFaces = defaultScryfallService.getCardFaces;
 export const bulkLookupByName = defaultScryfallService.bulkLookupByName;

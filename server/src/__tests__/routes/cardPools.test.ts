@@ -6,6 +6,7 @@ process.env.NODE_ENV = 'test';
 
 const mocks = vi.hoisted(() => ({
   adjustCardQuantityInPhase: vi.fn(),
+  clearPhaseAcquisitions: vi.fn(),
   getPoolDetail: vi.fn(),
 }));
 
@@ -36,6 +37,7 @@ vi.mock('../../services/cardPoolService.js', async (importOriginal) => {
   return {
     ...actual,
     adjustCardQuantityInPhase: mocks.adjustCardQuantityInPhase,
+    clearPhaseAcquisitions: mocks.clearPhaseAcquisitions,
     getPoolDetail: mocks.getPoolDetail,
   };
 });
@@ -46,6 +48,7 @@ describe('card pools routes', () => {
   beforeEach(() => {
     resetPrismaMock();
     mocks.adjustCardQuantityInPhase.mockReset();
+    mocks.clearPhaseAcquisitions.mockReset();
     mocks.getPoolDetail.mockReset();
     mocks.getPoolDetail.mockResolvedValue({
       user: { id: 'owner-1' },
@@ -84,5 +87,34 @@ describe('card pools routes', () => {
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN');
     expect(mocks.adjustCardQuantityInPhase).not.toHaveBeenCalled();
+  });
+
+  it('allows admins to clear an entire phase', async () => {
+    mocks.clearPhaseAcquisitions.mockResolvedValue(undefined);
+
+    const response = await request(app)
+      .delete('/api/card-pools/pool-1/phases')
+      .set('x-test-user', 'admin-1')
+      .set('x-test-role', 'admin')
+      .send({
+        phaseLabel: 'After Round 2',
+      });
+
+    expect(response.status).toBe(204);
+    expect(mocks.clearPhaseAcquisitions).toHaveBeenCalledWith('pool-1', 'After Round 2');
+  });
+
+  it('rejects non-admin users clearing a phase', async () => {
+    const response = await request(app)
+      .delete('/api/card-pools/pool-1/phases')
+      .set('x-test-user', 'owner-1')
+      .set('x-test-role', 'user')
+      .send({
+        phaseLabel: 'After Round 2',
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+    expect(mocks.clearPhaseAcquisitions).not.toHaveBeenCalled();
   });
 });

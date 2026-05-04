@@ -11,8 +11,10 @@ type ViewToolbarProps = {
   disableVisualViews?: boolean;
   selectedColorFilters: string[];
   selectedTypeFilters: string[];
+  showBasicLands: boolean;
   onToggleColorFilter: (value: string) => void;
   onToggleTypeFilter: (value: string) => void;
+  onToggleShowBasicLands: (value: boolean) => void;
   onResetFilters: () => void;
   onChange: (
     next: Partial<{ viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode; stacksOrganizeBy: StacksOrganizeBy }>,
@@ -79,6 +81,13 @@ type CombinedFilterDropdownProps = {
   onToggleColorFilter: (value: string) => void;
   onToggleTypeFilter: (value: string) => void;
   onResetFilters: () => void;
+};
+
+type ProTweaksDropdownProps = {
+  groupMode: GroupMode;
+  showBasicLands: boolean;
+  onChangeGroupMode: (isPhase: boolean) => void;
+  onToggleShowBasicLands: (value: boolean) => void;
 };
 
 function CombinedFilterDropdown({
@@ -148,6 +157,46 @@ function CombinedFilterDropdown({
   );
 }
 
+function ProTweaksDropdown({
+  groupMode,
+  showBasicLands,
+  onChangeGroupMode,
+  onToggleShowBasicLands,
+}: ProTweaksDropdownProps) {
+  const changed = groupMode === 'phase' || !showBasicLands;
+
+  return (
+    <details className="relative">
+      <summary className="list-none cursor-pointer rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground hover:bg-muted">
+        Display Settings{changed ? ' *' : ''}
+      </summary>
+      <div className="absolute right-0 z-20 mt-1 min-w-[19rem] rounded-md border border-border bg-card p-3 shadow-lg">
+        <p className="mb-2 text-xs font-semibold text-muted-foreground">Specific View Settings</p>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={groupMode === 'phase'}
+              onChange={(event) => onChangeGroupMode(event.target.checked)}
+              className="h-4 w-4 rounded border-border bg-background accent-primary"
+            />
+            Organize by Card Acquisition Group
+          </label>
+          <label className="flex items-center gap-2 text-xs text-foreground">
+            <input
+              type="checkbox"
+              checked={showBasicLands}
+              onChange={(event) => onToggleShowBasicLands(event.target.checked)}
+              className="h-4 w-4 rounded border-border bg-background accent-primary"
+            />
+            Show Basic Lands
+          </label>
+        </div>
+      </div>
+    </details>
+  );
+}
+
 export function ViewToolbar({
   viewMode,
   sortKey,
@@ -157,8 +206,10 @@ export function ViewToolbar({
   disableVisualViews = false,
   selectedColorFilters,
   selectedTypeFilters,
+  showBasicLands,
   onToggleColorFilter,
   onToggleTypeFilter,
+  onToggleShowBasicLands,
   onResetFilters,
   onChange,
 }: ViewToolbarProps) {
@@ -224,17 +275,14 @@ export function ViewToolbar({
         onToggleTypeFilter={onToggleTypeFilter}
         onResetFilters={onResetFilters}
       />
+      <ProTweaksDropdown
+        groupMode={groupMode}
+        showBasicLands={showBasicLands}
+        onChangeGroupMode={(isPhase) => onChange({ groupMode: isPhase ? 'phase' : 'flat' })}
+        onToggleShowBasicLands={onToggleShowBasicLands}
+      />
 
       <span className="ml-auto text-sm text-muted-foreground">{totalCards} cards</span>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
-        <input
-          type="checkbox"
-          checked={groupMode === 'phase'}
-          onChange={(event) => onChange({ groupMode: event.target.checked ? 'phase' : 'flat' })}
-          className="h-4 w-4 rounded border-border bg-background accent-primary"
-        />
-        Organize by Card Acquisition Group
-      </label>
       {disableVisualViews ? (
         <span className="w-full text-xs text-amber-600">Visual modes are disabled for large pools to keep the page responsive.</span>
       ) : null}

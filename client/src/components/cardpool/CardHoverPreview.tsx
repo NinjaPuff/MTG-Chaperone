@@ -103,20 +103,30 @@ export function CardHoverPreview() {
   }
 
   const estimatedWidth = displayFaces.length > 1 ? 500 : 260;
-  const gap = 12;
+  const estimatedHeight = Math.min(680, window.innerHeight * 0.8);
+  const gap = 4;
   const viewportMargin = 16;
   const anchor = preview.anchorRect;
+  const point = preview.anchorPoint;
 
-  let left = anchor.right + gap;
-  if (left + estimatedWidth > window.innerWidth - viewportMargin) {
-    left = anchor.left - estimatedWidth - gap;
+  const rightCandidate = anchor.right + gap;
+  const leftCandidate = anchor.left - estimatedWidth - gap;
+  const spaceRight = window.innerWidth - viewportMargin - anchor.right;
+  const spaceLeft = anchor.left - viewportMargin;
+
+  let left = rightCandidate;
+  if (spaceRight < estimatedWidth && spaceLeft >= estimatedWidth) {
+    left = leftCandidate;
+  } else if (spaceRight >= estimatedWidth && spaceLeft >= estimatedWidth) {
+    // If both sides fit, prefer side nearest current pointer.
+    left = point.x <= anchor.left + anchor.width / 2 ? leftCandidate : rightCandidate;
+  } else if (spaceRight < estimatedWidth && spaceLeft < estimatedWidth) {
+    left = point.x >= anchor.left + anchor.width / 2 ? leftCandidate : rightCandidate;
   }
   left = Math.max(viewportMargin, Math.min(left, window.innerWidth - estimatedWidth - viewportMargin));
 
-  const top = Math.max(
-    viewportMargin,
-    Math.min(anchor.top, window.innerHeight - viewportMargin - Math.min(680, window.innerHeight * 0.8)),
-  );
+  const preferredTop = point.y - 26;
+  const top = Math.max(viewportMargin, Math.min(preferredTop, window.innerHeight - viewportMargin - estimatedHeight));
 
   return createPortal(
     <div

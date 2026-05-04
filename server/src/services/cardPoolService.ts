@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { bulkLookupByName, getCard } from './scryfallService.js';
+import { bulkLookupByName, getCard, lookupCanonicalByName } from './scryfallService.js';
 
 async function refreshStaleDfcManaCost(cachedCardIds: string[]) {
   if (cachedCardIds.length === 0) {
@@ -304,6 +304,21 @@ type BulkItemInput = {
   quantity: number;
 };
 
+function parseBulkNameSpecifier(name: string) {
+  const match = name.match(/^(.*)\s+\[([A-Za-z0-9]{2,10})\]$/);
+  if (!match) {
+    return {
+      normalizedName: name.trim(),
+      specifiedSetCode: null as string | null,
+    };
+  }
+
+  return {
+    normalizedName: match[1].trim(),
+    specifiedSetCode: match[2].trim().toUpperCase(),
+  };
+}
+
 export async function bulkCreateAcquisition(
   poolId: string,
   phaseLabel: string,
@@ -311,10 +326,14 @@ export async function bulkCreateAcquisition(
   setCodes: string[],
 ) {
   const normalizedItems = items
-    .map((item) => ({
-      name: item.name.trim(),
+    .map((item) => {
+      const parsed = parseBulkNameSpecifier(item.name);
+      return {
+        name: parsed.normalizedName,
       quantity: item.quantity,
-    }))
+        specifiedSetCode: parsed.specifiedSetCode,
+      };
+    })
     .filter((item) => item.name.length > 0 && item.quantity > 0);
 
   if (normalizedItems.length === 0) {
@@ -340,11 +359,34 @@ export async function bulkCreateAcquisition(
 
   for (const item of normalizedItems) {
     const key = item.name.toLowerCase();
-    const candidates = (candidatesByName.get(key) ?? [])
-      .filter((card) => allowedSetCodes.size === 0 || allowedSetCodes.has(card.setCode.toUpperCase()))
+    if (item.specifiedSetCode && allowedSetCodes.size > 0 && !allowedSetCodes.has(item.specifiedSetCode)) {
+      unresolved.push(item.name);
+      continue;
+    }
+
+    const filteredByAllowedSet = (candidatesByName.get(key) ?? []).filter(
+      (card) => allowedSetCodes.size === 0 || allowedSetCodes.has(card.setCode.toUpperCase()),
+    );
+    const candidates = filteredByAllowedSet
+      .filter((card) => !item.specifiedSetCode || card.setCode.toUpperCase() === item.specifiedSetCode)
       .sort((a, b) => a.setCode.localeCompare(b.setCode) || a.scryfallId.localeCompare(b.scryfallId));
 
-    const match = candidates[0];
+    let match = candidates[0];
+    if (!item.specifiedSetCode && candidates.length > 1) {
+      try {
+        const canonical = await lookupCanonicalByName(item.name, [...allowedSetCodes]);
+        if (canonical) {
+          const canonicalSetCode = canonical.setCode.toUpperCase();
+          const canonicalAllowed = allowedSetCodes.size === 0 || allowedSetCodes.has(canonicalSetCode);
+          if (canonicalAllowed) {
+            match = canonical;
+          }
+        }
+      } catch {
+        // Fall back to deterministic local candidate ordering.
+      }
+    }
+
     if (!match) {
       unresolved.push(item.name);
       continue;
@@ -391,6 +433,20 @@ export async function deleteAcquisition(acquisitionId: string) {
 
   await prisma.poolAcquisition.delete({
     where: { id: acquisitionId },
+  });
+}
+
+export async function clearPhaseAcquisitions(poolId: string, phaseLabel: string) {
+  const normalizedPhaseLabel = phaseLabel.trim();
+  if (!normalizedPhaseLabel) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Phase label is required');
+  }
+
+  await prisma.poolAcquisition.deleteMany({
+    where: {
+      cardPoolId: poolId,
+      phaseLabel: normalizedPhaseLabel,
+    },
   });
 }
 
@@ -499,6 +555,7 @@ export function createCardPoolService() {
     createAcquisition,
     bulkCreateAcquisition,
     deleteAcquisition,
+    clearPhaseAcquisitions,
     adjustCardQuantityInPhase,
   };
 }

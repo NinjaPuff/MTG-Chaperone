@@ -1,4 +1,4 @@
-import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, type MouseEvent, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest, getStoredToken } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -152,6 +152,10 @@ const STACKS_ORGANIZE_DEFAULT: StacksOrganizeBy = 'type';
 const CARD_TYPE_FILTERS = ['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker', 'Land', 'Other'] as const;
 const COLOR_FILTERS = ['W', 'U', 'B', 'R', 'G', 'C'] as const;
 
+function isBasicLand(typeLine: string) {
+  return /\bBasic\s+Land\b/i.test(typeLine);
+}
+
 function parseViewPreferences(rawValue: string | null): { viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode } {
   if (!rawValue) {
     return { viewMode: 'list', sortKey: 'type', groupMode: 'flat' };
@@ -216,9 +220,13 @@ export function CardPoolDetailPage() {
   const [stagedCards, setStagedCards] = useState<StagedCard[]>([]);
 
   const [bulkText, setBulkText] = useState('');
+  const [bulkPhaseLabel, setBulkPhaseLabel] = useState('Initial Pool');
   const [bulkUnresolved, setBulkUnresolved] = useState<string[]>([]);
   const [bulkAddedCount, setBulkAddedCount] = useState(0);
-  const [importing, setImporting] = useState(false);
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const [isBulkAddOpen, setIsBulkAddOpen] = useState(false);
+  const [clearPhaseLabel, setClearPhaseLabel] = useState('Initial Pool');
+  const [clearingPhase, setClearingPhase] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortKey, setSortKey] = useState<SortKey>('type');
   const [groupMode, setGroupMode] = useState<GroupMode>('flat');
@@ -226,11 +234,10 @@ export function CardPoolDetailPage() {
   const [stacksOrganizeBy, setStacksOrganizeBy] = useState<StacksOrganizeBy>(STACKS_ORGANIZE_DEFAULT);
   const [selectedTypeFilters, setSelectedTypeFilters] = useState<string[]>([...CARD_TYPE_FILTERS]);
   const [selectedColorFilters, setSelectedColorFilters] = useState<string[]>([...COLOR_FILTERS]);
+  const [showBasicLands, setShowBasicLands] = useState(false);
   const [adminContextMenu, setAdminContextMenu] = useState<AdminContextMenuState | null>(null);
   const [stagedPoolChanges, setStagedPoolChanges] = useState<StagedPoolChange[]>([]);
   const [applyingStagedChanges, setApplyingStagedChanges] = useState(false);
-  const bulkImportSectionRef = useRef<HTMLFormElement | null>(null);
-
   const loadPool = async () => {
     if (!poolId) {
       setError('Missing pool id.');
@@ -300,6 +307,18 @@ export function CardPoolDetailPage() {
       setPhaseLabel(phaseOptions[0]);
     }
   }, [phaseLabel, phaseOptions]);
+
+  useEffect(() => {
+    if (!phaseOptions.includes(bulkPhaseLabel)) {
+      setBulkPhaseLabel(phaseOptions[0]);
+    }
+  }, [bulkPhaseLabel, phaseOptions]);
+
+  useEffect(() => {
+    if (!availablePhaseOptions.includes(clearPhaseLabel)) {
+      setClearPhaseLabel(availablePhaseOptions[0] ?? 'Initial Pool');
+    }
+  }, [availablePhaseOptions, clearPhaseLabel]);
 
   useEffect(() => {
     if (!adminContextMenu) {
@@ -428,9 +447,13 @@ export function CardPoolDetailPage() {
       }),
     [selectedColorFilters, selectedTypeFilters, sortedCards],
   );
-  const filteredCardCount = useMemo(
-    () => filteredCards.reduce((sum, card) => sum + card.quantity, 0),
-    [filteredCards],
+  const visibleCards = useMemo(
+    () => (showBasicLands ? filteredCards : filteredCards.filter((card) => !isBasicLand(card.typeLine))),
+    [filteredCards, showBasicLands],
+  );
+  const visibleCardCount = useMemo(
+    () => visibleCards.reduce((sum, card) => sum + card.quantity, 0),
+    [visibleCards],
   );
   const disableVisualViews = totalCards > VISUAL_VIEW_MAX_CARDS;
 
@@ -491,7 +514,7 @@ export function CardPoolDetailPage() {
     );
   };
 
-  const importBulkCards = async (event: FormEvent) => {
+  const bulkAddCards = async (event: FormEvent) => {
     event.preventDefault();
     if (!poolId) {
       return;
@@ -499,11 +522,11 @@ export function CardPoolDetailPage() {
 
     const items = parseBulkItems(bulkText);
     if (items.length === 0) {
-      setError('Enter at least one card name to import.');
+      setError('Enter at least one card name to bulk add.');
       return;
     }
 
-    setImporting(true);
+    setBulkAdding(true);
     setError(null);
     setSuccess(null);
     setBulkUnresolved([]);
@@ -513,7 +536,7 @@ export function CardPoolDetailPage() {
       const response = await apiRequest<BulkResponse>(`/api/card-pools/${poolId}/acquisitions/bulk`, {
         method: 'POST',
         body: {
-          phaseLabel,
+          phaseLabel: bulkPhaseLabel,
           items,
         },
       });
@@ -522,13 +545,14 @@ export function CardPoolDetailPage() {
         response.data.acquisition?.entries.reduce((sum, entry) => sum + entry.quantity, 0) ?? 0;
       setBulkAddedCount(addedCount);
       setBulkUnresolved(response.data.unresolved);
-      setSuccess(addedCount > 0 ? `Imported ${addedCount} cards.` : 'No cards imported.');
+      setSuccess(addedCount > 0 ? `Bulk added ${addedCount} cards.` : 'No cards were added.');
       setBulkText('');
+      setIsBulkAddOpen(false);
       await loadPool();
-    } catch (importError) {
-      setError(importError instanceof ApiError ? importError.message : 'Unable to import cards');
+    } catch (bulkAddError) {
+      setError(bulkAddError instanceof ApiError ? bulkAddError.message : 'Unable to bulk add cards');
     } finally {
-      setImporting(false);
+      setBulkAdding(false);
     }
   };
 
@@ -564,6 +588,37 @@ export function CardPoolDetailPage() {
       setSuccess('Pool exported.');
     } catch (exportError) {
       setError(exportError instanceof Error ? exportError.message : 'Unable to export pool');
+    }
+  };
+
+  const clearPhase = async () => {
+    if (!poolId || !isAdmin) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Clear all cards in "${clearPhaseLabel}" for this pool? This cannot be undone.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setClearingPhase(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/api/card-pools/${poolId}/phases`, {
+        method: 'DELETE',
+        body: {
+          phaseLabel: clearPhaseLabel,
+        },
+      });
+      await loadPool();
+      setSuccess(`Cleared phase "${clearPhaseLabel}".`);
+    } catch (clearError) {
+      setError(clearError instanceof ApiError ? clearError.message : 'Unable to clear phase');
+    } finally {
+      setClearingPhase(false);
     }
   };
 
@@ -822,10 +877,14 @@ export function CardPoolDetailPage() {
           {isOwner ? (
             <button
               type="button"
-              onClick={() => bulkImportSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              onClick={() => {
+                setBulkUnresolved([]);
+                setBulkAddedCount(0);
+                setIsBulkAddOpen(true);
+              }}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
             >
-              Import Cards
+              Bulk Add Cards
             </button>
           ) : null}
         </div>
@@ -842,6 +901,33 @@ export function CardPoolDetailPage() {
           <p className="text-sm text-muted-foreground">Total Cards</p>
           <p className="text-2xl font-bold">{totalCards}</p>
         </div>
+        {isAdmin ? (
+          <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+            <p className="text-sm font-medium text-destructive">Admin: Clear Entire Phase</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="min-w-52 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={clearPhaseLabel}
+                onChange={(event) => setClearPhaseLabel(event.target.value)}
+                disabled={clearingPhase}
+              >
+                {availablePhaseOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => void clearPhase()}
+                disabled={clearingPhase || availablePhaseOptions.length === 0}
+                className="rounded-md border border-destructive px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 disabled:opacity-60"
+              >
+                {clearingPhase ? 'Clearing...' : 'Clear Phase'}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {isOwner || isAdmin ? (
@@ -1018,10 +1104,11 @@ export function CardPoolDetailPage() {
           sortKey={sortKey}
           groupMode={groupMode}
           stacksOrganizeBy={stacksOrganizeBy}
-          totalCards={filteredCardCount}
+          totalCards={visibleCardCount}
           disableVisualViews={disableVisualViews}
           selectedColorFilters={selectedColorFilters}
           selectedTypeFilters={selectedTypeFilters}
+          showBasicLands={showBasicLands}
           onToggleColorFilter={(value) =>
             setSelectedColorFilters((prev) =>
               prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
@@ -1032,6 +1119,7 @@ export function CardPoolDetailPage() {
               prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
             )
           }
+          onToggleShowBasicLands={(value) => setShowBasicLands(value)}
           onResetFilters={() => {
             setSelectedTypeFilters([...CARD_TYPE_FILTERS]);
             setSelectedColorFilters([...COLOR_FILTERS]);
@@ -1072,7 +1160,7 @@ export function CardPoolDetailPage() {
         <CardPreviewProvider>
           {viewMode === 'list' ? (
             <ListView
-              cards={filteredCards}
+              cards={visibleCards}
               sortKey={sortKey}
               groupMode={groupMode}
               organizeBy={stacksOrganizeBy}
@@ -1081,7 +1169,7 @@ export function CardPoolDetailPage() {
           ) : null}
           {viewMode === 'grid' && !disableVisualViews ? (
             <GridView
-              cards={filteredCards}
+              cards={visibleCards}
               sortKey={sortKey}
               groupMode={groupMode}
               organizeBy={stacksOrganizeBy}
@@ -1090,7 +1178,7 @@ export function CardPoolDetailPage() {
           ) : null}
           {viewMode === 'stacks' && !disableVisualViews ? (
             <StacksView
-              cards={filteredCards}
+              cards={visibleCards}
               sortKey={sortKey}
               groupMode={groupMode}
               cardWidth={stackCardWidth}
@@ -1100,7 +1188,7 @@ export function CardPoolDetailPage() {
           ) : null}
           {viewMode === 'curve' && !disableVisualViews ? (
             <CurveView
-              cards={filteredCards}
+              cards={visibleCards}
               sortKey={sortKey}
               groupMode={groupMode}
               organizeBy={stacksOrganizeBy}
@@ -1175,31 +1263,53 @@ export function CardPoolDetailPage() {
         ) : null}
       </div>
 
-      {isOwner ? (
-        <>
-
+      {isOwner && isBulkAddOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setIsBulkAddOpen(false)}
+        >
           <form
-            ref={bulkImportSectionRef}
-            className="rounded-lg border border-border bg-card p-6 space-y-4"
-            onSubmit={importBulkCards}
+            className="w-full max-w-2xl rounded-lg border border-border bg-card p-6 space-y-4"
+            onSubmit={bulkAddCards}
+            onClick={(event) => event.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold">Bulk Import</h2>
-            <p className="text-sm text-muted-foreground">
-              Paste one card name per line. You can prefix with a quantity, e.g. "2 Lightning Bolt".
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Bulk Add Cards</h2>
+                <p className="text-sm text-muted-foreground">
+                  Paste one card per line. Prefix quantity like "2 Lightning Bolt". Choose the target phase below.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted"
+                onClick={() => setIsBulkAddOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <label className="block text-sm font-medium">
+              Phase Label
+              <select
+                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={bulkPhaseLabel}
+                onChange={(event) => setBulkPhaseLabel(event.target.value)}
+              >
+                {phaseOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <textarea
-              className="min-h-40 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              className="min-h-56 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={bulkText}
               onChange={(event) => setBulkText(event.target.value)}
               placeholder={'Island\n2 Lightning Bolt\nCounterspell'}
             />
-            <button
-              type="submit"
-              disabled={importing}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
-            >
-              {importing ? 'Importing...' : 'Import'}
-            </button>
 
             {bulkAddedCount > 0 ? <p className="text-sm text-emerald-600">{bulkAddedCount} cards added.</p> : null}
             {bulkUnresolved.length > 0 ? (
@@ -1212,8 +1322,26 @@ export function CardPoolDetailPage() {
                 </ul>
               </div>
             ) : null}
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+                onClick={() => setIsBulkAddOpen(false)}
+                disabled={bulkAdding}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={bulkAdding}
+                className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              >
+                {bulkAdding ? 'Adding...' : 'Bulk Add'}
+              </button>
+            </div>
           </form>
-        </>
+        </div>
       ) : null}
     </div>
   );
