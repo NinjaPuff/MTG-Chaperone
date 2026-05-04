@@ -40,5 +40,7 @@ export function useCurrentLeague() {
     void load();
   }, []);
 
-  return { league, activeSeason, activeSeasonId, isLoading };
+  const allSeasons = league?.seasons ?? [];
+
+  return { league, activeSeason, activeSeasonId, allSeasons, isLoading };
 }

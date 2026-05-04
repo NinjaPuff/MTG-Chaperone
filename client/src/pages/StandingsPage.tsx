@@ -22,6 +22,38 @@ type StandingRow = {
 
 type ApiListResponse<T> = { data: T[] };
 
+function rowAccentClass(index: number): string {
+  if (index === 0) {
+    return 'bg-yellow-500/5 border-l-2 border-l-yellow-500';
+  }
+  if (index === 1) {
+    return 'bg-slate-300/5 border-l-2 border-l-slate-400';
+  }
+  if (index === 2) {
+    return 'bg-amber-700/5 border-l-2 border-l-amber-700';
+  }
+  return '';
+}
+
+function RankChip({ index }: { index: number }) {
+  if (index > 2) {
+    return <>{index + 1}</>;
+  }
+
+  const className =
+    index === 0
+      ? 'bg-yellow-500/15 text-yellow-600'
+      : index === 1
+        ? 'bg-slate-300/15 text-slate-400'
+        : 'bg-amber-700/15 text-amber-600';
+
+  return (
+    <span className={`inline-flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${className}`}>
+      {index + 1}
+    </span>
+  );
+}
+
 export function StandingsPage() {
   const { activeSeasonId, isLoading: leagueLoading } = useCurrentLeague();
   const [standings, setStandings] = useState<StandingRow[]>([]);
@@ -78,8 +110,10 @@ export function StandingsPage() {
                 </tr>
               ) : (
                 standings.map((row, index) => (
-                  <tr key={row.id} className="border-b border-border last:border-0">
-                    <td className="p-3">{index + 1}</td>
+                  <tr key={row.id} className={`border-b border-border last:border-0 ${rowAccentClass(index)}`}>
+                    <td className="p-3">
+                      <RankChip index={index} />
+                    </td>
                     <td className="p-3">
                       <Link className="hover:underline" to={`/profile/${row.user.slug}`}>
                         {primaryName(row.user)}
