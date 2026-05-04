@@ -5,6 +5,8 @@ import { prismaMock, resetPrismaMock } from '../helpers/prismaMock.js';
 process.env.NODE_ENV = 'test';
 
 const mocks = vi.hoisted(() => ({
+  listMyDecklistsForEvent: vi.fn(),
+  listMyDecklistsForRound: vi.fn(),
   startEvent: vi.fn(),
   recomputeStandings: vi.fn(),
 }));
@@ -37,11 +39,18 @@ vi.mock('../../services/standingsService.js', () => ({
   recomputeStandings: mocks.recomputeStandings,
 }));
 
+vi.mock('../../services/decklistService.js', () => ({
+  listMyDecklistsForEvent: mocks.listMyDecklistsForEvent,
+  listMyDecklistsForRound: mocks.listMyDecklistsForRound,
+}));
+
 import app from '../../index.js';
 
 describe('events routes', () => {
   beforeEach(() => {
     resetPrismaMock();
+    mocks.listMyDecklistsForEvent.mockReset();
+    mocks.listMyDecklistsForRound.mockReset();
     mocks.startEvent.mockReset();
     mocks.recomputeStandings.mockReset();
   });
@@ -115,5 +124,46 @@ describe('events routes', () => {
       userId: 'user-1',
       matchPoints: 0,
     });
+  });
+
+  it('returns current user round deckbuilder data', async () => {
+    mocks.listMyDecklistsForRound.mockResolvedValue({
+      decklists: [{ id: 'deck-1' }],
+      poolId: 'pool-1',
+      restrictedCards: [{ cachedCardId: 'card-a', restrictedQty: 1, reason: '1 copy played in Round 1' }],
+      eventConfig: { deckCount: 2, minDeckSize: 40, sideboardRule: 'entire_pool', deckLockingMode: 'free_modification' },
+      basicLandCardIds: ['basic-forest'],
+    });
+
+    const response = await request(app).get(
+      '/api/events/11111111-1111-4111-8111-111111111111/rounds/22222222-2222-4222-8222-222222222222/my-decklists',
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.decklists).toHaveLength(1);
+    expect(mocks.listMyDecklistsForRound).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      'admin-1',
+    );
+  });
+
+  it('returns current user event-level deckbuilder data', async () => {
+    mocks.listMyDecklistsForEvent.mockResolvedValue({
+      decklists: [{ id: 'deck-1' }],
+      poolId: 'pool-1',
+      roundId: 'round-2',
+      roundNumber: 2,
+      restrictedCards: [],
+      eventConfig: { deckCount: 2, minDeckSize: 40, sideboardRule: 'entire_pool', deckLockingMode: 'free_modification' },
+      basicLandCardIds: ['basic-forest'],
+      basicLands: [],
+    });
+
+    const response = await request(app).get('/api/events/11111111-1111-4111-8111-111111111111/my-decklists');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.roundNumber).toBe(2);
+    expect(mocks.listMyDecklistsForEvent).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'admin-1');
   });
 });

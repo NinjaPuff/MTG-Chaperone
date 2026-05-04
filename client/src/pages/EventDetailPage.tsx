@@ -641,8 +641,16 @@ export function EventDetailPage() {
                     ) : null}{' '}
                     <span className="text-xs text-muted-foreground">({round.status.replace('_', ' ')})</span>
                   </span>
+                  <span className="flex gap-2">
+                    <Link
+                      to={`/events/${event.id}/build`}
+                      className="rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+                      onClick={(clickEvent) => clickEvent.stopPropagation()}
+                    >
+                      Build Deck
+                    </Link>
                   {isAdmin ? (
-                    <span className="flex gap-2">
+                    <>
                       {round.status === 'not_started' ? (
                         <>
                           <button
@@ -688,8 +696,9 @@ export function EventDetailPage() {
                           Complete Round
                         </button>
                       ) : null}
-                    </span>
+                    </>
                   ) : null}
+                  </span>
                 </summary>
 
                 <div className="mt-3 space-y-2">

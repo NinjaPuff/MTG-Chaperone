@@ -1,4 +1,4 @@
-import { Fragment, type MouseEvent } from 'react';
+import { Fragment, type MouseEvent, type ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
@@ -11,6 +11,8 @@ type ListViewProps = {
   groupMode: GroupMode;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 };
 
 type OrganizeSectionProps = {
@@ -18,9 +20,11 @@ type OrganizeSectionProps = {
   sortKey: SortKey;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 };
 
-function OrganizeSections({ cards, sortKey, organizeBy, onCardContextMenu }: OrganizeSectionProps) {
+function OrganizeSections({ cards, sortKey, organizeBy, onCardContextMenu, onCardDoubleClick, renderBadge }: OrganizeSectionProps) {
   const groups = groupByOrganize(cards, organizeBy);
 
   return (
@@ -38,6 +42,7 @@ function OrganizeSections({ cards, sortKey, organizeBy, onCardContextMenu }: Org
                   key={`${card.phaseLabel}-${card.scryfallId}`}
                   className="flex items-center gap-2 py-0.5 text-sm"
                   onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+                  onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
                 >
                   <span className="w-8 text-right font-mono text-muted-foreground">{card.quantity}x</span>
                   <HoverTarget scryfallId={card.scryfallId} name={card.name} imageUrl={getImageUrl(card, 'normal')}>
@@ -49,6 +54,7 @@ function OrganizeSections({ cards, sortKey, organizeBy, onCardContextMenu }: Org
                     fallbackColors={card.colorIdentity}
                     className="ml-auto whitespace-nowrap"
                   />
+                  {renderBadge ? <span className="ml-1 shrink-0">{renderBadge(card)}</span> : null}
                   <span className="text-xs uppercase text-muted-foreground">{card.setCode}</span>
                 </div>
               ))}
@@ -60,13 +66,22 @@ function OrganizeSections({ cards, sortKey, organizeBy, onCardContextMenu }: Org
   );
 }
 
-export function ListView({ cards, sortKey, groupMode, organizeBy, onCardContextMenu }: ListViewProps) {
+export function ListView({ cards, sortKey, groupMode, organizeBy, onCardContextMenu, onCardDoubleClick, renderBadge }: ListViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
   }
 
   if (groupMode === 'flat') {
-    return <OrganizeSections cards={cards} sortKey={sortKey} organizeBy={organizeBy} onCardContextMenu={onCardContextMenu} />;
+    return (
+      <OrganizeSections
+        cards={cards}
+        sortKey={sortKey}
+        organizeBy={organizeBy}
+        onCardContextMenu={onCardContextMenu}
+        onCardDoubleClick={onCardDoubleClick}
+        renderBadge={renderBadge}
+      />
+    );
   }
 
   const phaseGroups = groupByPhase(cards);
@@ -82,6 +97,8 @@ export function ListView({ cards, sortKey, groupMode, organizeBy, onCardContextM
               sortKey={sortKey}
               organizeBy={organizeBy}
               onCardContextMenu={onCardContextMenu}
+              onCardDoubleClick={onCardDoubleClick}
+              renderBadge={renderBadge}
             />
           </div>
         </Fragment>

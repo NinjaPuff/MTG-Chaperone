@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
@@ -10,14 +10,30 @@ type GridViewProps = {
   groupMode: GroupMode;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 };
 
-function CardCell({ card, onCardContextMenu }: { card: PoolCard; onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void }) {
+function CardCell({
+  card,
+  onCardContextMenu,
+  onCardDoubleClick,
+  renderBadge,
+}: {
+  card: PoolCard;
+  onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
+}) {
   const image = getImageUrl(card, 'border_crop') ?? getImageUrl(card, 'normal');
 
   return (
     <HoverTarget scryfallId={card.scryfallId} name={card.name} imageUrl={image} element="div">
-      <div className="relative" onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}>
+      <div
+        className="relative"
+        onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+        onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
+      >
         {image ? (
           <img
             src={image}
@@ -36,6 +52,7 @@ function CardCell({ card, onCardContextMenu }: { card: PoolCard; onCardContextMe
             x{card.quantity}
           </span>
         ) : null}
+        {renderBadge ? <div className="absolute bottom-1 left-1">{renderBadge(card)}</div> : null}
       </div>
     </HoverTarget>
   );
@@ -46,11 +63,15 @@ function OrganizedGridSections({
   sortKey,
   organizeBy,
   onCardContextMenu,
+  onCardDoubleClick,
+  renderBadge,
 }: {
   cards: PoolCard[];
   sortKey: SortKey;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 }) {
   const groups = groupByOrganize(cards, organizeBy);
 
@@ -63,7 +84,13 @@ function OrganizedGridSections({
           </h4>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
             {sortCards(groupedCards, sortKey).map((card) => (
-              <CardCell key={`${card.phaseLabel}-${card.scryfallId}`} card={card} onCardContextMenu={onCardContextMenu} />
+              <CardCell
+                key={`${card.phaseLabel}-${card.scryfallId}`}
+                card={card}
+                onCardContextMenu={onCardContextMenu}
+                onCardDoubleClick={onCardDoubleClick}
+                renderBadge={renderBadge}
+              />
             ))}
           </div>
         </div>
@@ -72,7 +99,7 @@ function OrganizedGridSections({
   );
 }
 
-export function GridView({ cards, sortKey, groupMode, organizeBy, onCardContextMenu }: GridViewProps) {
+export function GridView({ cards, sortKey, groupMode, organizeBy, onCardContextMenu, onCardDoubleClick, renderBadge }: GridViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
   }
@@ -84,6 +111,8 @@ export function GridView({ cards, sortKey, groupMode, organizeBy, onCardContextM
         sortKey={sortKey}
         organizeBy={organizeBy}
         onCardContextMenu={onCardContextMenu}
+        onCardDoubleClick={onCardDoubleClick}
+        renderBadge={renderBadge}
       />
     );
   }
@@ -100,6 +129,8 @@ export function GridView({ cards, sortKey, groupMode, organizeBy, onCardContextM
             sortKey={sortKey}
             organizeBy={organizeBy}
             onCardContextMenu={onCardContextMenu}
+            onCardDoubleClick={onCardDoubleClick}
+            renderBadge={renderBadge}
           />
         </div>
       ))}

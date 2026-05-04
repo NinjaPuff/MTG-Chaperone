@@ -8,6 +8,7 @@ import { completeEvent, createEvent, getEvent, startEvent, updateEvent } from '.
 import { createRound } from '../services/roundService.js';
 import { recomputeStandings } from '../services/standingsService.js';
 import { getEventResults } from '../services/eventRankingService.js';
+import { listMyDecklistsForEvent, listMyDecklistsForRound } from '../services/decklistService.js';
 
 const router = Router();
 
@@ -275,6 +276,24 @@ router.get('/:eventId/decklists', async (req, res, next) => {
       orderBy: { createdAt: 'desc' },
     });
     res.json({ data: decklists });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:eventId/rounds/:roundId/my-decklists', requireAuth, async (req, res, next) => {
+  try {
+    const data = await listMyDecklistsForRound(req.params.eventId, req.params.roundId, req.user.id);
+    res.json({ data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:eventId/my-decklists', requireAuth, async (req, res, next) => {
+  try {
+    const data = await listMyDecklistsForEvent(req.params.eventId, req.user.id);
+    res.json({ data });
   } catch (error) {
     next(error);
   }

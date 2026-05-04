@@ -8,6 +8,7 @@ import { CardPoolDetailPage } from './pages/CardPoolDetailPage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { EventResultsPage } from './pages/EventResultsPage';
 import { DecklistsPage } from './pages/DecklistsPage';
+import { DeckBuilderPage } from './pages/DeckBuilderPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
 import { SeasonHistoryPage } from './pages/SeasonHistoryPage';
@@ -27,6 +28,8 @@ export function App() {
         <Route path="/schedule" element={<SchedulePage />} />
         <Route path="/events/:eventId" element={<EventDetailPage />} />
         <Route path="/events/:eventId/results" element={<EventResultsPage />} />
+        <Route path="/events/:eventId/build" element={<DeckBuilderPage />} />
+        <Route path="/events/:eventId/rounds/:roundId/build" element={<DeckBuilderPage />} />
         <Route path="/pools" element={<CardPoolsPage />} />
         <Route path="/pools/:poolId" element={<CardPoolDetailPage />} />
         <Route path="/decks" element={<DecklistsPage />} />

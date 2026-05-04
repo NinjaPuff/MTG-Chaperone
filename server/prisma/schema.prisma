@@ -437,6 +437,7 @@ model Decklist {
   userId    String
   eventId   String
   roundId   String
+  orderIndex Int           @default(0)
   name      String?
   status    DecklistStatus @default(draft)
   createdAt DateTime       @default(now())
@@ -447,7 +448,7 @@ model Decklist {
   round   Round          @relation(fields: [roundId], references: [id], onDelete: Cascade)
   entries DecklistEntry[]
 
-  @@index([userId, eventId, roundId])
+  @@unique([userId, eventId, roundId, orderIndex])
 }
 
 model DecklistEntry {

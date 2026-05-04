@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
@@ -11,6 +11,8 @@ type StacksViewProps = {
   cardWidth: number;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 };
 
 function StackColumn({
@@ -18,11 +20,15 @@ function StackColumn({
   cards,
   cardWidth,
   onCardContextMenu,
+  onCardDoubleClick,
+  renderBadge,
 }: {
   typeLabel: string;
   cards: PoolCard[];
   cardWidth: number;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 }) {
   const cardHeight = Math.round((cardWidth * 680) / 488);
   const peekHeight = Math.max(48, Math.round(cardHeight * 0.24));
@@ -51,6 +57,7 @@ function StackColumn({
                   height: index === cards.length - 1 ? cardHeight : peekHeight,
                 }}
                 onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+                onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
               >
                 {image ? (
                   <img
@@ -78,6 +85,7 @@ function StackColumn({
                     x{card.quantity}
                   </span>
                 ) : null}
+                {renderBadge ? <div className="absolute bottom-1 left-1">{renderBadge(card)}</div> : null}
               </div>
             </HoverTarget>
           );
@@ -93,12 +101,16 @@ function StacksBlock({
   cardWidth,
   organizeBy,
   onCardContextMenu,
+  onCardDoubleClick,
+  renderBadge,
 }: {
   cards: PoolCard[];
   sortKey: SortKey;
   cardWidth: number;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 }) {
   const grouped = groupByOrganize(cards, organizeBy);
 
@@ -111,13 +123,24 @@ function StacksBlock({
           cards={sortCards(groupedCards, sortKey)}
           cardWidth={cardWidth}
           onCardContextMenu={onCardContextMenu}
+          onCardDoubleClick={onCardDoubleClick}
+          renderBadge={renderBadge}
         />
       ))}
     </div>
   );
 }
 
-export function StacksView({ cards, sortKey, groupMode, cardWidth, organizeBy, onCardContextMenu }: StacksViewProps) {
+export function StacksView({
+  cards,
+  sortKey,
+  groupMode,
+  cardWidth,
+  organizeBy,
+  onCardContextMenu,
+  onCardDoubleClick,
+  renderBadge,
+}: StacksViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
   }
@@ -130,6 +153,8 @@ export function StacksView({ cards, sortKey, groupMode, cardWidth, organizeBy, o
         cardWidth={cardWidth}
         organizeBy={organizeBy}
         onCardContextMenu={onCardContextMenu}
+        onCardDoubleClick={onCardDoubleClick}
+        renderBadge={renderBadge}
       />
     );
   }
@@ -147,6 +172,8 @@ export function StacksView({ cards, sortKey, groupMode, cardWidth, organizeBy, o
             cardWidth={cardWidth}
             organizeBy={organizeBy}
             onCardContextMenu={onCardContextMenu}
+            onCardDoubleClick={onCardDoubleClick}
+            renderBadge={renderBadge}
           />
         </div>
       ))}

@@ -1,4 +1,4 @@
-import { type MouseEvent, useEffect, useRef, useState } from 'react';
+import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
@@ -10,6 +10,8 @@ type CurveViewProps = {
   groupMode: GroupMode;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 };
 
 function sortCurveColumn(cards: PoolCard[]) {
@@ -26,9 +28,13 @@ function sortCurveColumn(cards: PoolCard[]) {
 function CurveColumns({
   cards,
   onCardContextMenu,
+  onCardDoubleClick,
+  renderBadge,
 }: {
   cards: PoolCard[];
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 }) {
   const byCmc = groupByCmc(cards);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -102,6 +108,7 @@ function CurveColumns({
                           className={`absolute left-0 right-0 overflow-hidden ${stackSliceClass}`}
                           style={{ top: index * peekHeight, height: visibleHeight }}
                           onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+                          onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
                         >
                           {image ? (
                             <img
@@ -127,6 +134,7 @@ function CurveColumns({
                               x{card.quantity}
                             </span>
                           ) : null}
+                          {renderBadge ? <div className="absolute bottom-1 left-1">{renderBadge(card)}</div> : null}
                         </div>
                       </HoverTarget>
                     );
@@ -145,13 +153,17 @@ function OrganizedCurveSections({
   cards,
   organizeBy,
   onCardContextMenu,
+  onCardDoubleClick,
+  renderBadge,
 }: {
   cards: PoolCard[];
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardDoubleClick?: (card: PoolCard) => void;
+  renderBadge?: (card: PoolCard) => ReactNode;
 }) {
   if (organizeBy === 'cmc') {
-    return <CurveColumns cards={cards} onCardContextMenu={onCardContextMenu} />;
+    return <CurveColumns cards={cards} onCardContextMenu={onCardContextMenu} onCardDoubleClick={onCardDoubleClick} renderBadge={renderBadge} />;
   }
 
   const groups = groupByOrganize(cards, organizeBy);
@@ -162,14 +174,14 @@ function OrganizedCurveSections({
           <h3 className="text-sm font-semibold text-muted-foreground">
             <GroupHeadingLabel label={label} />
           </h3>
-          <CurveColumns cards={groupedCards} onCardContextMenu={onCardContextMenu} />
+          <CurveColumns cards={groupedCards} onCardContextMenu={onCardContextMenu} onCardDoubleClick={onCardDoubleClick} renderBadge={renderBadge} />
         </div>
       ))}
     </div>
   );
 }
 
-export function CurveView({ cards, sortKey, groupMode, organizeBy, onCardContextMenu }: CurveViewProps) {
+export function CurveView({ cards, sortKey, groupMode, organizeBy, onCardContextMenu, onCardDoubleClick, renderBadge }: CurveViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
   }
@@ -177,7 +189,15 @@ export function CurveView({ cards, sortKey, groupMode, organizeBy, onCardContext
   const sortedCards = sortCards(cards, sortKey);
 
   if (groupMode === 'flat') {
-    return <OrganizedCurveSections cards={sortedCards} organizeBy={organizeBy} onCardContextMenu={onCardContextMenu} />;
+    return (
+      <OrganizedCurveSections
+        cards={sortedCards}
+        organizeBy={organizeBy}
+        onCardContextMenu={onCardContextMenu}
+        onCardDoubleClick={onCardDoubleClick}
+        renderBadge={renderBadge}
+      />
+    );
   }
 
   const byPhase = groupByPhase(sortedCards);
@@ -186,7 +206,13 @@ export function CurveView({ cards, sortKey, groupMode, organizeBy, onCardContext
       {[...byPhase.entries()].map(([phase, phaseCards]) => (
         <div key={phase} className="space-y-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{phase}</h3>
-          <OrganizedCurveSections cards={phaseCards} organizeBy={organizeBy} onCardContextMenu={onCardContextMenu} />
+          <OrganizedCurveSections
+            cards={phaseCards}
+            organizeBy={organizeBy}
+            onCardContextMenu={onCardContextMenu}
+            onCardDoubleClick={onCardDoubleClick}
+            renderBadge={renderBadge}
+          />
         </div>
       ))}
     </div>

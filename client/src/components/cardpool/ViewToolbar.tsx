@@ -12,9 +12,12 @@ type ViewToolbarProps = {
   selectedColorFilters: string[];
   selectedTypeFilters: string[];
   showBasicLands: boolean;
+  showRestrictedCards?: boolean;
+  allowRestrictedFilterToggle?: boolean;
   onToggleColorFilter: (value: string) => void;
   onToggleTypeFilter: (value: string) => void;
   onToggleShowBasicLands: (value: boolean) => void;
+  onToggleShowRestrictedCards?: (value: boolean) => void;
   onResetFilters: () => void;
   onChange: (
     next: Partial<{ viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode; stacksOrganizeBy: StacksOrganizeBy }>,
@@ -207,9 +210,12 @@ export function ViewToolbar({
   selectedColorFilters,
   selectedTypeFilters,
   showBasicLands,
+  showRestrictedCards = true,
+  allowRestrictedFilterToggle = false,
   onToggleColorFilter,
   onToggleTypeFilter,
   onToggleShowBasicLands,
+  onToggleShowRestrictedCards,
   onResetFilters,
   onChange,
 }: ViewToolbarProps) {
@@ -281,6 +287,17 @@ export function ViewToolbar({
         onChangeGroupMode={(isPhase) => onChange({ groupMode: isPhase ? 'phase' : 'flat' })}
         onToggleShowBasicLands={onToggleShowBasicLands}
       />
+      {allowRestrictedFilterToggle ? (
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={showRestrictedCards}
+            onChange={(event) => onToggleShowRestrictedCards?.(event.target.checked)}
+            className="h-3.5 w-3.5 rounded border-border bg-background accent-primary"
+          />
+          Show Restricted
+        </label>
+      ) : null}
 
       <span className="ml-auto text-sm text-muted-foreground">{totalCards} cards</span>
       {disableVisualViews ? (
