@@ -188,7 +188,7 @@ function OrganizedCurveSections({
       {[...groups.entries()].map(([label, groupedCards]) => (
         <div key={label} className="space-y-3">
           <h3 className="text-sm font-semibold text-muted-foreground">
-            <GroupHeadingLabel label={label} />
+            <GroupHeadingLabel label={label} /> ({sumBucketQuantity(groupedCards)})
           </h3>
           <CurveColumns
             cards={groupedCards}

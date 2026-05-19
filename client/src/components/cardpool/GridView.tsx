@@ -33,11 +33,10 @@ function CardCell({
   return (
     <HoverTarget scryfallId={card.scryfallId} name={card.name} imageUrl={image} element="div">
       <div
-        className="relative"
+        className={`relative${onCardClick ? ' cursor-pointer' : ''}`}
         onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
         onClick={onCardClick ? () => onCardClick(card) : undefined}
         onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
-        className={onCardClick ? 'cursor-pointer' : undefined}
       >
         {image ? (
           <img

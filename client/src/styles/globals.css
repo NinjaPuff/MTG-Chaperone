@@ -24,6 +24,20 @@
     --input: 240 5.9% 90%;
     --ring: 263 70% 50%;
     --radius: 0.5rem;
+    --deck-row-white: 45 30% 88%;
+    --deck-row-blue: 210 60% 88%;
+    --deck-row-black: 270 15% 82%;
+    --deck-row-red: 0 55% 88%;
+    --deck-row-green: 130 35% 85%;
+    --deck-row-gold: 42 70% 82%;
+    --deck-row-colorless: 240 5% 88%;
+    --deck-row-border-white: 45 45% 68%;
+    --deck-row-border-blue: 210 75% 62%;
+    --deck-row-border-black: 270 30% 58%;
+    --deck-row-border-red: 0 72% 62%;
+    --deck-row-border-green: 130 50% 55%;
+    --deck-row-border-gold: 42 85% 52%;
+    --deck-row-border-colorless: 240 8% 68%;
   }
 
   .dark {
@@ -46,6 +60,20 @@
     --border: 240 3.7% 20%;
     --input: 240 3.7% 20%;
     --ring: 263 70% 58%;
+    --deck-row-white: 45 20% 22%;
+    --deck-row-blue: 210 35% 22%;
+    --deck-row-black: 270 15% 22%;
+    --deck-row-red: 0 35% 22%;
+    --deck-row-green: 130 25% 22%;
+    --deck-row-gold: 42 40% 22%;
+    --deck-row-colorless: 240 5% 20%;
+    --deck-row-border-white: 45 50% 65%;
+    --deck-row-border-blue: 210 75% 62%;
+    --deck-row-border-black: 270 40% 58%;
+    --deck-row-border-red: 0 75% 62%;
+    --deck-row-border-green: 130 55% 55%;
+    --deck-row-border-gold: 42 85% 58%;
+    --deck-row-border-colorless: 240 12% 55%;
   }
 
   * {
@@ -55,5 +83,42 @@
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
+  }
+}
+
+@layer components {
+  .deck-row-tint-white {
+    background-color: hsl(var(--deck-row-white));
+    border: 2px solid hsl(var(--deck-row-border-white));
+  }
+
+  .deck-row-tint-blue {
+    background-color: hsl(var(--deck-row-blue));
+    border: 2px solid hsl(var(--deck-row-border-blue));
+  }
+
+  .deck-row-tint-black {
+    background-color: hsl(var(--deck-row-black));
+    border: 2px solid hsl(var(--deck-row-border-black));
+  }
+
+  .deck-row-tint-red {
+    background-color: hsl(var(--deck-row-red));
+    border: 2px solid hsl(var(--deck-row-border-red));
+  }
+
+  .deck-row-tint-green {
+    background-color: hsl(var(--deck-row-green));
+    border: 2px solid hsl(var(--deck-row-border-green));
+  }
+
+  .deck-row-tint-gold {
+    background-color: hsl(var(--deck-row-gold));
+    border: 2px solid hsl(var(--deck-row-border-gold));
+  }
+
+  .deck-row-tint-colorless {
+    background-color: hsl(var(--deck-row-colorless));
+    border: 2px solid hsl(var(--deck-row-border-colorless));
   }
 }

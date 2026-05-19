@@ -429,28 +429,16 @@ export function DeckBuilderPage() {
               {saving ? 'Saving...' : success ? success : activeRoundNumber ? `Using Round ${activeRoundNumber}` : 'Ready'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className={`rounded border px-3 py-1.5 text-sm ${!expandedDeckMode ? 'border-primary bg-primary/10' : 'border-border'}`}
-              onClick={() => setExpandedDeckMode(false)}
-            >
-              Card Pool
-            </button>
-            <button
-              type="button"
-              className={`rounded border px-3 py-1.5 text-sm ${expandedDeckMode ? 'border-primary bg-primary/10' : 'border-border'}`}
-              onClick={() => setExpandedDeckMode(true)}
-            >
-              Your Deck
-            </button>
-          </div>
         </div>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         {expandedDeckMode && activeDeck ? (
-          <DeckAnalyticsView deck={activeDeck} />
+          <DeckAnalyticsView
+            deck={activeDeck}
+            expandedDeckMode={expandedDeckMode}
+            onExpandedDeckModeChange={setExpandedDeckMode}
+          />
         ) : (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="space-y-3 rounded-lg border border-border bg-card p-4">
@@ -605,6 +593,8 @@ export function DeckBuilderPage() {
                 decks={decks}
                 activeDeckId={activeDeckId ?? ''}
                 minDeckSize={minDeckSize}
+                expandedDeckMode={expandedDeckMode}
+                onExpandedDeckModeChange={setExpandedDeckMode}
                 onActiveDeckChange={setActiveDeckId}
                 onDeckNameChange={(deckId, name) =>
                   setDecks((prev) => prev.map((deck) => (deck.id === deckId ? { ...deck, name } : deck)))

@@ -10,12 +10,13 @@ import { GridView } from '@/components/cardpool/GridView';
 import { ListView } from '@/components/cardpool/ListView';
 import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
 import { StacksView } from '@/components/cardpool/StacksView';
+import { StagedChangeRow } from '@/components/cardpool/StagedChangeRow';
 import { StagedOwnerCardRow } from '@/components/cardpool/StagedOwnerCardRow';
 import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
 import { focusAndSelectInput } from '@/lib/focusSearchInputAfterStage';
-import { flattenEntries, sortCards } from '@/lib/cardPoolSort';
+import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
 
 type PoolDetail = {
   id: string;
@@ -113,6 +114,7 @@ type StagedPoolChange = {
   phaseLabel: string;
   action: AdjustCardAction;
   quantity: number;
+  imageUri: string | null;
 };
 
 type SeasonEvent = {
@@ -665,6 +667,9 @@ export function CardPoolDetailPage() {
       return;
     }
 
+    const stagedImageUri =
+      getImageUrl(adminContextMenu.card, 'small') ?? getImageUrl(adminContextMenu.card, 'normal');
+
     if (action !== 'add') {
       const existingRemovalIndex = stagedPoolChanges.findIndex(
         (change) =>
@@ -692,9 +697,18 @@ export function CardPoolDetailPage() {
           const next = [...prev];
           const existing = next[existingRemovalIndex];
           if (action === 'remove_one' && existing.action === 'remove_one') {
-            next[existingRemovalIndex] = { ...existing, quantity: existing.quantity + 1 };
+            next[existingRemovalIndex] = {
+              ...existing,
+              quantity: existing.quantity + 1,
+              imageUri: existing.imageUri ?? stagedImageUri,
+            };
           } else {
-            next[existingRemovalIndex] = { ...existing, action, quantity: 1 };
+            next[existingRemovalIndex] = {
+              ...existing,
+              action,
+              quantity: 1,
+              imageUri: existing.imageUri ?? stagedImageUri,
+            };
           }
           return next;
         });
@@ -716,7 +730,11 @@ export function CardPoolDetailPage() {
         setStagedPoolChanges((prev) => {
           const next = [...prev];
           const existing = next[existingAddIndex];
-          next[existingAddIndex] = { ...existing, quantity: existing.quantity + 1 };
+          next[existingAddIndex] = {
+            ...existing,
+            quantity: existing.quantity + 1,
+            imageUri: existing.imageUri ?? stagedImageUri,
+          };
           return next;
         });
         setAdminContextMenu(null);
@@ -735,6 +753,7 @@ export function CardPoolDetailPage() {
         phaseLabel: adminContextMenu.phaseLabel,
         action,
         quantity: 1,
+        imageUri: stagedImageUri,
       },
     ]);
     setAdminContextMenu(null);
@@ -1038,19 +1057,14 @@ export function CardPoolDetailPage() {
                       ? `Remove -${change.quantity}`
                       : 'Remove all';
                 return (
-                  <div key={change.id} className="flex items-center justify-between gap-2 rounded border border-border/60 px-2 py-1.5 text-xs">
-                    <span className="min-w-0 truncate">
-                      <span className="font-medium">{actionLabel}</span> - {change.cardName} ({change.phaseLabel})
-                    </span>
-                    <button
-                      type="button"
-                      className="rounded border border-border px-1.5 py-0.5 text-[11px] font-medium hover:bg-muted"
-                      onClick={() => removeStagedPoolChange(change.id)}
-                      disabled={applyingStagedChanges}
-                    >
-                      Remove
-                    </button>
-                  </div>
+                  <StagedChangeRow
+                    key={change.id}
+                    label={`${actionLabel} - ${change.cardName} (${change.phaseLabel})`}
+                    imageUri={change.imageUri}
+                    imageAlt={change.cardName}
+                    applying={applyingStagedChanges}
+                    onRemove={() => removeStagedPoolChange(change.id)}
+                  />
                 );
               })}
             </div>

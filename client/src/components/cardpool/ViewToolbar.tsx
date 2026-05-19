@@ -109,7 +109,10 @@ function CombinedFilterDropdown({
       <summary className="list-none cursor-pointer rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground hover:bg-muted">
         Filters ({totalSelected}/{totalFilters})
       </summary>
-      <div className="absolute z-20 mt-1 min-w-[26rem] rounded-md border border-border bg-card p-3 shadow-lg">
+      <div
+        className="absolute z-20 mt-1 min-w-[26rem] rounded-md border border-border bg-card p-3 shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <p className="text-xs font-semibold text-muted-foreground">Color</p>
@@ -173,7 +176,10 @@ function ProTweaksDropdown({
       <summary className="list-none cursor-pointer rounded-md border border-border bg-background px-2 py-1 text-sm text-muted-foreground hover:bg-muted">
         Display Settings{changed ? ' *' : ''}
       </summary>
-      <div className="absolute right-0 z-20 mt-1 min-w-[19rem] rounded-md border border-border bg-card p-3 shadow-lg">
+      <div
+        className="absolute right-0 z-20 mt-1 min-w-[19rem] rounded-md border border-border bg-card p-3 shadow-lg"
+        onClick={(event) => event.stopPropagation()}
+      >
         <p className="mb-2 text-xs font-semibold text-muted-foreground">Specific View Settings</p>
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-xs text-foreground">

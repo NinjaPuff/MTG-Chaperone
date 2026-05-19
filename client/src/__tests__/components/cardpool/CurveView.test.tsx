@@ -47,4 +47,31 @@ describe('CurveView', () => {
 
     vi.unstubAllGlobals();
   });
+
+  it('shows total copy count beside organize-by group heading', () => {
+    const resizeObserver = vi.fn(() => ({
+      observe: vi.fn(),
+      disconnect: vi.fn(),
+      unobserve: vi.fn(),
+    }));
+    vi.stubGlobal('ResizeObserver', resizeObserver);
+
+    render(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[
+            makeCard({ scryfallId: 'c1', name: 'Bear', typeLine: 'Creature — Bear', cmc: 2, quantity: 2 }),
+            makeCard({ scryfallId: 'c2', name: 'Elf', typeLine: 'Creature — Elf', cmc: 1, quantity: 3 }),
+          ]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="type"
+        />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.getByText(/Creature \(5\)/)).toBeInTheDocument();
+
+    vi.unstubAllGlobals();
+  });
 });

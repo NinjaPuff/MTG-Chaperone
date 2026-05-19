@@ -1,5 +1,6 @@
 import { useMemo, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { BasicLandAdder } from './BasicLandAdder';
+import { DeckBuildDetailsToggle } from './DeckBuildDetailsToggle';
 import { DeckCardList, type DeckCardListItem } from './DeckCardList';
 import { MiniManaCurve } from './MiniManaCurve';
 import type { BuilderDeck, DeckBuilderCard } from './types';
@@ -17,6 +18,8 @@ type DeckSidebarProps = {
   onBasicLandsChange: (deckId: string, next: BuilderDeck['basicLands']) => void;
   onMainDeckDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
   onSideboardDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
+  expandedDeckMode?: boolean;
+  onExpandedDeckModeChange?: (expanded: boolean) => void;
 };
 
 function toListItems(cards: DeckBuilderCard[], zone: 'main' | 'sideboard'): DeckCardListItem[] {
@@ -30,6 +33,7 @@ function toListItems(cards: DeckBuilderCard[], zone: 'main' | 'sideboard'): Deck
       typeLine: card.typeLine,
       quantity: card.quantity,
       zone,
+      colorIdentity: card.colorIdentity,
     }));
 }
 
@@ -54,6 +58,8 @@ export function DeckSidebar({
   onBasicLandsChange,
   onMainDeckDrop,
   onSideboardDrop,
+  expandedDeckMode,
+  onExpandedDeckModeChange,
 }: DeckSidebarProps) {
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? decks[0];
   const [isEditingName, setIsEditingName] = useState(false);
@@ -65,7 +71,7 @@ export function DeckSidebar({
   const sideboardCount = sideboardCards.reduce((sum, card) => sum + card.quantity, 0);
   const curveCards = (activeDeck?.cards ?? [])
     .filter((card) => card.zone === 'main')
-    .map((card) => ({ cmc: card.cmc, quantity: card.quantity }));
+    .map((card) => ({ cmc: card.cmc, quantity: card.quantity, typeLine: card.typeLine }));
 
   if (!activeDeck) {
     return (
@@ -93,9 +99,10 @@ export function DeckSidebar({
   };
 
   return (
-    <aside className="flex h-full min-h-0 flex-col rounded-lg border border-border bg-muted/30 p-3">
+    <aside className="flex h-full min-h-0 flex-col rounded-lg border border-primary/30 bg-muted/40 p-3 ring-1 ring-primary/10">
       <div className="mb-3 space-y-2 border-b border-border/70 pb-3">
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1">
           {decks.map((deck) => (
             <button
               key={deck.id}
@@ -106,6 +113,14 @@ export function DeckSidebar({
               {deck.name}
             </button>
           ))}
+          </div>
+          {onExpandedDeckModeChange ? (
+            <DeckBuildDetailsToggle
+              expandedDeckMode={expandedDeckMode ?? false}
+              onChange={onExpandedDeckModeChange}
+              disabled={disabled}
+            />
+          ) : null}
         </div>
         <div className="flex items-center justify-between gap-2">
           {isEditingName ? (

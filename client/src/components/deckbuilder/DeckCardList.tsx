@@ -1,6 +1,8 @@
 import type { MouseEvent } from 'react';
 import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
-import { getPrimaryType } from '@/lib/cardPoolSort';
+import { sumBucketQuantity } from '@/lib/curveBucketTotal';
+import { getDeckRowColorClasses } from '@/lib/deckRowColors';
+import { CARD_TYPE_ORDER, getPrimaryType } from '@/lib/cardPoolSort';
 
 export type DeckCardListItem = {
   cachedCardId: string;
@@ -9,6 +11,7 @@ export type DeckCardListItem = {
   typeLine: string;
   quantity: number;
   zone: 'main' | 'sideboard';
+  colorIdentity: string[];
 };
 
 type DeckCardListProps = {
@@ -41,14 +44,18 @@ export function DeckCardList({
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
       {cards.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">{emptyText}</p> : null}
       <div className="mt-2 space-y-2">
-        {Object.entries(grouped).map(([group, groupCards]) => (
+        {CARD_TYPE_ORDER.filter((group) => grouped[group]?.length).map((group) => {
+          const groupCards = grouped[group];
+          return (
           <div key={group} className="space-y-1">
-            <p className="text-[11px] font-medium text-muted-foreground">{group}</p>
+            <p className="text-[11px] font-medium text-muted-foreground">
+              {group} ({sumBucketQuantity(groupCards)})
+            </p>
             {groupCards.map((card) => (
               <button
                 key={`${card.cachedCardId}-${card.zone}`}
                 type="button"
-                className="flex w-full items-center justify-between rounded border border-border/60 px-2 py-1 text-left text-xs hover:bg-muted"
+                className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs ${getDeckRowColorClasses(card.colorIdentity)}`}
                 onClick={() => onCardClick?.(card)}
                 onContextMenu={(event) => onCardContextMenu?.(event, card)}
               >
@@ -59,7 +66,8 @@ export function DeckCardList({
               </button>
             ))}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

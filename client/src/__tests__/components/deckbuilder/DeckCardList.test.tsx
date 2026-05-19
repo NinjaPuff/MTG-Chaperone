@@ -1,0 +1,120 @@
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { DeckCardList, type DeckCardListItem } from '../../../components/deckbuilder/DeckCardList';
+
+function makeListItem(overrides: Partial<DeckCardListItem> = {}): DeckCardListItem {
+  return {
+    cachedCardId: overrides.cachedCardId ?? 'card-1',
+    name: overrides.name ?? 'Test Card',
+    manaCost: overrides.manaCost ?? '{1}',
+    typeLine: overrides.typeLine ?? 'Creature',
+    quantity: overrides.quantity ?? 1,
+    zone: overrides.zone ?? 'main',
+    colorIdentity: overrides.colorIdentity ?? [],
+    ...overrides,
+  };
+}
+
+describe('DeckCardList', () => {
+  it('shows total quantity beside group heading', () => {
+    render(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({ cachedCardId: 'c1', name: 'Grizzly Bears', typeLine: 'Creature — Bear', quantity: 2 }),
+          makeListItem({ cachedCardId: 'c2', name: 'Llanowar Elves', typeLine: 'Creature — Elf', quantity: 3 }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/Creature \(5\)/)).toBeInTheDocument();
+  });
+
+  it('orders groups by CARD_TYPE_ORDER', () => {
+    render(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({ cachedCardId: 'i1', name: 'Lightning Bolt', typeLine: 'Instant', quantity: 1 }),
+          makeListItem({ cachedCardId: 'c1', name: 'Grizzly Bears', typeLine: 'Creature — Bear', quantity: 1 }),
+        ]}
+      />,
+    );
+
+    const creature = screen.getByText(/Creature \(1\)/);
+    const instant = screen.getByText(/Instant \(1\)/);
+    expect(creature.compareDocumentPosition(instant) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('shows empty text and no group headings when deck is empty', () => {
+    render(<DeckCardList title="Main Deck" emptyText="Drop cards here." cards={[]} />);
+
+    expect(screen.getByText('Drop cards here.')).toBeInTheDocument();
+    expect(screen.queryByText(/Creature \(/)).not.toBeInTheDocument();
+  });
+
+  it('shows group counts for sideboard cards', () => {
+    render(
+      <DeckCardList
+        title="Cards"
+        emptyText="Empty sideboard"
+        cards={[
+          makeListItem({
+            cachedCardId: 's1',
+            name: 'Negate',
+            typeLine: 'Instant',
+            quantity: 2,
+            zone: 'sideboard',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(/Instant \(2\)/)).toBeInTheDocument();
+  });
+
+  it('applies red tint class for mono-red rows', () => {
+    render(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({
+            cachedCardId: 'r1',
+            name: 'Lightning Bolt',
+            typeLine: 'Instant',
+            quantity: 4,
+            colorIdentity: ['R'],
+          }),
+        ]}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /4x Lightning Bolt/i });
+    expect(row.className).toContain('deck-row-tint-red');
+    expect(screen.getByText(/4x Lightning Bolt/)).toBeInTheDocument();
+  });
+
+  it('applies gold tint class for multicolor rows', () => {
+    render(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({
+            cachedCardId: 'm1',
+            name: 'Augur of Bolas',
+            typeLine: 'Creature',
+            quantity: 1,
+            colorIdentity: ['W', 'U'],
+          }),
+        ]}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: /1x Augur of Bolas/i });
+    expect(row.className).toContain('deck-row-tint-gold');
+  });
+});
