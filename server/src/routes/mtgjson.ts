@@ -36,7 +36,7 @@ async function fetchBoosterData(setCode: string, httpFetch: typeof fetch, now: n
 
   const response = await httpFetch(`https://mtgjson.com/api/v5/${normalizedSetCode}.json`, {
     headers: {
-      'User-Agent': 'MtgBoxLeagueHelper/0.1',
+      'User-Agent': 'MtgChaperone/0.1',
     },
   });
 

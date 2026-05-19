@@ -2,7 +2,7 @@ export function LoginPage() {
   return (
     <div className="mx-auto max-w-xl px-4 py-12">
       <div className="rounded-lg border border-border bg-card p-8 text-center shadow-sm">
-        <h1 className="text-2xl font-semibold">Sign in to MTG League</h1>
+        <h1 className="text-2xl font-semibold">Sign in to MTG Chaperone</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Use one of the OAuth providers below to authenticate.
         </p>

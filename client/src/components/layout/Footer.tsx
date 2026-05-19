@@ -3,7 +3,7 @@ export function Footer() {
     <footer className="border-t border-border bg-card">
       <div className="container mx-auto px-4 py-6 text-center text-sm text-muted-foreground">
         <p>
-          MTG Box League Helper &middot; Card data provided by{' '}
+          MTG Chaperone &middot; Card data provided by{' '}
           <a
             href="https://scryfall.com"
             target="_blank"

@@ -27,7 +27,7 @@ async function fetchScryfallSets(httpFetch: typeof fetch, now: number) {
 
   const response = await httpFetch('https://api.scryfall.com/sets', {
     headers: {
-      'User-Agent': 'MtgBoxLeagueHelper/0.1',
+      'User-Agent': 'MtgChaperone/0.1',
     },
   });
 

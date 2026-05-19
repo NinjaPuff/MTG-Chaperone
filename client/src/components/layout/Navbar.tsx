@@ -15,7 +15,7 @@ export function Navbar() {
       <div className="container mx-auto flex h-14 items-center px-4">
         <Link to="/" className="mr-6 flex items-center space-x-2">
           <span className="text-xl font-bold bg-gradient-to-r from-primary to-purple-400 bg-clip-text text-transparent">
-            MTG League
+            MTG Chaperone
           </span>
         </Link>
 

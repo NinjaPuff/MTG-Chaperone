@@ -1,11 +1,11 @@
-# MTG Box League Helper
+# MTG Chaperone
 
 A web application for organizing and managing MTG box league play. Track card pools, build decklists, report matches, and view standings -- all in one place.
 
 ## Architecture
 
 ```
-MtgBoxLeagueHelper/
+mtg-chaperone/
 ├── client/          React 18 + TypeScript + Vite frontend
 ├── server/          Express + TypeScript + Prisma backend
 ├── shared/          Shared TypeScript types and enums
@@ -41,8 +41,8 @@ MtgBoxLeagueHelper/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/your-org/MtgBoxLeagueHelper.git
-cd MtgBoxLeagueHelper
+git clone https://github.com/your-org/mtg-chaperone.git
+cd mtg-chaperone
 npm install
 ```
 

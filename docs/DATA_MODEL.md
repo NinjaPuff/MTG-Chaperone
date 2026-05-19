@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-This document describes the persistent data model for the MTG Box League Helper web application. The system manages leagues, seasons, events, matches, card pools, and decklists for Magic: The Gathering box-league play.
+This document describes the persistent data model for the MTG Chaperone web application. The system manages leagues, seasons, events, matches, card pools, and decklists for Magic: The Gathering box-league play.
 
 ```mermaid
 erDiagram

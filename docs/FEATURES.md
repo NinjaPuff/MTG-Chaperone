@@ -1,6 +1,6 @@
 # Feature Specifications
 
-MTG Box League Helper — comprehensive feature specifications for all planned functionality.
+MTG Chaperone — comprehensive feature specifications for all planned functionality.
 
 ## Priority Levels
 

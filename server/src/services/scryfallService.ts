@@ -90,7 +90,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     return withRateLimit(async () => {
       const response = await deps.fetch(url, {
         headers: {
-          'User-Agent': 'MtgBoxLeagueHelper/0.1',
+          'User-Agent': 'MtgChaperone/0.1',
         },
       });
       if (!response.ok) {
