@@ -11,6 +11,7 @@ type ListViewProps = {
   groupMode: GroupMode;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
 };
@@ -20,11 +21,20 @@ type OrganizeSectionProps = {
   sortKey: SortKey;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
 };
 
-function OrganizeSections({ cards, sortKey, organizeBy, onCardContextMenu, onCardDoubleClick, renderBadge }: OrganizeSectionProps) {
+function OrganizeSections({
+  cards,
+  sortKey,
+  organizeBy,
+  onCardContextMenu,
+  onCardClick,
+  onCardDoubleClick,
+  renderBadge,
+}: OrganizeSectionProps) {
   const groups = groupByOrganize(cards, organizeBy);
 
   return (
@@ -40,8 +50,9 @@ function OrganizeSections({ cards, sortKey, organizeBy, onCardContextMenu, onCar
               {sorted.map((card) => (
                 <div
                   key={`${card.phaseLabel}-${card.scryfallId}`}
-                  className="flex items-center gap-2 py-0.5 text-sm"
+                  className={`flex items-center gap-2 py-0.5 text-sm${onCardClick ? ' cursor-pointer' : ''}`}
                   onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+                  onClick={onCardClick ? () => onCardClick(card) : undefined}
                   onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
                 >
                   <span className="w-8 text-right font-mono text-muted-foreground">{card.quantity}x</span>
@@ -66,7 +77,16 @@ function OrganizeSections({ cards, sortKey, organizeBy, onCardContextMenu, onCar
   );
 }
 
-export function ListView({ cards, sortKey, groupMode, organizeBy, onCardContextMenu, onCardDoubleClick, renderBadge }: ListViewProps) {
+export function ListView({
+  cards,
+  sortKey,
+  groupMode,
+  organizeBy,
+  onCardContextMenu,
+  onCardClick,
+  onCardDoubleClick,
+  renderBadge,
+}: ListViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
   }
@@ -78,6 +98,7 @@ export function ListView({ cards, sortKey, groupMode, organizeBy, onCardContextM
         sortKey={sortKey}
         organizeBy={organizeBy}
         onCardContextMenu={onCardContextMenu}
+        onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
         renderBadge={renderBadge}
       />
@@ -97,6 +118,7 @@ export function ListView({ cards, sortKey, groupMode, organizeBy, onCardContextM
               sortKey={sortKey}
               organizeBy={organizeBy}
               onCardContextMenu={onCardContextMenu}
+              onCardClick={onCardClick}
               onCardDoubleClick={onCardDoubleClick}
               renderBadge={renderBadge}
             />

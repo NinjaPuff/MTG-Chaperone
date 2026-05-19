@@ -146,7 +146,7 @@ export function DeckSidebar({
       >
         <DeckCardList
           title="Main Deck"
-          emptyText="Drop cards here or double-click pool cards."
+          emptyText="Drop cards here or click pool cards."
           cards={mainCards}
           onCardClick={(card) =>
             onCardClick(
@@ -169,16 +169,6 @@ export function DeckSidebar({
               onCardContextMenu?.(event, target, activeDeck.id);
             }
           }}
-        />
-      </div>
-
-      <div className="mt-3">
-        <BasicLandAdder
-          counts={activeDeck.basicLands}
-          minDeckSize={minDeckSize}
-          deckCards={toSuggestionCards(activeDeck.cards)}
-          onChange={(next) => onBasicLandsChange(activeDeck.id, next)}
-          disabled={disabled}
         />
       </div>
 
@@ -219,6 +209,16 @@ export function DeckSidebar({
             }}
           />
         </div>
+      </div>
+
+      <div className="mt-3">
+        <BasicLandAdder
+          counts={activeDeck.basicLands}
+          minDeckSize={minDeckSize}
+          deckCards={toSuggestionCards(activeDeck.cards)}
+          onChange={(next) => onBasicLandsChange(activeDeck.id, next)}
+          disabled={disabled}
+        />
       </div>
     </aside>
   );

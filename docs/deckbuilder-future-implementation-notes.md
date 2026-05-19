@@ -9,22 +9,12 @@ These are planned follow-up changes and are intentionally **not implemented yet*
 - Fix **Filters** and **Display Settings** checkbox behavior in `ViewToolbar` (`CombinedFilterDropdown`, `ProTweaksDropdown`) used by the pool viewer and deckbuilder.
 - **Toggle off:** clicking an already-checked color/type filter must uncheck it and update the visible card list immediately (not stuck checked).
 - **Display settings:** ensure “Organize by Card Acquisition Group” and “Show Basic Lands” checkboxes toggle both directions reliably.
-- **Deckbuilder wiring:** `DeckBuilderPage` currently passes no-op handlers for `onToggleColorFilter`, `onToggleTypeFilter`, and `onResetFilters`—wire real state + filtering like `CardPoolDetailPage` so deckbuilder filters actually work.
-- **Pool viewer:** match working toggle patterns from `CardPoolDetailPage`; audit `checked` bindings and `onChange` handlers for any pool-only regressions.
+- **Pool viewer:** uses shared `filterPoolCards` from `cardPoolFilters.ts`; audit `ViewToolbar` `checked` bindings and `onChange` handlers for any pool-only regressions.
 - **Clear Filters:** reset color/type selections to defaults and refresh the card list; show the control only when filters differ from default.
 - Optional guardrail: decide whether at least one color/type must remain selected, or empty selection means “show none”—document and test chosen behavior.
-- Add regression tests: uncheck removes filter from results, deckbuilder toggles mutate visible pool cards, reset restores full list.
+- Add regression tests: uncheck removes filter from results, reset restores full list.
 
 ## 2) Deck Sidebar Layout + Visibility
-
-### Put sideboard above basic lands
-
-- Reorder deck sidebar sections to:
-  1. Main deck
-  2. Sideboard
-  3. Basic lands
-- Keep sideboard card count visible in collapsed and expanded states.
-- Confirm drag/drop targets and click-to-remove still map to the correct zone after reorder.
 
 ### Make right sidebar sticky so sideboard and basic lands are always visible
 
@@ -55,13 +45,6 @@ These are planned follow-up changes and are intentionally **not implemented yet*
 
 ## 4) Interaction + Stack Badge Polish
 
-### Make add-to-deck single click
-
-- Change pool card interaction in deckbuilder from double-click to single-click for add-to-deck behavior.
-- Keep remove/decrement interactions intentional to avoid accidental edits (for example, keep sidebar card click-to-remove or use a modified click path).
-- Confirm drag-and-drop behavior is unchanged and still available.
-- Add a regression test for single-click add behavior across supported pool views.
-
 ### Keep `# in deck` badge position consistent for front-most card in stacks
 
 - In stack view, ensure the `# in deck` badge anchor/alignment is the same for the front-most card as for cards behind it.
@@ -75,13 +58,6 @@ These are planned follow-up changes and are intentionally **not implemented yet*
 - Ensure updates apply to both main deck and sideboard views according to intended curve scope (typically main deck only).
 - Verify updates work for all edit paths: single-click add, sidebar remove, basic-land changes, and drag/drop.
 - Add regression tests that confirm curve bars update without requiring manual refresh or mode toggle.
-
-### Correct mana curve counting to use total quantities, not rendered card rows
-
-- Fix curve aggregation so each bucket/group sums `quantity` for all included entries, rather than counting distinct rendered cards.
-- Apply the same counting logic in both deckbuilder and pool viewer curve modes.
-- Verify grouped and ungrouped curve displays use consistent quantity-based totals.
-- Add regression tests for repeated copies (for example, `4x` of the same card) to ensure curve counts reflect total card counts.
 
 ### Fix deckbuilder drag and drop
 
@@ -105,23 +81,12 @@ These are planned follow-up changes and are intentionally **not implemented yet*
 
 ## 5) Pool Screen Layout
 
-### Move staged changes panel below Add Cards on pool detail page
+### Show card previews in staged changes line items (admin rows)
 
-- On `CardPoolDetailPage`, reorder owner/admin editing UI so the **Staged Changes** panel appears **below** the **Add Cards** form (phase label, search, and search results), not above it.
-- Keep the shared staged-changes panel as the single place for owner search adds, admin context-menu adds/removals, and bulk-add staging.
-- Update the helper copy under Add Cards if needed so it still points users to the staged panel in its new position.
-- Confirm **Apply Changes** / **Clear** behavior is unchanged; only vertical layout order changes.
-- Verify layout for owner-only, admin-only (non-owner), and owner+admin users.
-
-### Show card previews in staged changes line items
-
-- Add visual card identity to each **Staged Changes** row on `CardPoolDetailPage` so users can confirm the right card before applying.
+- Owner **Add** staged rows use inline thumbnails via `StagedOwnerCardRow` (shipped).
+- Add visual card identity to admin **Staged Changes** rows on `CardPoolDetailPage` (`StagedPoolChange` may need `imageUri` or `cachedCardId` lookup when staging).
 - **Preferred UX (pick one during implementation):**
-  - **Inline thumbnails** in each line item (similar to Add Cards search results), or
   - **Hover preview** via existing `CardPreviewProvider` / `HoverTarget` (same pattern as pool grid/list/stack views).
-- Cover both staged add types:
-  - Owner search adds (`StagedCard` already carries `imageUri`; wire it into the row UI).
-  - Admin context-menu adds/removals (`StagedPoolChange` may need `imageUri` or `cachedCardId` lookup when staging).
 - Keep line items compact on mobile; if using hover previews, ensure touch/long-press or a tap fallback where hover is unavailable.
 - Handle missing images gracefully (placeholder or text-only fallback).
 - Add regression coverage for at least one staged row type showing a preview source when `imageUri` is present.
@@ -141,15 +106,6 @@ These are planned follow-up changes and are intentionally **not implemented yet*
 - Introduce a shared toast primitive (app-wide) if none exists yet; use it here first rather than one-off pool-page markup.
 - Decide whether staging toasts replace or complement the existing inline `success` banner for stage actions (keep inline messages for apply/clear/export outcomes).
 - Add tests that staging handlers invoke the toast helper (mocked) without asserting on audio playback.
-
-### Auto-select Search Cards text after staging from Add Cards
-
-- After the owner stages a card from the **Add Cards** search results on `CardPoolDetailPage`, **select all text** in the **Search Cards** input so the next card name can be typed immediately without manually clearing the field.
-- Run after successful stage from a search-result click (`addSearchResultToStage`); keep focus on the search input.
-- Use a ref on the search input and `select()` (or equivalent) on the next frame so selection runs after React state updates.
-- Do not change staged-change behavior; only improve rapid multi-card entry workflow.
-- Optional: leave the previous query visible but fully selected so one keystroke replaces it; avoid clearing the field unless that is required for the search API to behave correctly.
-- Add a test that the search input receives `select()` (or that selection start/end span the full query) after staging.
 
 ### Keyboard navigation for Add Cards search results
 
@@ -184,21 +140,16 @@ These are planned follow-up changes and are intentionally **not implemented yet*
 
 ## Validation Checklist
 
-- Filter and display checkboxes toggle on and off; deckbuilder and pool viewer lists update immediately.
-- Sideboard appears above basic lands in all deck sidebar states.
+- Filter and display checkboxes toggle on and off; pool viewer lists update immediately.
 - Sidebar remains sticky while scrolling long pool content.
 - Deck panel is visually distinct from pool panel.
 - Detailed deck view control feels embedded in deck construction UI.
 - Curve-mode sorting behaves correctly and consistently in deckbuilder and pool viewer.
-- Add-to-deck works on single click across pool views.
 - `# in deck` badge alignment is consistent in stack view, including front-most card.
 - Mana curve updates immediately as deck contents change.
-- Mana curve bucket/group totals reflect summed card quantities, not distinct rendered cards.
 - Deckbuilder drag-and-drop works pool → main, pool → sideboard, and main ↔ sideboard on desktop; invalid drops are blocked.
-- Staged Changes panel appears below Add Cards on the pool detail page.
-- Staged Changes line items show card previews (inline or on hover) for owner and admin staged rows.
+- Admin Staged Changes line items show card previews (owner rows already show inline thumbnails).
 - Staging a pool change shows a toast (and optional sound, when enabled) naming the card and action.
-- After staging from Add Cards search, Search Cards input text is fully selected and focused for the next entry.
 - Add Cards search supports Arrow Up/Down to highlight results and Enter to stage the active result.
 - Mobile match reporting is quick and reliable for on-the-go use.
 - Individual match reporting is available directly from the dashboard.

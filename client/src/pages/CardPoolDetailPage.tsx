@@ -1,4 +1,4 @@
-import { FormEvent, type MouseEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest, getStoredToken } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -10,9 +10,12 @@ import { GridView } from '@/components/cardpool/GridView';
 import { ListView } from '@/components/cardpool/ListView';
 import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
 import { StacksView } from '@/components/cardpool/StacksView';
+import { StagedOwnerCardRow } from '@/components/cardpool/StagedOwnerCardRow';
 import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
-import { flattenEntries, getCardColorCode, getPrimaryType, sortCards } from '@/lib/cardPoolSort';
+import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
+import { focusAndSelectInput } from '@/lib/focusSearchInputAfterStage';
+import { flattenEntries, sortCards } from '@/lib/cardPoolSort';
 
 type PoolDetail = {
   id: string;
@@ -149,13 +152,6 @@ const VIEW_PREFERENCES_KEY = 'cardpool-view-prefs';
 const VISUAL_VIEW_MAX_CARDS = 180;
 const STACK_CARD_WIDTH_DEFAULT = 220;
 const STACKS_ORGANIZE_DEFAULT: StacksOrganizeBy = 'type';
-const CARD_TYPE_FILTERS = ['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker', 'Land', 'Other'] as const;
-const COLOR_FILTERS = ['W', 'U', 'B', 'R', 'G', 'C'] as const;
-
-function isBasicLand(typeLine: string) {
-  return /\bBasic\s+Land\b/i.test(typeLine);
-}
-
 function parseViewPreferences(rawValue: string | null): { viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode } {
   if (!rawValue) {
     return { viewMode: 'list', sortKey: 'type', groupMode: 'flat' };
@@ -238,6 +234,7 @@ export function CardPoolDetailPage() {
   const [adminContextMenu, setAdminContextMenu] = useState<AdminContextMenuState | null>(null);
   const [stagedPoolChanges, setStagedPoolChanges] = useState<StagedPoolChange[]>([]);
   const [applyingStagedChanges, setApplyingStagedChanges] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const loadPool = async () => {
     if (!poolId) {
       setError('Missing pool id.');
@@ -425,31 +422,14 @@ export function CardPoolDetailPage() {
 
   const poolCards = useMemo(() => flattenEntries(acquisitions, groupMode), [acquisitions, groupMode]);
   const sortedCards = useMemo(() => sortCards(poolCards, sortKey), [poolCards, sortKey]);
-  const filteredCards = useMemo(
-    () =>
-      sortedCards.filter((card) => {
-        const allTypesSelected = selectedTypeFilters.length === CARD_TYPE_FILTERS.length;
-        const typeMatch = allTypesSelected || selectedTypeFilters.includes(getPrimaryType(card.typeLine));
-
-        const allColorsSelected = selectedColorFilters.length === COLOR_FILTERS.length;
-        let colorMatch = allColorsSelected;
-        if (!allColorsSelected) {
-          const cardColorCode = getCardColorCode(card);
-          if (!cardColorCode) {
-            colorMatch = selectedColorFilters.includes('C');
-          } else {
-            const selectedColorSet = new Set(selectedColorFilters.filter((color) => color !== 'C'));
-            const cardColorSet = new Set(cardColorCode.split(''));
-            colorMatch = selectedColorSet.size > 0 && [...cardColorSet].every((color) => selectedColorSet.has(color));
-          }
-        }
-        return typeMatch && colorMatch;
-      }),
-    [selectedColorFilters, selectedTypeFilters, sortedCards],
-  );
   const visibleCards = useMemo(
-    () => (showBasicLands ? filteredCards : filteredCards.filter((card) => !isBasicLand(card.typeLine))),
-    [filteredCards, showBasicLands],
+    () =>
+      filterPoolCards(sortedCards, {
+        selectedColorFilters,
+        selectedTypeFilters,
+        showBasicLands,
+      }),
+    [selectedColorFilters, selectedTypeFilters, showBasicLands, sortedCards],
   );
   const visibleCardCount = useMemo(
     () => visibleCards.reduce((sum, card) => sum + card.quantity, 0),
@@ -498,6 +478,7 @@ export function CardPoolDetailPage() {
       };
       return next;
     });
+    focusAndSelectInput(searchInputRef.current);
   };
 
   const updateStagedQuantity = (cachedCardId: string, phase: string, quantity: number) => {
@@ -930,101 +911,6 @@ export function CardPoolDetailPage() {
         ) : null}
       </div>
 
-      {isOwner || isAdmin ? (
-        <div className="rounded-md border border-border/70 bg-card px-3 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">Staged Changes</p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
-                onClick={() => {
-                  setStagedCards([]);
-                  setStagedPoolChanges([]);
-                }}
-                disabled={applyingStagedChanges || (stagedCards.length === 0 && stagedPoolChanges.length === 0)}
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                onClick={() => void applyStagedPoolChanges()}
-                disabled={applyingStagedChanges || (stagedCards.length === 0 && stagedPoolChanges.length === 0)}
-              >
-                {applyingStagedChanges ? 'Applying...' : 'Apply Changes'}
-              </button>
-            </div>
-          </div>
-
-          {stagedCards.length === 0 && stagedPoolChanges.length === 0 ? (
-            <p className="mt-2 text-xs text-muted-foreground">No staged changes yet.</p>
-          ) : (
-            <div className="mt-2 space-y-1">
-              {stagedCards.map((card) => (
-                <div
-                  key={`${card.cachedCardId}-${card.phaseLabel}`}
-                  className="flex items-center justify-between gap-2 rounded border border-border/60 px-2 py-1.5 text-xs"
-                >
-                  <span className="min-w-0 truncate">
-                    <span className="font-medium">Add</span> - {card.name} ({card.phaseLabel})
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      min={1}
-                      max={99}
-                      value={card.quantity}
-                      onChange={(event) =>
-                        updateStagedQuantity(
-                          card.cachedCardId,
-                          card.phaseLabel,
-                          Math.max(1, Number(event.target.value) || 1),
-                        )
-                      }
-                      disabled={applyingStagedChanges}
-                      className="w-14 rounded border border-border bg-background px-1 py-0.5 text-xs"
-                    />
-                    <button
-                      type="button"
-                      className="rounded border border-border px-1.5 py-0.5 text-[11px] font-medium hover:bg-muted"
-                      onClick={() => removeStagedCard(card.cachedCardId, card.phaseLabel)}
-                      disabled={applyingStagedChanges}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-
-              {stagedPoolChanges.map((change) => {
-                const actionLabel =
-                  change.action === 'add'
-                    ? `Add +${change.quantity}`
-                    : change.action === 'remove_one'
-                      ? `Remove -${change.quantity}`
-                      : 'Remove all';
-                return (
-                  <div key={change.id} className="flex items-center justify-between gap-2 rounded border border-border/60 px-2 py-1.5 text-xs">
-                    <span className="min-w-0 truncate">
-                      <span className="font-medium">{actionLabel}</span> - {change.cardName} ({change.phaseLabel})
-                    </span>
-                    <button
-                      type="button"
-                      className="rounded border border-border px-1.5 py-0.5 text-[11px] font-medium hover:bg-muted"
-                      onClick={() => removeStagedPoolChange(change.id)}
-                      disabled={applyingStagedChanges}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ) : null}
-
       {isOwner ? (
         <>
           <form
@@ -1051,6 +937,7 @@ export function CardPoolDetailPage() {
             <label className="block text-sm font-medium">
               Search Cards
               <input
+                ref={searchInputRef}
                 className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
@@ -1090,12 +977,88 @@ export function CardPoolDetailPage() {
               </div>
             ) : null}
 
-            <p className="text-xs text-muted-foreground">Selected cards are staged and appear in the shared staged changes panel.</p>
+            <p className="text-xs text-muted-foreground">
+              Selected cards are staged below. Review staged changes, then apply when ready.
+            </p>
           </form>
         </>
       ) : null}
 
-      <div className="space-y-3 rounded-lg border border-border bg-card p-6">
+      {isOwner || isAdmin ? (
+        <div className="rounded-md border border-border/70 bg-card px-3 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">Staged Changes</p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                onClick={() => {
+                  setStagedCards([]);
+                  setStagedPoolChanges([]);
+                }}
+                disabled={applyingStagedChanges || (stagedCards.length === 0 && stagedPoolChanges.length === 0)}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                onClick={() => void applyStagedPoolChanges()}
+                disabled={applyingStagedChanges || (stagedCards.length === 0 && stagedPoolChanges.length === 0)}
+              >
+                {applyingStagedChanges ? 'Applying...' : 'Apply Changes'}
+              </button>
+            </div>
+          </div>
+
+          {stagedCards.length === 0 && stagedPoolChanges.length === 0 ? (
+            <p className="mt-2 text-xs text-muted-foreground">No staged changes yet.</p>
+          ) : (
+            <div className="mt-2 space-y-1">
+              {stagedCards.map((card) => (
+                <StagedOwnerCardRow
+                  key={`${card.cachedCardId}-${card.phaseLabel}`}
+                  name={card.name}
+                  phaseLabel={card.phaseLabel}
+                  imageUri={card.imageUri}
+                  quantity={card.quantity}
+                  applying={applyingStagedChanges}
+                  onQuantityChange={(quantity) =>
+                    updateStagedQuantity(card.cachedCardId, card.phaseLabel, quantity)
+                  }
+                  onRemove={() => removeStagedCard(card.cachedCardId, card.phaseLabel)}
+                />
+              ))}
+
+              {stagedPoolChanges.map((change) => {
+                const actionLabel =
+                  change.action === 'add'
+                    ? `Add +${change.quantity}`
+                    : change.action === 'remove_one'
+                      ? `Remove -${change.quantity}`
+                      : 'Remove all';
+                return (
+                  <div key={change.id} className="flex items-center justify-between gap-2 rounded border border-border/60 px-2 py-1.5 text-xs">
+                    <span className="min-w-0 truncate">
+                      <span className="font-medium">{actionLabel}</span> - {change.cardName} ({change.phaseLabel})
+                    </span>
+                    <button
+                      type="button"
+                      className="rounded border border-border px-1.5 py-0.5 text-[11px] font-medium hover:bg-muted"
+                      onClick={() => removeStagedPoolChange(change.id)}
+                      disabled={applyingStagedChanges}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : null}
+
+            <div className="space-y-3 rounded-lg border border-border bg-card p-6">
         {isAdmin ? (
           <p className="text-xs text-muted-foreground">Admin tip: right-click any card to stage add/remove changes in a specific acquisition group.</p>
         ) : null}

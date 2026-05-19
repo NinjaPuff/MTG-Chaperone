@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
+import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
 import { flattenEntries, sortCards } from '@/lib/cardPoolSort';
 import { CardHoverPreview } from '@/components/cardpool/CardHoverPreview';
 import { CardPreviewProvider } from '@/components/cardpool/CardPreviewContext';
@@ -138,6 +139,9 @@ export function DeckBuilderPage() {
   const [expandedDeckMode, setExpandedDeckMode] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showRestrictedCards, setShowRestrictedCards] = useState(true);
+  const [selectedTypeFilters, setSelectedTypeFilters] = useState<string[]>([...CARD_TYPE_FILTERS]);
+  const [selectedColorFilters, setSelectedColorFilters] = useState<string[]>([...COLOR_FILTERS]);
+  const [showBasicLands, setShowBasicLands] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortKey, setSortKey] = useState<SortKey>('type');
   const [groupMode, setGroupMode] = useState<GroupMode>('flat');
@@ -253,7 +257,12 @@ export function DeckBuilderPage() {
   }, [combinedAllocationByCardId, poolCards]);
 
   const visiblePoolCards = useMemo(() => {
-    return sortCards(poolCards, sortKey).filter((card) => {
+    const filtered = filterPoolCards(sortCards(poolCards, sortKey), {
+      selectedColorFilters,
+      selectedTypeFilters,
+      showBasicLands,
+    });
+    return filtered.filter((card) => {
       const restricted = restrictedMap.current.get(card.scryfallId)?.restrictedQty ?? 0;
       const allocated = combinedAllocationByCardId.get(card.scryfallId) ?? 0;
       const available = Math.max(0, card.quantity - restricted - allocated);
@@ -262,7 +271,15 @@ export function DeckBuilderPage() {
       }
       return true;
     });
-  }, [combinedAllocationByCardId, poolCards, showRestrictedCards, sortKey]);
+  }, [
+    combinedAllocationByCardId,
+    poolCards,
+    selectedColorFilters,
+    selectedTypeFilters,
+    showBasicLands,
+    showRestrictedCards,
+    sortKey,
+  ]);
 
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? null;
 
@@ -443,16 +460,27 @@ export function DeckBuilderPage() {
                 groupMode={groupMode}
                 stacksOrganizeBy={stacksOrganizeBy}
                 totalCards={visiblePoolCards.reduce((sum, card) => sum + card.quantity, 0)}
-                selectedColorFilters={['W', 'U', 'B', 'R', 'G', 'C']}
-                selectedTypeFilters={['Creature', 'Instant', 'Sorcery', 'Enchantment', 'Artifact', 'Planeswalker', 'Land', 'Other']}
-                showBasicLands={true}
+                selectedColorFilters={selectedColorFilters}
+                selectedTypeFilters={selectedTypeFilters}
+                showBasicLands={showBasicLands}
                 showRestrictedCards={showRestrictedCards}
                 allowRestrictedFilterToggle
-                onToggleColorFilter={() => undefined}
-                onToggleTypeFilter={() => undefined}
-                onToggleShowBasicLands={() => undefined}
+                onToggleColorFilter={(value) =>
+                  setSelectedColorFilters((prev) =>
+                    prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
+                  )
+                }
+                onToggleTypeFilter={(value) =>
+                  setSelectedTypeFilters((prev) =>
+                    prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
+                  )
+                }
+                onToggleShowBasicLands={(value) => setShowBasicLands(value)}
                 onToggleShowRestrictedCards={(value) => setShowRestrictedCards(value)}
-                onResetFilters={() => undefined}
+                onResetFilters={() => {
+                  setSelectedTypeFilters([...CARD_TYPE_FILTERS]);
+                  setSelectedColorFilters([...COLOR_FILTERS]);
+                }}
                 onChange={(next) => {
                   if (next.viewMode) {
                     setViewMode(next.viewMode);
@@ -494,7 +522,7 @@ export function DeckBuilderPage() {
                     sortKey={sortKey}
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
-                    onCardDoubleClick={(card) => addCardToActiveDeck(card, 'main')}
+                    onCardClick={(card) => addCardToActiveDeck(card, 'main')}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
                       return (
@@ -514,7 +542,7 @@ export function DeckBuilderPage() {
                     sortKey={sortKey}
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
-                    onCardDoubleClick={(card) => addCardToActiveDeck(card, 'main')}
+                    onCardClick={(card) => addCardToActiveDeck(card, 'main')}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
                       return (
@@ -535,7 +563,7 @@ export function DeckBuilderPage() {
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
                     cardWidth={stackCardWidth}
-                    onCardDoubleClick={(card) => addCardToActiveDeck(card, 'main')}
+                    onCardClick={(card) => addCardToActiveDeck(card, 'main')}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
                       return (
@@ -555,7 +583,7 @@ export function DeckBuilderPage() {
                     sortKey={sortKey}
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
-                    onCardDoubleClick={(card) => addCardToActiveDeck(card, 'main')}
+                    onCardClick={(card) => addCardToActiveDeck(card, 'main')}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
                       return (

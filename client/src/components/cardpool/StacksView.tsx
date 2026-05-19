@@ -11,6 +11,7 @@ type StacksViewProps = {
   cardWidth: number;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
 };
@@ -20,6 +21,7 @@ function StackColumn({
   cards,
   cardWidth,
   onCardContextMenu,
+  onCardClick,
   onCardDoubleClick,
   renderBadge,
 }: {
@@ -27,6 +29,7 @@ function StackColumn({
   cards: PoolCard[];
   cardWidth: number;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
 }) {
@@ -51,12 +54,13 @@ function StackColumn({
               element="div"
             >
               <div
-                className="absolute left-0 right-0 overflow-hidden rounded-md"
+                className={`absolute left-0 right-0 overflow-hidden rounded-md${onCardClick ? ' cursor-pointer' : ''}`}
                 style={{
                   top: index * peekHeight,
                   height: index === cards.length - 1 ? cardHeight : peekHeight,
                 }}
                 onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+                onClick={onCardClick ? () => onCardClick(card) : undefined}
                 onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
               >
                 {image ? (
@@ -101,6 +105,7 @@ function StacksBlock({
   cardWidth,
   organizeBy,
   onCardContextMenu,
+  onCardClick,
   onCardDoubleClick,
   renderBadge,
 }: {
@@ -109,6 +114,7 @@ function StacksBlock({
   cardWidth: number;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
 }) {
@@ -123,6 +129,7 @@ function StacksBlock({
           cards={sortCards(groupedCards, sortKey)}
           cardWidth={cardWidth}
           onCardContextMenu={onCardContextMenu}
+          onCardClick={onCardClick}
           onCardDoubleClick={onCardDoubleClick}
           renderBadge={renderBadge}
         />
@@ -138,6 +145,7 @@ export function StacksView({
   cardWidth,
   organizeBy,
   onCardContextMenu,
+  onCardClick,
   onCardDoubleClick,
   renderBadge,
 }: StacksViewProps) {
@@ -153,6 +161,7 @@ export function StacksView({
         cardWidth={cardWidth}
         organizeBy={organizeBy}
         onCardContextMenu={onCardContextMenu}
+        onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
         renderBadge={renderBadge}
       />
@@ -172,6 +181,7 @@ export function StacksView({
             cardWidth={cardWidth}
             organizeBy={organizeBy}
             onCardContextMenu={onCardContextMenu}
+            onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}
             renderBadge={renderBadge}
           />

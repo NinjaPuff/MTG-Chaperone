@@ -10,6 +10,7 @@ type GridViewProps = {
   groupMode: GroupMode;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
 };
@@ -17,11 +18,13 @@ type GridViewProps = {
 function CardCell({
   card,
   onCardContextMenu,
+  onCardClick,
   onCardDoubleClick,
   renderBadge,
 }: {
   card: PoolCard;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
 }) {
@@ -32,7 +35,9 @@ function CardCell({
       <div
         className="relative"
         onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+        onClick={onCardClick ? () => onCardClick(card) : undefined}
         onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
+        className={onCardClick ? 'cursor-pointer' : undefined}
       >
         {image ? (
           <img
@@ -63,6 +68,7 @@ function OrganizedGridSections({
   sortKey,
   organizeBy,
   onCardContextMenu,
+  onCardClick,
   onCardDoubleClick,
   renderBadge,
 }: {
@@ -70,6 +76,7 @@ function OrganizedGridSections({
   sortKey: SortKey;
   organizeBy: StacksOrganizeBy;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
+  onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
 }) {
@@ -88,6 +95,7 @@ function OrganizedGridSections({
                 key={`${card.phaseLabel}-${card.scryfallId}`}
                 card={card}
                 onCardContextMenu={onCardContextMenu}
+                onCardClick={onCardClick}
                 onCardDoubleClick={onCardDoubleClick}
                 renderBadge={renderBadge}
               />
@@ -99,7 +107,16 @@ function OrganizedGridSections({
   );
 }
 
-export function GridView({ cards, sortKey, groupMode, organizeBy, onCardContextMenu, onCardDoubleClick, renderBadge }: GridViewProps) {
+export function GridView({
+  cards,
+  sortKey,
+  groupMode,
+  organizeBy,
+  onCardContextMenu,
+  onCardClick,
+  onCardDoubleClick,
+  renderBadge,
+}: GridViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
   }
@@ -111,6 +128,7 @@ export function GridView({ cards, sortKey, groupMode, organizeBy, onCardContextM
         sortKey={sortKey}
         organizeBy={organizeBy}
         onCardContextMenu={onCardContextMenu}
+        onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
         renderBadge={renderBadge}
       />
@@ -129,6 +147,7 @@ export function GridView({ cards, sortKey, groupMode, organizeBy, onCardContextM
             sortKey={sortKey}
             organizeBy={organizeBy}
             onCardContextMenu={onCardContextMenu}
+            onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}
             renderBadge={renderBadge}
           />
