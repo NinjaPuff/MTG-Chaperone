@@ -1,20 +1,27 @@
 import { useEffect, useState } from 'react';
+import { resolvePrimarySetCode } from '@mtg-league/shared';
 import { apiRequest } from '@/lib/api';
 import { normalizeSetCode } from '@/lib/setSymbol';
 
 type PoolSetCode = { id: string; setCode: string };
 
+export type PoolSetInfo = {
+  setCodes: string[];
+  primarySetCode: string | null;
+};
+
 type SeasonPool = {
   user: { id: string };
   boosterProduct: {
+    primarySetCode?: string | null;
     setCodes: PoolSetCode[];
   };
 };
 
 type ApiListResponse<T> = { data: T[] };
 
-function buildPoolSetsMap(pools: SeasonPool[]): Map<string, string[]> {
-  const map = new Map<string, string[]>();
+function buildPoolSetsMap(pools: SeasonPool[]): Map<string, PoolSetInfo> {
+  const map = new Map<string, PoolSetInfo>();
 
   for (const pool of pools) {
     const seen = new Set<string>();
@@ -27,14 +34,19 @@ function buildPoolSetsMap(pools: SeasonPool[]): Map<string, string[]> {
       seen.add(normalized);
       codes.push(normalized);
     }
-    map.set(pool.user.id, codes);
+
+    codes.sort((a, b) => a.localeCompare(b));
+    map.set(pool.user.id, {
+      setCodes: codes,
+      primarySetCode: resolvePrimarySetCode(codes, pool.boosterProduct.primarySetCode),
+    });
   }
 
   return map;
 }
 
 export function useSeasonPoolSets(leagueSlug: string | null | undefined, seasonNumber: number | null | undefined) {
-  const [poolSetsByUserId, setPoolSetsByUserId] = useState<Map<string, string[]>>(new Map());
+  const [poolSetsByUserId, setPoolSetsByUserId] = useState<Map<string, PoolSetInfo>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

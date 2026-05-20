@@ -372,6 +372,7 @@ model BoosterProduct {
   name            String
   setReleaseName  String
   boosterType     BoosterType
+  primarySetCode  String?     @db.VarChar(10)
   createdAt       DateTime    @default(now())
 
   setCodes  BoosterSetCode[]

@@ -17,6 +17,7 @@ const boosterSchema = z.object({
   setReleaseName: z.string().min(2),
   boosterType: z.enum(['draft', 'play', 'set', 'collector']),
   setCodes: z.array(z.string().min(2)),
+  primarySetCode: z.string().min(2).optional(),
 });
 
 router.get('/', async (_req, res, next) => {

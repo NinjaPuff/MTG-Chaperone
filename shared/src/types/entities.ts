@@ -14,7 +14,7 @@ import {
   PoolVerificationMode,
   InviteLinkStatus,
   AcquisitionApprovalStatus,
-} from './enums';
+} from './enums.js';
 
 export interface User {
   id: string;
@@ -158,6 +158,7 @@ export interface BoosterProduct {
   name: string;
   setReleaseName: string;
   boosterType: BoosterType;
+  primarySetCode?: string | null;
   createdAt: Date;
 }
 

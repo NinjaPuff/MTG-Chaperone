@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { PlayerPoolSetSymbols } from '@/components/PlayerPoolSetSymbols';
 import type { ScryfallSetSummary } from '@/hooks/useScryfallSets';
+import type { PoolSetInfo } from '@/hooks/useSeasonPoolSets';
 import { getMatchOutcome } from '@/lib/matchUtils';
 import { primaryName, secondaryName } from '@/lib/userDisplay';
 
@@ -35,7 +36,7 @@ type MatchCardProps = {
   match: MatchCardMatch;
   eventRecords: Map<string, MatchRecord>;
   seasonPoints: Map<string, number>;
-  poolSetsByUserId?: Map<string, string[]>;
+  poolSetsByUserId?: Map<string, PoolSetInfo>;
   poolSetsLoading?: boolean;
   getSet?: (code: string) => ScryfallSetSummary | undefined;
   actions?: ReactNode;
@@ -110,7 +111,7 @@ function PlayerNameWithSets({
   align = 'left',
 }: {
   user: MatchCardUser;
-  poolSetsByUserId?: Map<string, string[]>;
+  poolSetsByUserId?: Map<string, PoolSetInfo>;
   poolSetsLoading?: boolean;
   getSet?: (code: string) => ScryfallSetSummary | undefined;
   align?: 'left' | 'right';

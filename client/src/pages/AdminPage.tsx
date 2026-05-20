@@ -2,9 +2,10 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
+import { resolveCreatePrimarySetCode } from '@/lib/boosterProductCreate';
 import { useAuth } from '@/context/AuthContext';
 import { SetCodePicker } from '@/components/SetCodePicker';
-import { SetSymbol } from '@/components/SetSymbol';
+import { BoosterProductSetBadges } from '@/components/BoosterProductSetBadges';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { primaryName, secondaryName } from '@/lib/userDisplay';
 
@@ -72,6 +73,7 @@ type BoosterProduct = {
   name: string;
   setReleaseName: string;
   boosterType: 'draft' | 'play' | 'set' | 'collector';
+  primarySetCode?: string | null;
   setCodes: Array<{ id: string; setCode: string }>;
 };
 
@@ -154,6 +156,20 @@ function formatBoosterTypeLabel(type: BoosterProduct['boosterType']) {
   }
 }
 
+function matchesBoosterProductSearch(product: BoosterProduct, query: string) {
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    return true;
+  }
+
+  return (
+    product.name.toLowerCase().includes(q) ||
+    product.setReleaseName.toLowerCase().includes(q) ||
+    product.boosterType.toLowerCase().includes(q) ||
+    product.setCodes.some((entry) => entry.setCode.toLowerCase().includes(q))
+  );
+}
+
 /** Stable row id for league membership APIs (some payloads omit userId; user.id is always present). */
 function membershipRowUserId(member: Member) {
   return member.userId ?? member.user.id;
@@ -188,12 +204,21 @@ export function AdminPage() {
   const [poolAssignments, setPoolAssignments] = useState<Record<string, string>>({});
   const [siteUsers, setSiteUsers] = useState<SiteUser[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [boosterProductSearch, setBoosterProductSearch] = useState('');
   const [scryfallSets, setScryfallSets] = useState<ScryfallSet[]>([]);
   const [selectedLeagueSlug, setSelectedLeagueSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isEventFormOpen, setIsEventFormOpen] = useState(false);
   const [isBoosterFormOpen, setIsBoosterFormOpen] = useState(false);
+  const [editingBoosterId, setEditingBoosterId] = useState<string | null>(null);
+  const [editBoosterForm, setEditBoosterForm] = useState({
+    name: '',
+    setReleaseName: '',
+    boosterType: 'play' as BoosterProduct['boosterType'],
+    primarySet: [] as string[],
+    setCodes: [] as string[],
+  });
   const [nextSeasonName, setNextSeasonName] = useState('');
 
   const [leagueForm, setLeagueForm] = useState({
@@ -234,7 +259,7 @@ export function AdminPage() {
     name: '',
     setReleaseName: '',
     boosterType: 'play' as BoosterProduct['boosterType'],
-    primarySet: [] as string[],
+    seedSet: [] as string[],
     setCodes: [] as string[],
   });
 
@@ -269,6 +294,20 @@ export function AdminPage() {
     },
     [scryfallSets],
   );
+
+  const sortedBoosterProducts = useMemo(
+    () => [...boosterProducts].sort((a, b) => a.name.localeCompare(b.name)),
+    [boosterProducts],
+  );
+
+  const filteredBoosterProducts = useMemo(() => {
+    const q = boosterProductSearch.trim();
+    if (!q) {
+      return sortedBoosterProducts;
+    }
+
+    return sortedBoosterProducts.filter((product) => matchesBoosterProductSearch(product, q));
+  }, [sortedBoosterProducts, boosterProductSearch]);
 
   const loadLeagues = async () => {
     const response = await apiRequest<ApiListResponse<League>>('/api/leagues');
@@ -419,7 +458,10 @@ export function AdminPage() {
       return;
     }
 
-    const defaultBoosterId = boosterProducts[0].id;
+    const defaultBoosterId = sortedBoosterProducts[0]?.id;
+    if (!defaultBoosterId) {
+      return;
+    }
     setPoolAssignments((prev) => {
       const next = { ...prev };
       for (const member of members) {
@@ -431,10 +473,10 @@ export function AdminPage() {
       }
       return next;
     });
-  }, [members, poolsByUserId, boosterProducts]);
+  }, [members, poolsByUserId, sortedBoosterProducts]);
 
   useEffect(() => {
-    const primaryCode = boosterForm.primarySet[0] ?? null;
+    const primaryCode = boosterForm.seedSet[0] ?? null;
     if (!primaryCode) {
       return;
     }
@@ -458,7 +500,7 @@ export function AdminPage() {
         setCodes: Array.from(new Set([...prev.setCodes, normalizedCode])),
       }));
     }
-  }, [boosterForm.primarySet, boosterForm.boosterType, boosterForm.name, boosterForm.setReleaseName, boosterForm.setCodes, scryfallSetMap]);
+  }, [boosterForm.seedSet, boosterForm.boosterType, boosterForm.name, boosterForm.setReleaseName, boosterForm.setCodes, scryfallSetMap]);
 
   const submitLeague = async (event: FormEvent) => {
     event.preventDefault();
@@ -681,7 +723,7 @@ export function AdminPage() {
   };
 
   const autoDetectSetCodes = async () => {
-    const setCode = boosterForm.primarySet[0];
+    const setCode = boosterForm.seedSet[0];
     if (!setCode) {
       return;
     }
@@ -696,11 +738,17 @@ export function AdminPage() {
         setSuccess('No mapping found. Select set codes manually.');
         return;
       }
+      const seed = setCode.trim().toUpperCase();
+      const seedMissing = !nextSetCodes.some((code) => code.toUpperCase() === seed);
       setBoosterForm((prev) => ({
         ...prev,
         setCodes: nextSetCodes,
       }));
-      setSuccess('Set codes auto-detected from MTGJSON.');
+      setSuccess(
+        seedMissing
+          ? 'Set codes auto-detected from MTGJSON. Seed set was not in the detected list — set primary via Edit after save.'
+          : 'Set codes auto-detected from MTGJSON.',
+      );
     } catch (detectError) {
       setError(detectError instanceof ApiError ? detectError.message : 'Unable to auto-detect set codes');
     }
@@ -711,6 +759,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
+      const primarySetCode = resolveCreatePrimarySetCode(boosterForm.seedSet, boosterForm.setCodes);
       await apiRequest('/api/booster-products', {
         method: 'POST',
         body: {
@@ -718,13 +767,14 @@ export function AdminPage() {
           setReleaseName: boosterForm.setReleaseName,
           boosterType: boosterForm.boosterType,
           setCodes: boosterForm.setCodes,
+          ...(primarySetCode ? { primarySetCode } : {}),
         },
       });
       setBoosterForm({
         name: '',
         setReleaseName: '',
         boosterType: 'play',
-        primarySet: [],
+        seedSet: [],
         setCodes: [],
       });
       setIsBoosterFormOpen(false);
@@ -732,6 +782,48 @@ export function AdminPage() {
       setSuccess('Booster product saved.');
     } catch (createError) {
       setError(createError instanceof ApiError ? createError.message : 'Unable to save booster product');
+    }
+  };
+
+  const startEditBooster = (product: BoosterProduct) => {
+    setEditingBoosterId(product.id);
+    setEditBoosterForm({
+      name: product.name,
+      setReleaseName: product.setReleaseName,
+      boosterType: product.boosterType,
+      primarySet: product.primarySetCode ? [product.primarySetCode] : [],
+      setCodes: product.setCodes.map((entry) => entry.setCode),
+    });
+  };
+
+  const cancelEditBooster = () => {
+    setEditingBoosterId(null);
+  };
+
+  const saveEditBooster = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingBoosterId) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+    try {
+      await apiRequest(`/api/booster-products/${editingBoosterId}`, {
+        method: 'PATCH',
+        body: {
+          name: editBoosterForm.name,
+          setReleaseName: editBoosterForm.setReleaseName,
+          boosterType: editBoosterForm.boosterType,
+          setCodes: editBoosterForm.setCodes,
+          ...(editBoosterForm.primarySet[0] ? { primarySetCode: editBoosterForm.primarySet[0] } : {}),
+        },
+      });
+      setEditingBoosterId(null);
+      await loadBoosterProducts();
+      setSuccess('Booster product updated.');
+    } catch (updateError) {
+      setError(updateError instanceof ApiError ? updateError.message : 'Unable to update booster product');
     }
   };
 
@@ -1237,6 +1329,9 @@ export function AdminPage() {
                                       (entry) => entry.setCode,
                                     ) ?? []
                                   }
+                                  primarySetCode={
+                                    boosterProducts.find((product) => product.id === pool.boosterProductId)?.primarySetCode
+                                  }
                                   getSet={getSet}
                                   primaryOnly
                                 />
@@ -1254,7 +1349,7 @@ export function AdminPage() {
                               }
                             >
                               <option value="">Select booster product</option>
-                              {boosterProducts.map((product) => (
+                              {sortedBoosterProducts.map((product) => (
                                 <option key={product.id} value={product.id}>
                                   {product.name}
                                 </option>
@@ -1658,14 +1753,17 @@ export function AdminPage() {
             <form className="grid gap-4 md:grid-cols-2" onSubmit={createBoosterProduct}>
               <div className="md:col-span-2">
                 <SetCodePicker
-                  label="Primary Set"
+                  label="Seed Set (for auto-detect)"
                   multiple={false}
-                  value={boosterForm.primarySet}
+                  value={boosterForm.seedSet}
                   onChange={(codes) => {
                     const singleCode = codes[0] ? [codes[0]] : [];
-                    setBoosterForm((prev) => ({ ...prev, primarySet: singleCode }));
+                    setBoosterForm((prev) => ({ ...prev, seedSet: singleCode }));
                   }}
                 />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  This set is also used as the display icon when it is included in the product&apos;s set codes.
+                </p>
               </div>
               <label className="text-sm font-medium">
                 Product Name
@@ -1707,7 +1805,7 @@ export function AdminPage() {
                 <button
                   type="button"
                   onClick={autoDetectSetCodes}
-                  disabled={!boosterForm.primarySet[0]}
+                  disabled={!boosterForm.seedSet[0]}
                   className="rounded-md border border-border px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   Auto-detect Set Codes
@@ -1731,43 +1829,125 @@ export function AdminPage() {
             </form>
           ) : null}
 
+          <input
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            placeholder="Search booster products by name, set, or code…"
+            value={boosterProductSearch}
+            onChange={(event) => setBoosterProductSearch(event.target.value)}
+          />
+
           <div className="space-y-3">
-            {boosterProducts.map((product) => (
+            {filteredBoosterProducts.map((product) => (
               <div key={product.id} className="rounded-md border border-border p-3">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium">{product.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {product.setReleaseName} • {product.boosterType}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {product.setCodes.map((code) => (
-                        <span
-                          key={code.id}
-                          className="inline-flex items-center gap-1 rounded bg-accent px-2 py-1 text-xs text-accent-foreground"
-                        >
-                          <SetSymbol
-                            setCode={code.setCode}
-                            iconUri={getSet(code.setCode)?.icon_svg_uri}
-                            setName={getSet(code.setCode)?.name}
-                          />
-                          {code.setCode}
-                        </span>
-                      ))}
-                    </div>
+                    <BoosterProductSetBadges product={product} getSet={getSet} />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => deleteBoosterProduct(product.id)}
-                    className="rounded-md border border-border px-3 py-1 text-sm"
-                  >
-                    Delete
-                  </button>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditBooster(product)}
+                      className="rounded-md border border-border px-3 py-1 text-sm"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteBoosterProduct(product.id)}
+                      className="rounded-md border border-border px-3 py-1 text-sm"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
+
+                {editingBoosterId === product.id ? (
+                  <form className="mt-4 grid gap-4 border-t border-border pt-4 md:grid-cols-2" onSubmit={saveEditBooster}>
+                    <div className="md:col-span-2">
+                      <SetCodePicker
+                        label="Primary Set"
+                        multiple={false}
+                        value={editBoosterForm.primarySet}
+                        onChange={(codes) => {
+                          const singleCode = codes[0] ? [codes[0]] : [];
+                          setEditBoosterForm((prev) => ({ ...prev, primarySet: singleCode }));
+                        }}
+                      />
+                    </div>
+                    <label className="text-sm font-medium">
+                      Product Name
+                      <input
+                        className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        value={editBoosterForm.name}
+                        onChange={(event) =>
+                          setEditBoosterForm((prev) => ({ ...prev, name: event.target.value }))
+                        }
+                        required
+                      />
+                    </label>
+                    <label className="text-sm font-medium">
+                      Set Release Name
+                      <input
+                        className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        value={editBoosterForm.setReleaseName}
+                        onChange={(event) =>
+                          setEditBoosterForm((prev) => ({ ...prev, setReleaseName: event.target.value }))
+                        }
+                        required
+                      />
+                    </label>
+                    <label className="text-sm font-medium">
+                      Booster Type
+                      <select
+                        className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                        value={editBoosterForm.boosterType}
+                        onChange={(event) =>
+                          setEditBoosterForm((prev) => ({
+                            ...prev,
+                            boosterType: event.target.value as BoosterProduct['boosterType'],
+                          }))
+                        }
+                      >
+                        <option value="draft">Draft</option>
+                        <option value="play">Play</option>
+                        <option value="set">Set</option>
+                        <option value="collector">Collector</option>
+                      </select>
+                    </label>
+                    <div className="md:col-span-2">
+                      <SetCodePicker
+                        label="Set Codes"
+                        value={editBoosterForm.setCodes}
+                        onChange={(codes) => setEditBoosterForm((prev) => ({ ...prev, setCodes: codes }))}
+                      />
+                    </div>
+                    <div className="flex gap-2 md:col-span-2">
+                      <button
+                        type="submit"
+                        className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                      >
+                        Save Changes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEditBooster}
+                        className="rounded-md border border-border px-4 py-2 text-sm"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
               </div>
             ))}
             {boosterProducts.length === 0 ? (
               <p className="text-sm text-muted-foreground">No booster products configured.</p>
+            ) : filteredBoosterProducts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No booster products match your search.</p>
             ) : null}
           </div>
         </Tabs.Content>

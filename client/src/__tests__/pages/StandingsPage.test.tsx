@@ -69,7 +69,10 @@ describe('StandingsPage', () => {
           data: [
             {
               user: { id: 'user-1' },
-              boosterProduct: { setCodes: [{ id: '1', setCode: 'DMU' }] },
+              boosterProduct: {
+                primarySetCode: 'DMU',
+                setCodes: [{ id: '1', setCode: 'DMU' }],
+              },
             },
           ],
         };

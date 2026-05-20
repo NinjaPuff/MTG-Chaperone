@@ -93,6 +93,17 @@ export const prismaMock = {
   cardPool: {
     deleteMany: vi.fn(),
   },
+  boosterProduct: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  },
+  boosterSetCode: {
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
+  },
 };
 
 export function resetPrismaMock() {

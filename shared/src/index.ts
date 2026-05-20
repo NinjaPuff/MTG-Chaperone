@@ -1,3 +1,4 @@
-export * from './types/enums';
-export * from './types/entities';
-export * from './types/api';
+export * from './types/enums.js';
+export * from './types/entities.js';
+export * from './types/api.js';
+export * from './boosterProductRules.js';

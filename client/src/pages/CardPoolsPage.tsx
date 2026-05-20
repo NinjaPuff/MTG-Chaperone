@@ -19,6 +19,7 @@ type CardPoolSummary = {
     id: string;
     name: string;
     boosterType: 'draft' | 'play' | 'set' | 'collector';
+    primarySetCode?: string | null;
     setCodes: Array<{ id: string; setCode: string }>;
   };
 };
@@ -102,6 +103,7 @@ export function CardPoolsPage() {
                   </div>
                   <SetSymbolGroup
                     setCodes={pool.boosterProduct.setCodes.map((entry) => entry.setCode)}
+                    primarySetCode={pool.boosterProduct.primarySetCode}
                     getSet={getSet}
                   />
                 </div>

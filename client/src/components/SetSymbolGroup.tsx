@@ -7,6 +7,7 @@ type ScryfallSetLookup = (code: string) => { name: string; icon_svg_uri: string 
 
 type SetSymbolGroupProps = {
   setCodes: string[];
+  primarySetCode?: string | null;
   primaryOnly?: boolean;
   maxVisible?: number;
   size?: SetSymbolSize;
@@ -16,6 +17,7 @@ type SetSymbolGroupProps = {
 
 export function SetSymbolGroup({
   setCodes,
+  primarySetCode,
   primaryOnly = false,
   maxVisible = 3,
   size = 'sm',
@@ -33,8 +35,14 @@ export function SetSymbolGroup({
       seen.add(normalized);
       result.push(normalized);
     }
-    return result;
-  }, [setCodes]);
+
+    const normalizedPrimary = primarySetCode ? normalizeSetCode(primarySetCode) : null;
+    if (normalizedPrimary && result.includes(normalizedPrimary)) {
+      return [normalizedPrimary, ...result.filter((code) => code !== normalizedPrimary)];
+    }
+
+    return result.sort((a, b) => a.localeCompare(b));
+  }, [setCodes, primarySetCode]);
 
   if (normalizedCodes.length === 0) {
     return null;

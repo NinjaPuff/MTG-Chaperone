@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MatchCard, type MatchCardMatch } from '@/components/MatchCard';
+import type { PoolSetInfo } from '@/hooks/useSeasonPoolSets';
 
 const baseMatch: MatchCardMatch = {
   id: 'match-1',
@@ -23,7 +24,9 @@ const baseMatch: MatchCardMatch = {
 
 describe('MatchCard', () => {
   it('shows set symbol for player with pool sets', () => {
-    const poolSetsByUserId = new Map<string, string[]>([['user-1', ['DMU']]]);
+    const poolSetsByUserId = new Map<string, PoolSetInfo>([
+      ['user-1', { setCodes: ['DMU'], primarySetCode: 'DMU' }],
+    ]);
 
     render(
       <MatchCard
@@ -39,7 +42,9 @@ describe('MatchCard', () => {
   });
 
   it('does not show set symbol for player without pool entry', () => {
-    const poolSetsByUserId = new Map<string, string[]>([['user-1', ['DMU']]]);
+    const poolSetsByUserId = new Map<string, PoolSetInfo>([
+      ['user-1', { setCodes: ['DMU'], primarySetCode: 'DMU' }],
+    ]);
 
     render(
       <MatchCard
