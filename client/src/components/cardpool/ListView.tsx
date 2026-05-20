@@ -3,6 +3,8 @@ import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { ManaCostSymbols } from './ManaCostSymbols';
+import { SetSymbol } from '@/components/SetSymbol';
+import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { getImageUrl, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
 
 type ListViewProps = {
@@ -35,6 +37,7 @@ function OrganizeSections({
   onCardDoubleClick,
   renderBadge,
 }: OrganizeSectionProps) {
+  const { getSet } = useScryfallSets();
   const groups = groupByOrganize(cards, organizeBy);
 
   return (
@@ -66,7 +69,12 @@ function OrganizeSections({
                     className="ml-auto whitespace-nowrap"
                   />
                   {renderBadge ? <span className="ml-1 shrink-0">{renderBadge(card)}</span> : null}
-                  <span className="text-xs uppercase text-muted-foreground">{card.setCode}</span>
+                  <SetSymbol
+                    setCode={card.setCode}
+                    size="sm"
+                    iconUri={getSet(card.setCode)?.icon_svg_uri}
+                    setName={getSet(card.setCode)?.name}
+                  />
                 </div>
               ))}
             </div>

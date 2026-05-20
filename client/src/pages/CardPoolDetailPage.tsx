@@ -13,6 +13,9 @@ import { StacksView } from '@/components/cardpool/StacksView';
 import { StagedChangeRow } from '@/components/cardpool/StagedChangeRow';
 import { StagedOwnerCardRow } from '@/components/cardpool/StagedOwnerCardRow';
 import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
+import { SetSymbol } from '@/components/SetSymbol';
+import { SetSymbolGroup } from '@/components/SetSymbolGroup';
+import { useScryfallSets } from '@/hooks/useScryfallSets';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
 import { focusAndSelectInput } from '@/lib/focusSearchInputAfterStage';
@@ -204,6 +207,7 @@ function parseFileNameFromDisposition(disposition: string | null) {
 export function CardPoolDetailPage() {
   const { poolId } = useParams<{ poolId: string }>();
   const { user } = useAuth();
+  const { getSet } = useScryfallSets();
   const [pool, setPool] = useState<PoolDetail | null>(null);
   const [acquisitions, setAcquisitions] = useState<PoolAcquisition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -893,9 +897,18 @@ export function CardPoolDetailPage() {
           <p className="font-medium">
             {pool.boosterProduct.name} ({pool.boosterProduct.boosterType})
           </p>
-          <p className="text-xs text-muted-foreground">
-            Sets: {pool.boosterProduct.setCodes.map((setCode) => setCode.setCode).join(', ') || 'N/A'}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">Sets:</span>
+            {pool.boosterProduct.setCodes.length > 0 ? (
+              <SetSymbolGroup
+                setCodes={pool.boosterProduct.setCodes.map((entry) => entry.setCode)}
+                getSet={getSet}
+                maxVisible={6}
+              />
+            ) : (
+              <span className="text-xs text-muted-foreground">N/A</span>
+            )}
+          </div>
         </div>
         <div>
           <p className="text-sm text-muted-foreground">Total Cards</p>
@@ -984,8 +997,13 @@ export function CardPoolDetailPage() {
                       ) : null}
                       <div>
                         <p className="text-sm font-medium">{card.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          <span className="uppercase">{card.setCode}</span>{' '}
+                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <SetSymbol
+                            setCode={card.setCode}
+                            size="sm"
+                            iconUri={getSet(card.setCode)?.icon_svg_uri}
+                            setName={getSet(card.setCode)?.name}
+                          />
                           <ManaCostSymbols manaCost={card.manaCost} className="inline-flex align-middle" />
                         </p>
                       </div>

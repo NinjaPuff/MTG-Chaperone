@@ -1,4 +1,6 @@
 import { ReactNode } from 'react';
+import { PlayerPoolSetSymbols } from '@/components/PlayerPoolSetSymbols';
+import type { ScryfallSetSummary } from '@/hooks/useScryfallSets';
 import { getMatchOutcome } from '@/lib/matchUtils';
 import { primaryName, secondaryName } from '@/lib/userDisplay';
 
@@ -33,6 +35,9 @@ type MatchCardProps = {
   match: MatchCardMatch;
   eventRecords: Map<string, MatchRecord>;
   seasonPoints: Map<string, number>;
+  poolSetsByUserId?: Map<string, string[]>;
+  poolSetsLoading?: boolean;
+  getSet?: (code: string) => ScryfallSetSummary | undefined;
   actions?: ReactNode;
   footer?: ReactNode;
 };
@@ -97,6 +102,39 @@ function StatsBox({
   );
 }
 
+function PlayerNameWithSets({
+  user,
+  poolSetsByUserId,
+  poolSetsLoading,
+  getSet,
+  align = 'left',
+}: {
+  user: MatchCardUser;
+  poolSetsByUserId?: Map<string, string[]>;
+  poolSetsLoading?: boolean;
+  getSet?: (code: string) => ScryfallSetSummary | undefined;
+  align?: 'left' | 'right';
+}) {
+  const symbols = poolSetsByUserId ? (
+    <PlayerPoolSetSymbols
+      userId={user.id}
+      poolSetsByUserId={poolSetsByUserId}
+      poolSetsLoading={poolSetsLoading}
+      getSet={getSet}
+    />
+  ) : null;
+
+  return (
+    <div className={`min-w-0 ${align === 'right' ? 'text-right' : ''}`}>
+      <div className={`flex items-center gap-2 ${align === 'right' ? 'justify-end' : ''}`}>
+        <p className="font-semibold truncate">{primaryName(user)}</p>
+        {symbols}
+      </div>
+      {secondaryName(user) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(user)}</p> : null}
+    </div>
+  );
+}
+
 function OutcomeWatermark({ isDraw }: { isDraw: boolean }) {
   const overlay = isDraw ? 'bg-amber-500/10' : 'bg-emerald-500/10';
 
@@ -126,7 +164,16 @@ function OutcomeWatermark({ isDraw }: { isDraw: boolean }) {
   );
 }
 
-export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }: MatchCardProps) {
+export function MatchCard({
+  match,
+  eventRecords,
+  seasonPoints,
+  poolSetsByUserId,
+  poolSetsLoading,
+  getSet,
+  actions,
+  footer,
+}: MatchCardProps) {
   const p1Record = eventRecords.get(match.player1.id) ?? { wins: 0, losses: 0, draws: 0 };
   const p1Points = seasonPoints.get(match.player1.id) ?? 0;
   const matchOutcome = getMatchOutcome(match.status, match.player1.id, match.player2?.id ?? null, match.gameResults);
@@ -138,10 +185,12 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
           <div className="flex-1 rounded-lg border border-border p-3">
             <div className="flex items-center gap-3">
               <Avatar user={match.player1} sizeClass="h-14 w-14" />
-              <div className="min-w-0">
-                <p className="font-semibold truncate">{primaryName(match.player1)}</p>
-                {secondaryName(match.player1) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(match.player1)}</p> : null}
-              </div>
+              <PlayerNameWithSets
+                user={match.player1}
+                poolSetsByUserId={poolSetsByUserId}
+                poolSetsLoading={poolSetsLoading}
+                getSet={getSet}
+              />
             </div>
             <div className="mt-3">
               <StatsBox record={p1Record} points={p1Points} />
@@ -192,6 +241,14 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
                         Draw
                       </span>
                     ) : null}
+                    {poolSetsByUserId ? (
+                      <PlayerPoolSetSymbols
+                        userId={match.player1.id}
+                        poolSetsByUserId={poolSetsByUserId}
+                        poolSetsLoading={poolSetsLoading}
+                        getSet={getSet}
+                      />
+                    ) : null}
                   </div>
                   {secondaryName(match.player1) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(match.player1)}</p> : null}
                 </div>
@@ -232,6 +289,14 @@ export function MatchCard({ match, eventRecords, seasonPoints, actions, footer }
                       </span>
                     ) : null}
                     <p className="font-semibold truncate">{primaryName(match.player2)}</p>
+                    {poolSetsByUserId ? (
+                      <PlayerPoolSetSymbols
+                        userId={match.player2.id}
+                        poolSetsByUserId={poolSetsByUserId}
+                        poolSetsLoading={poolSetsLoading}
+                        getSet={getSet}
+                      />
+                    ) : null}
                   </div>
                   {secondaryName(match.player2) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(match.player2)}</p> : null}
                 </div>

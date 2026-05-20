@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { SetCodePicker } from '@/components/SetCodePicker';
+import { SetSymbol } from '@/components/SetSymbol';
+import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { primaryName, secondaryName } from '@/lib/userDisplay';
 
 type League = {
@@ -111,6 +113,7 @@ type SiteUser = {
 type ScryfallSet = {
   code: string;
   name: string;
+  icon_svg_uri: string | null;
 };
 
 type ApiListResponse<T> = { data: T[] };
@@ -258,6 +261,14 @@ export function AdminPage() {
   const scryfallSetMap = useMemo(() => {
     return new Map(scryfallSets.map((set) => [set.code.toUpperCase(), set.name]));
   }, [scryfallSets]);
+
+  const getSet = useMemo(
+    () => (code: string) => {
+      const normalized = code.trim().toUpperCase();
+      return scryfallSets.find((set) => set.code.toUpperCase() === normalized);
+    },
+    [scryfallSets],
+  );
 
   const loadLeagues = async () => {
     const response = await apiRequest<ApiListResponse<League>>('/api/leagues');
@@ -1217,8 +1228,19 @@ export function AdminPage() {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="rounded bg-accent px-2 py-1 text-xs text-accent-foreground">
+                            <span className="inline-flex items-center gap-2 rounded bg-accent px-2 py-1 text-xs text-accent-foreground">
                               {pool ? pool.boosterProduct.name : 'No pool'}
+                              {pool ? (
+                                <SetSymbolGroup
+                                  setCodes={
+                                    boosterProducts.find((product) => product.id === pool.boosterProductId)?.setCodes.map(
+                                      (entry) => entry.setCode,
+                                    ) ?? []
+                                  }
+                                  getSet={getSet}
+                                  primaryOnly
+                                />
+                              ) : null}
                             </span>
 
                             <select
@@ -1720,7 +1742,15 @@ export function AdminPage() {
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {product.setCodes.map((code) => (
-                        <span key={code.id} className="rounded bg-accent px-2 py-1 text-xs text-accent-foreground">
+                        <span
+                          key={code.id}
+                          className="inline-flex items-center gap-1 rounded bg-accent px-2 py-1 text-xs text-accent-foreground"
+                        >
+                          <SetSymbol
+                            setCode={code.setCode}
+                            iconUri={getSet(code.setCode)?.icon_svg_uri}
+                            setName={getSet(code.setCode)?.name}
+                          />
                           {code.setCode}
                         </span>
                       ))}

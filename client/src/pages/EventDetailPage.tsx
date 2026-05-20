@@ -3,6 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { ApiError, apiRequest } from '@/lib/api';
 import { MatchCard } from '@/components/MatchCard';
+import { useCurrentLeague } from '@/hooks/useCurrentLeague';
+import { useScryfallSets } from '@/hooks/useScryfallSets';
+import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
 import { computeEventRecords } from '@/lib/eventRecords';
 import { primaryName } from '@/lib/userDisplay';
 import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
@@ -168,6 +171,9 @@ export function EventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { league, activeSeason } = useCurrentLeague();
+  const { poolSetsByUserId, isLoading: poolSetsLoading } = useSeasonPoolSets(league?.slug, activeSeason?.number);
+  const { getSet } = useScryfallSets();
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [rounds, setRounds] = useState<Round[]>([]);
@@ -743,6 +749,9 @@ export function EventDetailPage() {
                         match={match}
                         eventRecords={eventRecords}
                         seasonPoints={seasonPoints}
+                        poolSetsByUserId={poolSetsByUserId}
+                        poolSetsLoading={poolSetsLoading}
+                        getSet={getSet}
                         footer={
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground capitalize">{match.status.replace('_', ' ')}</p>

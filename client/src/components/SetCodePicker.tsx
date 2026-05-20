@@ -1,17 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiRequest } from '@/lib/api';
-
-type ScryfallSet = {
-  code: string;
-  name: string;
-  icon_svg_uri: string | null;
-  set_type: string;
-  released_at: string | null;
-};
-
-type ApiListResponse<T> = {
-  data: T[];
-};
+import { SetSymbol } from '@/components/SetSymbol';
+import { useScryfallSets } from '@/hooks/useScryfallSets';
 
 type SetCodePickerProps = {
   value: string[];
@@ -28,33 +17,14 @@ export function SetCodePicker({
   label = 'Set Codes',
   placeholder = 'Search sets by name or code',
 }: SetCodePickerProps) {
-  const [sets, setSets] = useState<ScryfallSet[]>([]);
+  const { sets, getSet, isLoading, error } = useScryfallSets();
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [manualValue, setManualValue] = useState(value.join(', '));
 
   useEffect(() => {
     setManualValue(value.join(', '));
   }, [value]);
-
-  useEffect(() => {
-    const loadSets = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await apiRequest<ApiListResponse<ScryfallSet>>('/api/sets');
-        setSets(response.data);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to load set list');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadSets();
-  }, []);
 
   const normalizedValue = useMemo(() => new Set(value.map((code) => code.toUpperCase())), [value]);
   const filteredSets = useMemo(() => {
@@ -117,22 +87,30 @@ export function SetCodePicker({
       <label className="text-sm font-medium">{label}</label>
       <div className="rounded-md border border-border bg-background p-2">
         <div className="flex flex-wrap gap-2">
-          {value.map((code) => (
-            <span
-              key={code}
-              className="inline-flex items-center gap-2 rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground"
-            >
-              {code}
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => removeCode(code)}
-                aria-label={`Remove ${code}`}
+          {value.map((code) => {
+            const catalog = getSet(code);
+            return (
+              <span
+                key={code}
+                className="inline-flex items-center gap-2 rounded-md bg-accent px-2 py-1 text-xs text-accent-foreground"
               >
-                ×
-              </button>
-            </span>
-          ))}
+                <SetSymbol
+                  setCode={code}
+                  iconUri={catalog?.icon_svg_uri}
+                  setName={catalog?.name}
+                />
+                <span>{code}</span>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground"
+                  onClick={() => removeCode(code)}
+                  aria-label={`Remove ${code}`}
+                >
+                  ×
+                </button>
+              </span>
+            );
+          })}
         </div>
         <input
           className="mt-2 w-full border-0 bg-transparent px-1 py-1 text-sm outline-none"
@@ -157,17 +135,7 @@ export function SetCodePicker({
                   className="flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm hover:bg-accent"
                   onClick={() => upsertCode(set.code)}
                 >
-                  {set.icon_svg_uri ? (
-                    <img
-                      src={set.icon_svg_uri}
-                      alt=""
-                      className="h-4 w-4 shrink-0 dark:invert"
-                    />
-                  ) : (
-                    <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-[10px] text-muted-foreground">
-                      •
-                    </span>
-                  )}
+                  <SetSymbol setCode={set.code} iconUri={set.icon_svg_uri} setName={set.name} />
                   <span>
                     {set.name} ({set.code.toUpperCase()})
                   </span>

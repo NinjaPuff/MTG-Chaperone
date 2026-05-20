@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { PlayerPoolSetSymbols } from '@/components/PlayerPoolSetSymbols';
 import { apiRequest } from '@/lib/api';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
+import { useScryfallSets } from '@/hooks/useScryfallSets';
+import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
 import { primaryName } from '@/lib/userDisplay';
 
 type StandingRow = {
@@ -14,6 +17,7 @@ type StandingRow = {
   gwPercent: number;
   ogwPercent: number;
   user: {
+    id: string;
     displayName: string;
     publicName?: string | null;
     slug: string;
@@ -55,7 +59,9 @@ function RankChip({ index }: { index: number }) {
 }
 
 export function StandingsPage() {
-  const { activeSeasonId, isLoading: leagueLoading } = useCurrentLeague();
+  const { league, activeSeason, activeSeasonId, isLoading: leagueLoading } = useCurrentLeague();
+  const { poolSetsByUserId, isLoading: poolSetsLoading } = useSeasonPoolSets(league?.slug, activeSeason?.number);
+  const { getSet } = useScryfallSets();
   const [standings, setStandings] = useState<StandingRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -115,9 +121,17 @@ export function StandingsPage() {
                       <RankChip index={index} />
                     </td>
                     <td className="p-3">
-                      <Link className="hover:underline" to={`/profile/${row.user.slug}`}>
-                        {primaryName(row.user)}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link className="hover:underline" to={`/profile/${row.user.slug}`}>
+                          {primaryName(row.user)}
+                        </Link>
+                        <PlayerPoolSetSymbols
+                          userId={row.user.id}
+                          poolSetsByUserId={poolSetsByUserId}
+                          poolSetsLoading={poolSetsLoading}
+                          getSet={getSet}
+                        />
+                      </div>
                     </td>
                     <td className="p-3 text-right">{row.points}</td>
                     <td className="p-3 text-right">{`${row.matchWins}-${row.matchLosses}-${row.matchDraws}`}</td>

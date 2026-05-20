@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { PlayerPoolSetSymbols } from '@/components/PlayerPoolSetSymbols';
 import { apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
+import { useScryfallSets } from '@/hooks/useScryfallSets';
+import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
 import { computeMatchRecord, getMatchOutcome } from '@/lib/matchUtils';
 import { primaryName } from '@/lib/userDisplay';
 
@@ -106,8 +109,11 @@ function StatCard({ title, value, subtext }: { title: string; value: string | nu
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const { activeSeasonId, allSeasons, isLoading: leagueLoading } = useCurrentLeague();
+  const { league, activeSeasonId, allSeasons, isLoading: leagueLoading } = useCurrentLeague();
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
+  const selectedSeason = allSeasons.find((season) => season.id === selectedSeasonId) ?? null;
+  const { poolSetsByUserId, isLoading: poolSetsLoading } = useSeasonPoolSets(league?.slug, selectedSeason?.number);
+  const { getSet } = useScryfallSets();
   const [events, setEvents] = useState<Event[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
@@ -220,6 +226,12 @@ export function DashboardPage() {
               <div className="flex items-center gap-2 min-w-0">
                 <RankChip rank={index + 1} />
                 <span className="truncate">{primaryName(standing.user)}</span>
+                <PlayerPoolSetSymbols
+                  userId={standing.user.id}
+                  poolSetsByUserId={poolSetsByUserId}
+                  poolSetsLoading={poolSetsLoading}
+                  getSet={getSet}
+                />
               </div>
               <span className="font-semibold">{standing.points}</span>
             </div>

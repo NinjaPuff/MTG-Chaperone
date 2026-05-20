@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { MatchCard } from '@/components/MatchCard';
 import { ApiError, apiRequest } from '@/lib/api';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
+import { useScryfallSets } from '@/hooks/useScryfallSets';
+import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
 import { useAuth } from '@/context/AuthContext';
 import { computeEventRecords } from '@/lib/eventRecords';
 import { primaryName } from '@/lib/userDisplay';
@@ -53,7 +55,9 @@ function matchResultRecord(match: Match) {
 export function SchedulePage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const { activeSeasonId } = useCurrentLeague();
+  const { league, activeSeason, activeSeasonId } = useCurrentLeague();
+  const { poolSetsByUserId, isLoading: poolSetsLoading } = useSeasonPoolSets(league?.slug, activeSeason?.number);
+  const { getSet } = useScryfallSets();
   const [events, setEvents] = useState<Event[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -359,6 +363,9 @@ export function SchedulePage() {
                         match={match}
                         eventRecords={eventRecords}
                         seasonPoints={seasonPoints}
+                        poolSetsByUserId={poolSetsByUserId}
+                        poolSetsLoading={poolSetsLoading}
+                        getSet={getSet}
                         footer={
                           <div className="space-y-1">
                             <p className="text-xs text-muted-foreground capitalize">{match.status.replace('_', ' ')}</p>

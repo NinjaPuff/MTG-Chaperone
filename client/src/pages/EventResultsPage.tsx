@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { PlayerPoolSetSymbols } from '@/components/PlayerPoolSetSymbols';
 import { ApiError, apiRequest } from '@/lib/api';
+import { useCurrentLeague } from '@/hooks/useCurrentLeague';
+import { useScryfallSets } from '@/hooks/useScryfallSets';
+import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
 import { primaryName } from '@/lib/userDisplay';
 
 type ApiResponse<T> = { data: T };
@@ -32,6 +36,9 @@ type EventSummary = {
 export function EventResultsPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
+  const { league, activeSeason } = useCurrentLeague();
+  const { poolSetsByUserId, isLoading: poolSetsLoading } = useSeasonPoolSets(league?.slug, activeSeason?.number);
+  const { getSet } = useScryfallSets();
   const [event, setEvent] = useState<EventSummary | null>(null);
   const [results, setResults] = useState<EventResultRow[]>([]);
   const [revealedCount, setRevealedCount] = useState(0);
@@ -158,7 +165,15 @@ export function EventResultsPage() {
               <div className="flex items-center gap-3">
                 <span className="text-2xl font-bold">#{row.rank}</span>
                 <div>
-                  <p className="font-semibold">{primaryName(row.user)}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold">{primaryName(row.user)}</p>
+                    <PlayerPoolSetSymbols
+                      userId={row.user.id}
+                      poolSetsByUserId={poolSetsByUserId}
+                      poolSetsLoading={poolSetsLoading}
+                      getSet={getSet}
+                    />
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     Match: {row.matchWins}-{row.matchLosses}-{row.matchDraws} | Game: {row.gameWins}-{row.gameLosses}
                   </p>
