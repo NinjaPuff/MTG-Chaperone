@@ -1,4 +1,9 @@
-import { ReactNode, createContext, useContext, useMemo, useRef, useState } from 'react';
+import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+
+export type TouchAction = {
+  label: string;
+  onAction: () => void;
+};
 
 type PreviewState = {
   scryfallId: string;
@@ -6,7 +11,14 @@ type PreviewState = {
   imageUrl: string | null;
   anchorRect: DOMRect;
   anchorPoint: { x: number; y: number };
+  touchActions: TouchAction[];
+  isTouchMode: boolean;
 } | null;
+
+type ShowPreviewOptions = {
+  touchActions?: TouchAction[];
+  isTouchMode?: boolean;
+};
 
 type CardPreviewContextValue = {
   preview: PreviewState;
@@ -16,11 +28,49 @@ type CardPreviewContextValue = {
     imageUrl: string | null,
     anchorRect: DOMRect,
     anchorPoint: { x: number; y: number },
+    options?: ShowPreviewOptions,
   ) => void;
   hidePreview: () => void;
 };
 
 const CardPreviewContext = createContext<CardPreviewContextValue | null>(null);
+
+export function deviceHasHover() {
+  if (typeof window === 'undefined' || !window.matchMedia) {
+    return false;
+  }
+  return window.matchMedia('(hover: hover)').matches;
+}
+
+export function deviceIsTouchPrimary() {
+  if (typeof window === 'undefined' || !window.matchMedia) {
+    return false;
+  }
+  return window.matchMedia('(hover: none)').matches;
+}
+
+function useMatchMedia(query: string) {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return false;
+    }
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(query);
+    const handleChange = () => setMatches(mediaQuery.matches);
+    handleChange();
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [query]);
+
+  return matches;
+}
 
 type CardPreviewProviderProps = {
   children: ReactNode;
@@ -32,13 +82,15 @@ export function CardPreviewProvider({ children }: CardPreviewProviderProps) {
   const value = useMemo<CardPreviewContextValue>(
     () => ({
       preview,
-      showPreview: (scryfallId, name, imageUrl, anchorRect, anchorPoint) =>
+      showPreview: (scryfallId, name, imageUrl, anchorRect, anchorPoint, options) =>
         setPreview({
           scryfallId,
           name,
           imageUrl,
           anchorRect,
           anchorPoint,
+          touchActions: options?.touchActions ?? [],
+          isTouchMode: options?.isTouchMode ?? false,
         }),
       hidePreview: () => setPreview(null),
     }),
@@ -64,14 +116,24 @@ type HoverTargetProps = {
   scryfallId: string;
   name: string;
   imageUrl: string | null;
+  touchActions?: TouchAction[];
   className?: string;
   element?: 'span' | 'div';
   children: ReactNode;
 };
 
-export function HoverTarget({ scryfallId, name, imageUrl, className, element = 'span', children }: HoverTargetProps) {
-  const { showPreview, hidePreview } = useCardPreview();
+export function HoverTarget({
+  scryfallId,
+  name,
+  imageUrl,
+  touchActions,
+  className,
+  element = 'span',
+  children,
+}: HoverTargetProps) {
+  const { preview, showPreview, hidePreview } = useCardPreview();
   const hoverTimerRef = useRef<number | null>(null);
+  const isTouchPrimary = useMatchMedia('(hover: none)');
   const Element = element;
 
   const clearHoverTimer = () => {
@@ -85,6 +147,9 @@ export function HoverTarget({ scryfallId, name, imageUrl, className, element = '
     <Element
       className={className}
       onMouseEnter={(event) => {
+        if (isTouchPrimary) {
+          return;
+        }
         clearHoverTimer();
         const target = event.currentTarget;
         const mouseX = event.clientX;
@@ -94,8 +159,32 @@ export function HoverTarget({ scryfallId, name, imageUrl, className, element = '
         }, 200);
       }}
       onMouseLeave={() => {
+        if (isTouchPrimary) {
+          return;
+        }
         clearHoverTimer();
         hidePreview();
+      }}
+      onClick={(event) => {
+        if (!isTouchPrimary) {
+          return;
+        }
+        event.stopPropagation();
+        event.preventDefault();
+        if (preview?.scryfallId === scryfallId && preview.isTouchMode) {
+          hidePreview();
+          return;
+        }
+        const target = event.currentTarget;
+        const rect = target.getBoundingClientRect();
+        showPreview(
+          scryfallId,
+          name,
+          imageUrl,
+          rect,
+          { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+          { touchActions: touchActions ?? [], isTouchMode: true },
+        );
       }}
     >
       {children}

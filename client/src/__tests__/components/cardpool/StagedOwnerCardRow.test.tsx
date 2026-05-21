@@ -1,11 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { StagedOwnerCardRow } from '../../../components/cardpool/StagedOwnerCardRow';
+import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
 describe('StagedOwnerCardRow', () => {
   it('renders thumbnail when imageUri is provided', () => {
-    render(
+    renderWithAppProviders(
       <StagedOwnerCardRow
+        cachedCardId="card-1"
         name="Lightning Bolt"
         phaseLabel="Pack 1"
         imageUri="https://example.com/bolt.jpg"
@@ -21,8 +23,9 @@ describe('StagedOwnerCardRow', () => {
   });
 
   it('omits image when imageUri is null', () => {
-    render(
+    renderWithAppProviders(
       <StagedOwnerCardRow
+        cachedCardId="card-1"
         name="Lightning Bolt"
         phaseLabel="Pack 1"
         imageUri={null}
@@ -38,8 +41,9 @@ describe('StagedOwnerCardRow', () => {
 
   it('calls onRemove when Remove is clicked', () => {
     const onRemove = vi.fn();
-    render(
+    renderWithAppProviders(
       <StagedOwnerCardRow
+        cachedCardId="card-1"
         name="Lightning Bolt"
         phaseLabel="Pack 1"
         imageUri={null}

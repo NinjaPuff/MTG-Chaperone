@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DeckSidebar } from '../../../components/deckbuilder/DeckSidebar';
 import type { BuilderDeck, DeckBuilderCard } from '../../../components/deckbuilder/types';
+import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
 function makeDeck(cards: DeckBuilderCard[] = []): BuilderDeck {
   return {
@@ -37,7 +38,7 @@ function makeCard(overrides: Partial<DeckBuilderCard> = {}): DeckBuilderCard {
 
 describe('DeckSidebar', () => {
   it('renders sideboard before basic lands', () => {
-    render(
+    renderWithAppProviders(
       <DeckSidebar
         decks={[makeDeck()]}
         activeDeckId="deck-1"
@@ -56,7 +57,7 @@ describe('DeckSidebar', () => {
   });
 
   it('renders Build/Details toggle when handler is provided', () => {
-    render(
+    renderWithAppProviders(
       <DeckSidebar
         decks={[makeDeck()]}
         activeDeckId="deck-1"
@@ -76,7 +77,7 @@ describe('DeckSidebar', () => {
 
   it('updates mana curve when main-deck quantity changes', () => {
     const deck = makeDeck([makeCard({ cmc: 2, quantity: 1 })]);
-    const { container, rerender } = render(
+    const { container, rerender } = renderWithAppProviders(
       <DeckSidebar
         decks={[deck]}
         activeDeckId="deck-1"
@@ -109,7 +110,7 @@ describe('DeckSidebar', () => {
     const deck = makeDeck([
       makeCard({ cachedCardId: 'sb-1', cmc: 5, quantity: 4, zone: 'sideboard' }),
     ]);
-    const { container } = render(
+    const { container } = renderWithAppProviders(
       <DeckSidebar
         decks={[deck]}
         activeDeckId="deck-1"

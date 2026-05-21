@@ -1,0 +1,59 @@
+import { fireEvent, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { GridView } from '../../../components/cardpool/GridView';
+import type { PoolCard } from '../../../components/cardpool/types';
+import { mockMatchMedia, restoreMatchMedia } from '../../helpers/matchMedia';
+import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
+
+const cards: PoolCard[] = [
+  {
+    scryfallId: 'card-1',
+    name: 'Lightning Bolt',
+    manaCost: '{R}',
+    typeLine: 'Instant',
+    rarity: 'common',
+    setCode: 'LEA',
+    imageUris: { normal: 'https://example.com/bolt.jpg' },
+    cmc: 1,
+    colors: ['R'],
+    colorIdentity: ['R'],
+    quantity: 1,
+    phaseLabel: 'Initial Pool',
+    phaseQuantities: { 'Initial Pool': 1 },
+  },
+];
+
+describe('GridView', () => {
+  beforeEach(() => {
+    mockMatchMedia({ '(hover: hover)': false, '(hover: none)': true });
+  });
+
+  afterEach(() => {
+    restoreMatchMedia();
+  });
+
+  it('wires getTouchActions to touch action handlers', () => {
+    const onAdd = vi.fn();
+    renderWithAppProviders(
+      <GridView
+        cards={cards}
+        sortKey="name"
+        groupMode="flat"
+        organizeBy="type"
+        getTouchActions={() => [{ label: 'Add to main deck', onAction: onAdd }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('img', { name: 'Lightning Bolt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to main deck' }));
+    expect(onAdd).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders cards without touch actions', () => {
+    renderWithAppProviders(
+      <GridView cards={cards} sortKey="name" groupMode="flat" organizeBy="type" />,
+    );
+
+    expect(screen.getByRole('img', { name: 'Lightning Bolt' })).toBeInTheDocument();
+  });
+});

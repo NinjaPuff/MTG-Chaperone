@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DeckCardList, type DeckCardListItem } from '../../../components/deckbuilder/DeckCardList';
+import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
 function makeListItem(overrides: Partial<DeckCardListItem> = {}): DeckCardListItem {
   return {
@@ -17,7 +18,7 @@ function makeListItem(overrides: Partial<DeckCardListItem> = {}): DeckCardListIt
 
 describe('DeckCardList', () => {
   it('shows total quantity beside group heading', () => {
-    render(
+    renderWithAppProviders(
       <DeckCardList
         title="Main Deck"
         emptyText="Empty"
@@ -32,7 +33,7 @@ describe('DeckCardList', () => {
   });
 
   it('orders groups by CARD_TYPE_ORDER', () => {
-    render(
+    renderWithAppProviders(
       <DeckCardList
         title="Main Deck"
         emptyText="Empty"
@@ -49,14 +50,14 @@ describe('DeckCardList', () => {
   });
 
   it('shows empty text and no group headings when deck is empty', () => {
-    render(<DeckCardList title="Main Deck" emptyText="Drop cards here." cards={[]} />);
+    renderWithAppProviders(<DeckCardList title="Main Deck" emptyText="Drop cards here." cards={[]} />);
 
     expect(screen.getByText('Drop cards here.')).toBeInTheDocument();
     expect(screen.queryByText(/Creature \(/)).not.toBeInTheDocument();
   });
 
   it('shows group counts for sideboard cards', () => {
-    render(
+    renderWithAppProviders(
       <DeckCardList
         title="Cards"
         emptyText="Empty sideboard"
@@ -76,7 +77,7 @@ describe('DeckCardList', () => {
   });
 
   it('applies red tint class for mono-red rows', () => {
-    render(
+    renderWithAppProviders(
       <DeckCardList
         title="Main Deck"
         emptyText="Empty"
@@ -94,11 +95,11 @@ describe('DeckCardList', () => {
 
     const row = screen.getByRole('button', { name: /4x Lightning Bolt/i });
     expect(row.className).toContain('deck-row-tint-red');
-    expect(screen.getByText(/4x Lightning Bolt/)).toBeInTheDocument();
+    expect(screen.getByText('Lightning Bolt')).toBeInTheDocument();
   });
 
   it('applies gold tint class for multicolor rows', () => {
-    render(
+    renderWithAppProviders(
       <DeckCardList
         title="Main Deck"
         emptyText="Empty"

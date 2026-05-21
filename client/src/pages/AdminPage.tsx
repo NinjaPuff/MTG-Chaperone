@@ -2,8 +2,10 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
+import { hasRemovedSetCodes } from '@/lib/boosterProductEditGuards';
 import { resolveCreatePrimarySetCode } from '@/lib/boosterProductCreate';
 import { useAuth } from '@/context/AuthContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { SetCodePicker } from '@/components/SetCodePicker';
 import { BoosterProductSetBadges } from '@/components/BoosterProductSetBadges';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
@@ -194,6 +196,7 @@ function formatMutationError(err: unknown, fallback: string) {
 
 export function AdminPage() {
   const { user } = useAuth();
+  const { confirm } = useConfirm();
   const [leagues, setLeagues] = useState<League[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -562,6 +565,17 @@ export function AdminPage() {
     if (!selectedLeagueSlug) {
       return;
     }
+
+    const confirmed = await confirm({
+      title: 'Revoke invite link',
+      message: 'Revoke this invite link? New players will no longer be able to use it.',
+      confirmLabel: 'Revoke',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+
     setError(null);
     setSuccess(null);
     try {
@@ -680,6 +694,22 @@ export function AdminPage() {
     if (!activeSeason) {
       return;
     }
+
+    const eventItem = events.find((item) => item.id === eventId);
+    const eventName = eventItem?.name ?? 'this event';
+    const confirmed = await confirm({
+      title: action === 'start' ? 'Start event' : 'Complete event',
+      message:
+        action === 'start'
+          ? `Start "${eventName}"? This locks in the event for play.`
+          : `Complete "${eventName}"? This cannot be undone.`,
+      confirmLabel: action === 'start' ? 'Start' : 'Complete',
+      variant: action === 'complete' ? 'destructive' : 'default',
+    });
+    if (!confirmed) {
+      return;
+    }
+
     setError(null);
     setSuccess(null);
     try {
@@ -696,6 +726,17 @@ export function AdminPage() {
     if (!selectedLeagueSlug || !activeSeason || !nextSeasonName.trim()) {
       return;
     }
+
+    const confirmed = await confirm({
+      title: 'End season and start new',
+      message: `End "${activeSeason.name}" and start "${nextSeasonName.trim()}" as the active season?`,
+      confirmLabel: 'Start new season',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+
     setError(null);
     setSuccess(null);
     try {
@@ -806,6 +847,20 @@ export function AdminPage() {
       return;
     }
 
+    const editingProduct = boosterProducts.find((product) => product.id === editingBoosterId);
+    const originalSetCodes = editingProduct?.setCodes.map((entry) => entry.setCode) ?? [];
+    if (hasRemovedSetCodes(originalSetCodes, editBoosterForm.setCodes)) {
+      const confirmed = await confirm({
+        title: 'Remove booster sets',
+        message: `Save "${editBoosterForm.name}" with fewer set codes? Removed sets will no longer be included in this product.`,
+        confirmLabel: 'Save changes',
+        variant: 'destructive',
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
     setError(null);
     setSuccess(null);
     try {
@@ -828,6 +883,17 @@ export function AdminPage() {
   };
 
   const deleteBoosterProduct = async (id: string) => {
+    const product = boosterProducts.find((entry) => entry.id === id);
+    const confirmed = await confirm({
+      title: 'Delete booster product',
+      message: `Delete "${product?.name ?? 'this booster product'}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+
     setError(null);
     setSuccess(null);
     try {
@@ -844,9 +910,12 @@ export function AdminPage() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Remove ${member.user.displayName} from the league? Their card pool (if any) will also be deleted.`,
-    );
+    const confirmed = await confirm({
+      title: 'Remove league member',
+      message: `Remove ${member.user.displayName} from the league? Their card pool (if any) will also be deleted.`,
+      confirmLabel: 'Remove',
+      variant: 'destructive',
+    });
     if (!confirmed) {
       return;
     }
@@ -924,7 +993,12 @@ export function AdminPage() {
       return;
     }
 
-    const confirmed = window.confirm('Remove this pool assignment?');
+    const confirmed = await confirm({
+      title: 'Remove pool assignment',
+      message: 'Remove this pool assignment?',
+      confirmLabel: 'Remove',
+      variant: 'destructive',
+    });
     if (!confirmed) {
       return;
     }

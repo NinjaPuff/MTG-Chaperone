@@ -1,10 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
-import { flattenEntries, sortCards } from '@/lib/cardPoolSort';
-import { CardHoverPreview } from '@/components/cardpool/CardHoverPreview';
-import { CardPreviewProvider } from '@/components/cardpool/CardPreviewContext';
+import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
 import { ListView } from '@/components/cardpool/ListView';
@@ -390,6 +388,26 @@ export function DeckBuilderPage() {
     );
   };
 
+  const poolImageByCardId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const card of poolCards) {
+      const url = getImageUrl(card, 'normal') ?? getImageUrl(card, 'border_crop');
+      if (url) {
+        map.set(card.scryfallId, url);
+      }
+    }
+    return map;
+  }, [poolCards]);
+
+  const poolTouchActions = useCallback(
+    (card: PoolCard) => [
+      { label: 'Add to main deck', onAction: () => addCardToActiveDeck(card, 'main') },
+      { label: 'Add to sideboard', onAction: () => addCardToActiveDeck(card, 'sideboard') },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeDeckId, poolCards, decks],
+  );
+
   const removeCardFromDeck = (card: DeckBuilderCard, deckId: string) => {
     setDecks((prev) =>
       prev.map((deck) => {
@@ -503,14 +521,14 @@ export function DeckBuilderPage() {
                 </div>
               ) : null}
 
-              <CardPreviewProvider>
-                {viewMode === 'list' ? (
+              {viewMode === 'list' ? (
                   <ListView
                     cards={visiblePoolCards}
                     sortKey={sortKey}
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
+                    getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
                       return (
@@ -531,6 +549,7 @@ export function DeckBuilderPage() {
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
+                    getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
                       return (
@@ -552,6 +571,7 @@ export function DeckBuilderPage() {
                     organizeBy={stacksOrganizeBy}
                     cardWidth={stackCardWidth}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
+                    getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
                       return (
@@ -572,6 +592,7 @@ export function DeckBuilderPage() {
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
+                    getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
                       return (
@@ -584,8 +605,6 @@ export function DeckBuilderPage() {
                     }}
                   />
                 ) : null}
-                <CardHoverPreview />
-              </CardPreviewProvider>
             </div>
 
             <div className="min-h-[640px]">
@@ -593,6 +612,7 @@ export function DeckBuilderPage() {
                 decks={decks}
                 activeDeckId={activeDeckId ?? ''}
                 minDeckSize={minDeckSize}
+                poolImageByCardId={poolImageByCardId}
                 expandedDeckMode={expandedDeckMode}
                 onExpandedDeckModeChange={setExpandedDeckMode}
                 onActiveDeckChange={setActiveDeckId}

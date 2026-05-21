@@ -1,6 +1,6 @@
 import { Fragment, type MouseEvent, type ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
-import { HoverTarget } from './CardPreviewContext';
+import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { ManaCostSymbols } from './ManaCostSymbols';
 import { SetSymbol } from '@/components/SetSymbol';
@@ -16,6 +16,7 @@ type ListViewProps = {
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 };
 
 type OrganizeSectionProps = {
@@ -26,6 +27,7 @@ type OrganizeSectionProps = {
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 };
 
 function OrganizeSections({
@@ -36,6 +38,7 @@ function OrganizeSections({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: OrganizeSectionProps) {
   const { getSet } = useScryfallSets();
   const groups = groupByOrganize(cards, organizeBy);
@@ -59,7 +62,12 @@ function OrganizeSections({
                   onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
                 >
                   <span className="w-8 text-right font-mono text-muted-foreground">{card.quantity}x</span>
-                  <HoverTarget scryfallId={card.scryfallId} name={card.name} imageUrl={getImageUrl(card, 'normal')}>
+                  <HoverTarget
+                    scryfallId={card.scryfallId}
+                    name={card.name}
+                    imageUrl={getImageUrl(card, 'normal')}
+                    touchActions={getTouchActions?.(card)}
+                  >
                     <span className="cursor-default truncate">{card.name}</span>
                   </HoverTarget>
                   <ManaCostSymbols
@@ -94,6 +102,7 @@ export function ListView({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: ListViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
@@ -109,6 +118,7 @@ export function ListView({
         onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
         renderBadge={renderBadge}
+        getTouchActions={getTouchActions}
       />
     );
   }
@@ -129,6 +139,7 @@ export function ListView({
               onCardClick={onCardClick}
               onCardDoubleClick={onCardDoubleClick}
               renderBadge={renderBadge}
+              getTouchActions={getTouchActions}
             />
           </div>
         </Fragment>

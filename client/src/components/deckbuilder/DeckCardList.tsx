@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react';
+import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
 import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
 import { sumBucketQuantity } from '@/lib/curveBucketTotal';
 import { getDeckRowColorClasses } from '@/lib/deckRowColors';
@@ -12,6 +13,7 @@ export type DeckCardListItem = {
   quantity: number;
   zone: 'main' | 'sideboard';
   colorIdentity: string[];
+  imageUrl?: string | null;
 };
 
 type DeckCardListProps = {
@@ -60,7 +62,14 @@ export function DeckCardList({
                 onContextMenu={(event) => onCardContextMenu?.(event, card)}
               >
                 <span className="min-w-0 truncate">
-                  {card.quantity}x {card.name}
+                  {card.quantity}x{' '}
+                  <HoverTarget
+                    scryfallId={card.cachedCardId}
+                    name={card.name}
+                    imageUrl={card.imageUrl ?? null}
+                  >
+                    <span className="cursor-default">{card.name}</span>
+                  </HoverTarget>
                 </span>
                 <ManaCostSymbols manaCost={card.manaCost} className="ml-2 inline-flex shrink-0" />
               </button>

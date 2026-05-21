@@ -25,6 +25,7 @@ export type PoolCardFilterOptions = {
 };
 
 function matchesColorFilter(card: PoolCard, selectedColorFilters: string[]): boolean {
+  // Empty color selection means "show none" (not "show all").
   const allColorsSelected = selectedColorFilters.length === COLOR_FILTERS.length;
   if (allColorsSelected) {
     return true;
@@ -41,6 +42,7 @@ function matchesColorFilter(card: PoolCard, selectedColorFilters: string[]): boo
 }
 
 function matchesTypeFilter(card: PoolCard, selectedTypeFilters: string[]): boolean {
+  // Empty type selection means "show none" (not "show all").
   const allTypesSelected = selectedTypeFilters.length === CARD_TYPE_FILTERS.length;
   if (allTypesSelected) {
     return true;

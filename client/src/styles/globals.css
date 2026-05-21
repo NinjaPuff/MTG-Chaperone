@@ -121,4 +121,22 @@
     background-color: hsl(var(--deck-row-colorless));
     border: 2px solid hsl(var(--deck-row-border-colorless));
   }
+
+  .toast-enter {
+    @media (prefers-reduced-motion: no-preference) {
+      animation: toast-enter 0.2s ease-out both;
+    }
+  }
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

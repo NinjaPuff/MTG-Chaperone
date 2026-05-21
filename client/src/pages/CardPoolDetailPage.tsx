@@ -2,9 +2,10 @@ import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest, getStoredToken } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
 import { primaryName, secondaryName } from '@/lib/userDisplay';
-import { CardHoverPreview } from '@/components/cardpool/CardHoverPreview';
-import { CardPreviewProvider } from '@/components/cardpool/CardPreviewContext';
+import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
 import { ListView } from '@/components/cardpool/ListView';
@@ -20,6 +21,11 @@ import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
 import { focusAndSelectInput } from '@/lib/focusSearchInputAfterStage';
 import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
+import {
+  buildApplyStagedRemovalsConfirmMessage,
+  countStagedRemovals,
+  hasStagedRemovals,
+} from '@/lib/poolStaging';
 
 type PoolDetail = {
   id: string;
@@ -208,6 +214,8 @@ function parseFileNameFromDisposition(disposition: string | null) {
 export function CardPoolDetailPage() {
   const { poolId } = useParams<{ poolId: string }>();
   const { user } = useAuth();
+  const { confirm } = useConfirm();
+  const { showToast } = useToast();
   const { getSet } = useScryfallSets();
   const [pool, setPool] = useState<PoolDetail | null>(null);
   const [acquisitions, setAcquisitions] = useState<PoolAcquisition[]>([]);
@@ -485,6 +493,7 @@ export function CardPoolDetailPage() {
       };
       return next;
     });
+    showToast({ message: `Staged: ${card.name} (+${quantity})`, variant: 'success' });
     focusAndSelectInput(searchInputRef.current);
   };
 
@@ -537,6 +546,9 @@ export function CardPoolDetailPage() {
       setBulkText('');
       setIsBulkAddOpen(false);
       await loadPool();
+      if (addedCount > 0) {
+        showToast({ message: `Added ${addedCount} cards to pool`, variant: 'success' });
+      }
     } catch (bulkAddError) {
       setError(bulkAddError instanceof ApiError ? bulkAddError.message : 'Unable to bulk add cards');
     } finally {
@@ -584,9 +596,12 @@ export function CardPoolDetailPage() {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Clear all cards in "${clearPhaseLabel}" for this pool? This cannot be undone.`,
-    );
+    const confirmed = await confirm({
+      title: 'Clear acquisition group',
+      message: `Clear all cards in "${clearPhaseLabel}" for this pool? This cannot be undone.`,
+      confirmLabel: 'Clear',
+      variant: 'destructive',
+    });
     if (!confirmed) {
       return;
     }
@@ -718,7 +733,7 @@ export function CardPoolDetailPage() {
           return next;
         });
         setAdminContextMenu(null);
-        setSuccess('Updated staged removal for this card.');
+        showToast({ message: `Staged removal: ${adminContextMenu.card.name}`, variant: 'success' });
         setError(null);
         return;
       }
@@ -743,7 +758,7 @@ export function CardPoolDetailPage() {
           return next;
         });
         setAdminContextMenu(null);
-        setSuccess('Updated staged add for this card.');
+        showToast({ message: `Staged: ${adminContextMenu.card.name} (+1)`, variant: 'success' });
         setError(null);
         return;
       }
@@ -762,7 +777,13 @@ export function CardPoolDetailPage() {
       },
     ]);
     setAdminContextMenu(null);
-    setSuccess(action === 'add' ? 'Add staged. Apply staged changes when ready.' : 'Removal staged. Apply staged changes when ready.');
+    showToast({
+      message:
+        action === 'add'
+          ? `Staged: ${adminContextMenu.card.name} (+1)`
+          : `Staged removal: ${adminContextMenu.card.name}`,
+      variant: 'success',
+    });
     setError(null);
   };
 
@@ -773,6 +794,20 @@ export function CardPoolDetailPage() {
   const applyStagedPoolChanges = async () => {
     if (!poolId || (stagedPoolChanges.length === 0 && stagedCards.length === 0)) {
       return;
+    }
+
+    if (hasStagedRemovals(stagedPoolChanges)) {
+      const totalChanges = stagedCards.length + stagedPoolChanges.length;
+      const removalCount = countStagedRemovals(stagedPoolChanges);
+      const confirmed = await confirm({
+        title: 'Apply staged changes',
+        message: buildApplyStagedRemovalsConfirmMessage(totalChanges, removalCount),
+        confirmLabel: 'Apply removals',
+        variant: 'destructive',
+      });
+      if (!confirmed) {
+        return;
+      }
     }
 
     setApplyingStagedChanges(true);
@@ -983,35 +1018,45 @@ export function CardPoolDetailPage() {
             {!searching && searchResults.length > 0 ? (
               <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-border p-2">
                 {searchResults.map((card) => (
-                  <button
-                    type="button"
+                  <div
                     key={card.scryfallId}
-                    className="flex w-full items-center justify-between gap-3 rounded border border-border p-2 text-left hover:bg-muted"
-                    onClick={() => addSearchResultToStage(card)}
+                    className="flex w-full items-center justify-between gap-3 rounded border border-border p-2 hover:bg-muted"
                   >
-                    <div className="flex items-center gap-3">
-                      {getSmallImage(card.imageUris) ? (
-                        <img
-                          src={getSmallImage(card.imageUris) ?? undefined}
-                          alt={card.name}
-                          className="h-10 w-8 rounded border border-border object-cover"
-                        />
-                      ) : null}
-                      <div>
-                        <p className="text-sm font-medium">{card.name}</p>
-                        <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <SetSymbol
-                            setCode={card.setCode}
-                            size="sm"
-                            iconUri={getSet(card.setCode)?.icon_svg_uri}
-                            setName={getSet(card.setCode)?.name}
+                    <HoverTarget
+                      scryfallId={card.scryfallId}
+                      name={card.name}
+                      imageUrl={getSmallImage(card.imageUris)}
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                        {getSmallImage(card.imageUris) ? (
+                          <img
+                            src={getSmallImage(card.imageUris) ?? undefined}
+                            alt={card.name}
+                            className="h-10 w-8 rounded border border-border object-cover"
                           />
-                          <ManaCostSymbols manaCost={card.manaCost} className="inline-flex align-middle" />
-                        </p>
+                        ) : null}
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium">{card.name}</p>
+                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <SetSymbol
+                              setCode={card.setCode}
+                              size="sm"
+                              iconUri={getSet(card.setCode)?.icon_svg_uri}
+                              setName={getSet(card.setCode)?.name}
+                            />
+                            <ManaCostSymbols manaCost={card.manaCost} className="inline-flex align-middle" />
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <span className="rounded-md border border-border px-2 py-1 text-xs font-medium">Add</span>
-                  </button>
+                    </HoverTarget>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-background"
+                      onClick={() => addSearchResultToStage(card)}
+                    >
+                      Add
+                    </button>
+                  </div>
                 ))}
               </div>
             ) : null}
@@ -1057,6 +1102,7 @@ export function CardPoolDetailPage() {
               {stagedCards.map((card) => (
                 <StagedOwnerCardRow
                   key={`${card.cachedCardId}-${card.phaseLabel}`}
+                  cachedCardId={card.cachedCardId}
                   name={card.name}
                   phaseLabel={card.phaseLabel}
                   imageUri={card.imageUri}
@@ -1079,6 +1125,7 @@ export function CardPoolDetailPage() {
                 return (
                   <StagedChangeRow
                     key={change.id}
+                    cachedCardId={change.cachedCardId}
                     label={`${actionLabel} - ${change.cardName} (${change.phaseLabel})`}
                     imageUri={change.imageUri}
                     imageAlt={change.cardName}
@@ -1154,46 +1201,43 @@ export function CardPoolDetailPage() {
             <span className="text-xs text-muted-foreground">{stackCardWidth}px</span>
           </div>
         ) : null}
-        <CardPreviewProvider>
-          {viewMode === 'list' ? (
-            <ListView
-              cards={visibleCards}
-              sortKey={sortKey}
-              groupMode={groupMode}
-              organizeBy={stacksOrganizeBy}
-              onCardContextMenu={handleAdminCardContextMenu}
-            />
-          ) : null}
-          {viewMode === 'grid' && !disableVisualViews ? (
-            <GridView
-              cards={visibleCards}
-              sortKey={sortKey}
-              groupMode={groupMode}
-              organizeBy={stacksOrganizeBy}
-              onCardContextMenu={handleAdminCardContextMenu}
-            />
-          ) : null}
-          {viewMode === 'stacks' && !disableVisualViews ? (
-            <StacksView
-              cards={visibleCards}
-              sortKey={sortKey}
-              groupMode={groupMode}
-              cardWidth={stackCardWidth}
-              organizeBy={stacksOrganizeBy}
-              onCardContextMenu={handleAdminCardContextMenu}
-            />
-          ) : null}
-          {viewMode === 'curve' && !disableVisualViews ? (
-            <CurveView
-              cards={visibleCards}
-              sortKey={sortKey}
-              groupMode={groupMode}
-              organizeBy={stacksOrganizeBy}
-              onCardContextMenu={handleAdminCardContextMenu}
-            />
-          ) : null}
-          <CardHoverPreview />
-        </CardPreviewProvider>
+        {viewMode === 'list' ? (
+          <ListView
+            cards={visibleCards}
+            sortKey={sortKey}
+            groupMode={groupMode}
+            organizeBy={stacksOrganizeBy}
+            onCardContextMenu={handleAdminCardContextMenu}
+          />
+        ) : null}
+        {viewMode === 'grid' && !disableVisualViews ? (
+          <GridView
+            cards={visibleCards}
+            sortKey={sortKey}
+            groupMode={groupMode}
+            organizeBy={stacksOrganizeBy}
+            onCardContextMenu={handleAdminCardContextMenu}
+          />
+        ) : null}
+        {viewMode === 'stacks' && !disableVisualViews ? (
+          <StacksView
+            cards={visibleCards}
+            sortKey={sortKey}
+            groupMode={groupMode}
+            cardWidth={stackCardWidth}
+            organizeBy={stacksOrganizeBy}
+            onCardContextMenu={handleAdminCardContextMenu}
+          />
+        ) : null}
+        {viewMode === 'curve' && !disableVisualViews ? (
+          <CurveView
+            cards={visibleCards}
+            sortKey={sortKey}
+            groupMode={groupMode}
+            organizeBy={stacksOrganizeBy}
+            onCardContextMenu={handleAdminCardContextMenu}
+          />
+        ) : null}
         {isAdmin && adminContextMenu ? (
           <div
             className="absolute z-50 w-72 rounded-md border border-border bg-popover p-3 shadow-xl"

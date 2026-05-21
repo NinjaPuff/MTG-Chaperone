@@ -20,9 +20,14 @@ type DeckSidebarProps = {
   onSideboardDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
   expandedDeckMode?: boolean;
   onExpandedDeckModeChange?: (expanded: boolean) => void;
+  poolImageByCardId?: Map<string, string>;
 };
 
-function toListItems(cards: DeckBuilderCard[], zone: 'main' | 'sideboard'): DeckCardListItem[] {
+function toListItems(
+  cards: DeckBuilderCard[],
+  zone: 'main' | 'sideboard',
+  poolImageByCardId?: Map<string, string>,
+): DeckCardListItem[] {
   return cards
     .filter((card) => card.zone === zone)
     .sort((a, b) => a.cmc - b.cmc || a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
@@ -34,6 +39,7 @@ function toListItems(cards: DeckBuilderCard[], zone: 'main' | 'sideboard'): Deck
       quantity: card.quantity,
       zone,
       colorIdentity: card.colorIdentity,
+      imageUrl: poolImageByCardId?.get(card.cachedCardId) ?? null,
     }));
 }
 
@@ -60,13 +66,20 @@ export function DeckSidebar({
   onSideboardDrop,
   expandedDeckMode,
   onExpandedDeckModeChange,
+  poolImageByCardId,
 }: DeckSidebarProps) {
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? decks[0];
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState(activeDeck?.name ?? 'Deck');
 
-  const mainCards = useMemo(() => toListItems(activeDeck?.cards ?? [], 'main'), [activeDeck?.cards]);
-  const sideboardCards = useMemo(() => toListItems(activeDeck?.cards ?? [], 'sideboard'), [activeDeck?.cards]);
+  const mainCards = useMemo(
+    () => toListItems(activeDeck?.cards ?? [], 'main', poolImageByCardId),
+    [activeDeck?.cards, poolImageByCardId],
+  );
+  const sideboardCards = useMemo(
+    () => toListItems(activeDeck?.cards ?? [], 'sideboard', poolImageByCardId),
+    [activeDeck?.cards, poolImageByCardId],
+  );
   const mainCount = mainCards.reduce((sum, card) => sum + card.quantity, 0);
   const sideboardCount = sideboardCards.reduce((sum, card) => sum + card.quantity, 0);
   const curveCards = (activeDeck?.cards ?? [])

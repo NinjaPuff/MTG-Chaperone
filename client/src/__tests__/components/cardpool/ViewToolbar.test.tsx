@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ViewToolbar } from '../../../components/cardpool/ViewToolbar';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS } from '../../../lib/cardPoolFilters';
@@ -115,5 +116,41 @@ describe('ViewToolbar', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Show Restricted' }));
     expect(onToggleShowRestrictedCards).toHaveBeenCalledTimes(1);
     expect(onToggleShowRestrictedCards).toHaveBeenCalledWith(false);
+  });
+
+  it('unchecks a selected color filter with real state', () => {
+    function StatefulToolbar() {
+      const [selectedColorFilters, setSelectedColorFilters] = useState<string[]>([...COLOR_FILTERS]);
+
+      return (
+        <ViewToolbar
+          viewMode="list"
+          sortKey="name"
+          groupMode="flat"
+          totalCards={10}
+          selectedColorFilters={selectedColorFilters}
+          selectedTypeFilters={[...CARD_TYPE_FILTERS]}
+          showBasicLands={true}
+          onToggleColorFilter={(value) =>
+            setSelectedColorFilters((prev) =>
+              prev.includes(value) ? prev.filter((entry) => entry !== value) : [...prev, value],
+            )
+          }
+          onToggleTypeFilter={vi.fn()}
+          onToggleShowBasicLands={vi.fn()}
+          onResetFilters={vi.fn()}
+          onChange={vi.fn()}
+        />
+      );
+    }
+
+    render(<StatefulToolbar />);
+    openFiltersDropdown();
+
+    const whiteCheckbox = screen.getByRole('checkbox', { name: 'W' });
+    expect(whiteCheckbox).toBeChecked();
+    fireEvent.click(whiteCheckbox);
+    expect(whiteCheckbox).not.toBeChecked();
+    expect(screen.getByText(/Filters \(13\/14\)/)).toBeInTheDocument();
   });
 });

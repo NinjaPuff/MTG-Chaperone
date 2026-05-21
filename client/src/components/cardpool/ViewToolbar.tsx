@@ -118,11 +118,16 @@ function CombinedFilterDropdown({
             <p className="text-xs font-semibold text-muted-foreground">Color</p>
             <div className="space-y-1">
               {COLOR_FILTERS.map((option) => (
-                <label key={option} className="flex items-center gap-2 text-xs text-foreground">
+                <label
+                  key={option}
+                  className="flex items-center gap-2 text-xs text-foreground"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={selectedColorFilters.includes(option)}
                     onChange={() => onToggleColorFilter(option)}
+                    onClick={(event) => event.stopPropagation()}
                     className="h-3.5 w-3.5 rounded border-border bg-background accent-primary"
                   />
                   {option}
@@ -134,11 +139,16 @@ function CombinedFilterDropdown({
             <p className="text-xs font-semibold text-muted-foreground">Type</p>
             <div className="space-y-1">
               {TYPE_FILTERS.map((option) => (
-                <label key={option} className="flex items-center gap-2 text-xs text-foreground">
+                <label
+                  key={option}
+                  className="flex items-center gap-2 text-xs text-foreground"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={selectedTypeFilters.includes(option)}
                     onChange={() => onToggleTypeFilter(option)}
+                    onClick={(event) => event.stopPropagation()}
                     className="h-3.5 w-3.5 rounded border-border bg-background accent-primary"
                   />
                   {option}
@@ -182,20 +192,28 @@ function ProTweaksDropdown({
       >
         <p className="mb-2 text-xs font-semibold text-muted-foreground">Specific View Settings</p>
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-xs text-foreground">
+          <label
+            className="flex items-center gap-2 text-xs text-foreground"
+            onClick={(event) => event.stopPropagation()}
+          >
             <input
               type="checkbox"
               checked={groupMode === 'phase'}
               onChange={(event) => onChangeGroupMode(event.target.checked)}
+              onClick={(event) => event.stopPropagation()}
               className="h-4 w-4 rounded border-border bg-background accent-primary"
             />
             Organize by Card Acquisition Group
           </label>
-          <label className="flex items-center gap-2 text-xs text-foreground">
+          <label
+            className="flex items-center gap-2 text-xs text-foreground"
+            onClick={(event) => event.stopPropagation()}
+          >
             <input
               type="checkbox"
               checked={showBasicLands}
               onChange={(event) => onToggleShowBasicLands(event.target.checked)}
+              onClick={(event) => event.stopPropagation()}
               className="h-4 w-4 rounded border-border bg-background accent-primary"
             />
             Show Basic Lands

@@ -1,6 +1,6 @@
 import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
-import { HoverTarget } from './CardPreviewContext';
+import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { sumBucketQuantity } from '@/lib/curveBucketTotal';
 import { getImageUrl, getPrimaryType, groupByCmc, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
@@ -14,6 +14,7 @@ type CurveViewProps = {
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 };
 
 function sortCurveColumn(cards: PoolCard[]) {
@@ -33,12 +34,14 @@ function CurveColumns({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: {
   cards: PoolCard[];
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
   const byCmc = groupByCmc(cards);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -107,6 +110,7 @@ function CurveColumns({
                         scryfallId={card.scryfallId}
                         name={card.name}
                         imageUrl={image}
+                        touchActions={getTouchActions?.(card)}
                         element="div"
                       >
                         <div
@@ -162,6 +166,7 @@ function OrganizedCurveSections({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: {
   cards: PoolCard[];
   organizeBy: StacksOrganizeBy;
@@ -169,6 +174,7 @@ function OrganizedCurveSections({
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
   if (organizeBy === 'cmc') {
     return (
@@ -178,6 +184,7 @@ function OrganizedCurveSections({
         onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
         renderBadge={renderBadge}
+        getTouchActions={getTouchActions}
       />
     );
   }
@@ -196,6 +203,7 @@ function OrganizedCurveSections({
             onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}
             renderBadge={renderBadge}
+            getTouchActions={getTouchActions}
           />
         </div>
       ))}
@@ -212,6 +220,7 @@ export function CurveView({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: CurveViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
@@ -228,6 +237,7 @@ export function CurveView({
         onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
         renderBadge={renderBadge}
+        getTouchActions={getTouchActions}
       />
     );
   }
@@ -245,6 +255,7 @@ export function CurveView({
             onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}
             renderBadge={renderBadge}
+            getTouchActions={getTouchActions}
           />
         </div>
       ))}

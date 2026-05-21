@@ -1,11 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { StagedChangeRow } from '../../../components/cardpool/StagedChangeRow';
+import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
 describe('StagedChangeRow', () => {
   it('renders thumbnail when imageUri is provided', () => {
-    render(
+    renderWithAppProviders(
       <StagedChangeRow
+        cachedCardId="card-1"
         label="Add +1 - Lightning Bolt (Pack 1)"
         imageUri="https://example.com/bolt.jpg"
         imageAlt="Lightning Bolt"
@@ -19,8 +21,9 @@ describe('StagedChangeRow', () => {
   });
 
   it('omits image when imageUri is null', () => {
-    render(
+    renderWithAppProviders(
       <StagedChangeRow
+        cachedCardId="card-1"
         label="Remove -1 - Lightning Bolt (Pack 1)"
         imageUri={null}
         imageAlt="Lightning Bolt"
@@ -35,8 +38,9 @@ describe('StagedChangeRow', () => {
 
   it('calls onRemove when Remove is clicked', () => {
     const onRemove = vi.fn();
-    render(
+    renderWithAppProviders(
       <StagedChangeRow
+        cachedCardId="card-1"
         label="Add +1 - Lightning Bolt (Pack 1)"
         imageUri={null}
         imageAlt="Lightning Bolt"
@@ -50,8 +54,9 @@ describe('StagedChangeRow', () => {
   });
 
   it('disables Remove when applying', () => {
-    render(
+    renderWithAppProviders(
       <StagedChangeRow
+        cachedCardId="card-1"
         label="Add +1 - Lightning Bolt (Pack 1)"
         imageUri={null}
         imageAlt="Lightning Bolt"

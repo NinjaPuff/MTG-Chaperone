@@ -1,4 +1,7 @@
+import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
+
 type StagedOwnerCardRowProps = {
+  cachedCardId: string;
   name: string;
   phaseLabel: string;
   imageUri: string | null;
@@ -9,6 +12,7 @@ type StagedOwnerCardRowProps = {
 };
 
 export function StagedOwnerCardRow({
+  cachedCardId,
   name,
   phaseLabel,
   imageUri,
@@ -20,12 +24,16 @@ export function StagedOwnerCardRow({
   return (
     <div className="flex items-center justify-between gap-2 rounded border border-border/60 px-2 py-1.5 text-xs">
       <div className="flex min-w-0 items-center gap-2">
-        {imageUri ? (
-          <img src={imageUri} alt={name} className="h-10 w-8 shrink-0 rounded border border-border object-cover" />
-        ) : null}
-        <span className="min-w-0 truncate">
-          <span className="font-medium">Add</span> - {name} ({phaseLabel})
-        </span>
+        <HoverTarget scryfallId={cachedCardId} name={name} imageUrl={imageUri}>
+          <div className="flex min-w-0 items-center gap-2">
+            {imageUri ? (
+              <img src={imageUri} alt={name} className="h-10 w-8 shrink-0 rounded border border-border object-cover" />
+            ) : null}
+            <span className="min-w-0 truncate">
+              <span className="font-medium">Add</span> - {name} ({phaseLabel})
+            </span>
+          </div>
+        </HoverTarget>
       </div>
       <div className="flex items-center gap-2">
         <input

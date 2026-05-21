@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
-import { HoverTarget } from './CardPreviewContext';
+import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { getImageUrl, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
 
@@ -13,6 +13,7 @@ type GridViewProps = {
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 };
 
 function CardCell({
@@ -21,17 +22,25 @@ function CardCell({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: {
   card: PoolCard;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
   const image = getImageUrl(card, 'border_crop') ?? getImageUrl(card, 'normal');
 
   return (
-    <HoverTarget scryfallId={card.scryfallId} name={card.name} imageUrl={image} element="div">
+    <HoverTarget
+      scryfallId={card.scryfallId}
+      name={card.name}
+      imageUrl={image}
+      touchActions={getTouchActions?.(card)}
+      element="div"
+    >
       <div
         className={`relative${onCardClick ? ' cursor-pointer' : ''}`}
         onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
@@ -70,6 +79,7 @@ function OrganizedGridSections({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: {
   cards: PoolCard[];
   sortKey: SortKey;
@@ -78,6 +88,7 @@ function OrganizedGridSections({
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
   const groups = groupByOrganize(cards, organizeBy);
 
@@ -97,6 +108,7 @@ function OrganizedGridSections({
                 onCardClick={onCardClick}
                 onCardDoubleClick={onCardDoubleClick}
                 renderBadge={renderBadge}
+                getTouchActions={getTouchActions}
               />
             ))}
           </div>
@@ -115,6 +127,7 @@ export function GridView({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: GridViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
@@ -130,6 +143,7 @@ export function GridView({
         onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
         renderBadge={renderBadge}
+        getTouchActions={getTouchActions}
       />
     );
   }
@@ -149,6 +163,7 @@ export function GridView({
             onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}
             renderBadge={renderBadge}
+            getTouchActions={getTouchActions}
           />
         </div>
       ))}

@@ -1,6 +1,4 @@
 import { useMemo, useState } from 'react';
-import { CardHoverPreview } from '@/components/cardpool/CardHoverPreview';
-import { CardPreviewProvider } from '@/components/cardpool/CardPreviewContext';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { StacksView } from '@/components/cardpool/StacksView';
 import type { PoolCard } from '@/components/cardpool/types';
@@ -154,14 +152,11 @@ export function DeckAnalyticsView({
         </button>
       </div>
 
-      <CardPreviewProvider>
-        {viewMode === 'curve' ? (
-          <CurveView cards={cards} sortKey="cmc" groupMode="phase" organizeBy="cmc" />
-        ) : (
-          <StacksView cards={cards} sortKey="type" groupMode="phase" organizeBy="type" cardWidth={200} />
-        )}
-        <CardHoverPreview />
-      </CardPreviewProvider>
+      {viewMode === 'curve' ? (
+        <CurveView cards={cards} sortKey="cmc" groupMode="phase" organizeBy="cmc" />
+      ) : (
+        <StacksView cards={cards} sortKey="type" groupMode="phase" organizeBy="type" cardWidth={200} />
+      )}
     </div>
   );
 }

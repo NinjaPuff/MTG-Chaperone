@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { ApiError, apiRequest } from '@/lib/api';
 import { MatchCard } from '@/components/MatchCard';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
@@ -162,14 +163,10 @@ function matchResultVerdict(match: Match) {
   return { text: `${winner} won.`, tone: 'winner' as const };
 }
 
-type PendingConfirmation =
-  | { type: 'delete_event'; message: string }
-  | { type: 'delete_round'; roundId: string; message: string }
-  | null;
-
 export function EventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const { user } = useAuth();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
   const { league, activeSeason } = useCurrentLeague();
   const { poolSetsByUserId, isLoading: poolSetsLoading } = useSeasonPoolSets(league?.slug, activeSeason?.number);
@@ -187,7 +184,6 @@ export function EventDetailPage() {
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation>(null);
 
   const isAdmin = user?.role === 'admin';
   const bestOfN = event?.config?.bestOfN ?? 3;
@@ -334,8 +330,16 @@ export function EventDetailPage() {
   };
 
   const transitionRound = async (roundId: string, action: 'start' | 'complete' | 'regenerate') => {
-    if (action === 'regenerate' && !window.confirm('Regenerate pairings for this round? Existing reports will be removed.')) {
-      return;
+    if (action === 'regenerate') {
+      const confirmed = await confirm({
+        title: 'Regenerate pairings',
+        message: 'Regenerate pairings for this round? Existing reports will be removed.',
+        confirmLabel: 'Regenerate',
+        variant: 'destructive',
+      });
+      if (!confirmed) {
+        return;
+      }
     }
     await mutate(`Round ${action}ed.`, async () => {
       await apiRequest(`/api/rounds/${roundId}/${action}`, { method: 'POST' });
@@ -348,32 +352,28 @@ export function EventDetailPage() {
     });
   };
 
-  const confirmDeleteEvent = () => {
-    setPendingConfirmation({
-      type: 'delete_event',
+  const confirmDeleteEvent = async () => {
+    const confirmed = await confirm({
+      title: 'Confirm Delete',
       message: 'Delete this event and all of its rounds/matches? This cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
     });
-  };
-
-  const confirmDeleteRound = (roundId: string) => {
-    setPendingConfirmation({
-      type: 'delete_round',
-      roundId,
-      message: 'Delete this round? This cannot be undone.',
-    });
-  };
-
-  const runConfirmedAction = async () => {
-    if (!pendingConfirmation) {
-      return;
-    }
-    const action = pendingConfirmation;
-    setPendingConfirmation(null);
-    if (action.type === 'delete_event') {
+    if (confirmed) {
       await deleteEvent();
-      return;
     }
-    await deleteRound(action.roundId);
+  };
+
+  const confirmDeleteRound = async (roundId: string) => {
+    const confirmed = await confirm({
+      title: 'Confirm Delete',
+      message: 'Delete this round? This cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (confirmed) {
+      await deleteRound(roundId);
+    }
   };
 
   const confirmOrDisputeMatch = async (matchId: string, action: 'confirm' | 'dispute') => {
@@ -550,7 +550,7 @@ export function EventDetailPage() {
             <button
               type="button"
               disabled={isMutating}
-              onClick={confirmDeleteEvent}
+              onClick={() => void confirmDeleteEvent()}
               className="rounded-md border border-border px-3 py-2 text-sm text-destructive disabled:opacity-60"
             >
               Delete Event
@@ -729,7 +729,7 @@ export function EventDetailPage() {
                         type="button"
                         className="rounded-md border border-border px-2 py-1 text-xs text-destructive"
                         disabled={isMutating}
-                        onClick={() => confirmDeleteRound(round.id)}
+                        onClick={() => void confirmDeleteRound(round.id)}
                       >
                         Delete Round
                       </button>
@@ -825,33 +825,6 @@ export function EventDetailPage() {
           onClose={closeMatchForm}
           onSubmit={submitMatchForm}
         />
-      ) : null}
-
-      {pendingConfirmation ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-md rounded-lg border border-border bg-card p-4 space-y-4">
-            <h3 className="text-lg font-semibold">Confirm Delete</h3>
-            <p className="text-sm text-muted-foreground">{pendingConfirmation.message}</p>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-md border border-border px-3 py-2 text-sm"
-                onClick={() => setPendingConfirmation(null)}
-                disabled={isMutating}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="rounded-md border border-destructive px-3 py-2 text-sm text-destructive"
-                onClick={() => void runConfirmedAction()}
-                disabled={isMutating}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
       ) : null}
     </div>
   );

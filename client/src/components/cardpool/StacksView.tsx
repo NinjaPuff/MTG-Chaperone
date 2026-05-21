@@ -1,8 +1,9 @@
 import type { MouseEvent, ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
-import { HoverTarget } from './CardPreviewContext';
+import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { getImageUrl, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { stackBadgeTopPx } from '@/lib/stackBadgeLayout';
 
 type StacksViewProps = {
   cards: PoolCard[];
@@ -14,6 +15,7 @@ type StacksViewProps = {
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 };
 
 function StackColumn({
@@ -24,6 +26,7 @@ function StackColumn({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: {
   typeLabel: string;
   cards: PoolCard[];
@@ -32,6 +35,7 @@ function StackColumn({
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
   const cardHeight = Math.round((cardWidth * 680) / 488);
   const peekHeight = Math.max(48, Math.round(cardHeight * 0.24));
@@ -51,6 +55,7 @@ function StackColumn({
               scryfallId={card.scryfallId}
               name={card.name}
               imageUrl={image}
+              touchActions={getTouchActions?.(card)}
               element="div"
             >
               <div
@@ -89,11 +94,22 @@ function StackColumn({
                     x{card.quantity}
                   </span>
                 ) : null}
-                {renderBadge ? <div className="absolute bottom-1 left-1">{renderBadge(card)}</div> : null}
               </div>
             </HoverTarget>
           );
         })}
+        {renderBadge
+          ? cards.map((card, index) => (
+              <div
+                key={`badge-${card.phaseLabel}-${card.scryfallId}`}
+                data-badge-index={index}
+                className="pointer-events-none absolute left-1 -translate-y-full pb-1"
+                style={{ top: stackBadgeTopPx(index, cards.length, peekHeight, cardHeight) }}
+              >
+                {renderBadge(card)}
+              </div>
+            ))
+          : null}
       </div>
     </div>
   );
@@ -108,6 +124,7 @@ function StacksBlock({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: {
   cards: PoolCard[];
   sortKey: SortKey;
@@ -117,6 +134,7 @@ function StacksBlock({
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
+  getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
   const grouped = groupByOrganize(cards, organizeBy);
 
@@ -132,6 +150,7 @@ function StacksBlock({
           onCardClick={onCardClick}
           onCardDoubleClick={onCardDoubleClick}
           renderBadge={renderBadge}
+          getTouchActions={getTouchActions}
         />
       ))}
     </div>
@@ -148,6 +167,7 @@ export function StacksView({
   onCardClick,
   onCardDoubleClick,
   renderBadge,
+  getTouchActions,
 }: StacksViewProps) {
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
@@ -164,6 +184,7 @@ export function StacksView({
         onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
         renderBadge={renderBadge}
+        getTouchActions={getTouchActions}
       />
     );
   }
@@ -184,6 +205,7 @@ export function StacksView({
             onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}
             renderBadge={renderBadge}
+            getTouchActions={getTouchActions}
           />
         </div>
       ))}

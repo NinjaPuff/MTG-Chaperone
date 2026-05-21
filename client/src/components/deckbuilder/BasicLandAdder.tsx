@@ -1,4 +1,5 @@
 import { suggestBasicLands, type BasicLandSuggestion, type SuggestBasicLandCard } from '@/lib/suggestBasicLands';
+import { useConfirm } from '@/context/ConfirmContext';
 
 const LAND_ORDER: Array<keyof BasicLandSuggestion> = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Wastes'];
 
@@ -11,6 +12,8 @@ type BasicLandAdderProps = {
 };
 
 export function BasicLandAdder({ counts, minDeckSize, deckCards, disabled = false, onChange }: BasicLandAdderProps) {
+  const { confirm } = useConfirm();
+
   const updateCount = (land: keyof BasicLandSuggestion, delta: number) => {
     const next = {
       ...counts,
@@ -19,11 +22,16 @@ export function BasicLandAdder({ counts, minDeckSize, deckCards, disabled = fals
     onChange(next);
   };
 
-  const applySuggestion = () => {
+  const applySuggestion = async () => {
     const suggested = suggestBasicLands(deckCards, minDeckSize);
     const hasExisting = LAND_ORDER.some((land) => counts[land] > 0);
     if (hasExisting) {
-      const confirmed = window.confirm('Replace current basic lands with suggested values?');
+      const confirmed = await confirm({
+        title: 'Replace basic lands',
+        message: 'Replace current basic lands with suggested values?',
+        confirmLabel: 'Replace',
+        variant: 'destructive',
+      });
       if (!confirmed) {
         return;
       }
@@ -38,7 +46,7 @@ export function BasicLandAdder({ counts, minDeckSize, deckCards, disabled = fals
         <button
           type="button"
           className="rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
-          onClick={applySuggestion}
+          onClick={() => void applySuggestion()}
           disabled={disabled}
         >
           Suggest Lands
