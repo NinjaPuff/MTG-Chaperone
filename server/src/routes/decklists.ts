@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, getAuthUser } from '../middleware/auth.js';
 import {
   createDecklist,
   getDecklistById,
@@ -39,7 +39,8 @@ const updateDecklistSchema = z
 
 router.get('/my-season/:seasonId', requireAuth, async (req, res, next) => {
   try {
-    const decklists = await listDecklistsForSeason(req.user.id, req.params.seasonId);
+    const user = getAuthUser(req);
+    const decklists = await listDecklistsForSeason(user.id, req.params.seasonId);
     res.json({ data: decklists });
   } catch (error) {
     next(error);
@@ -48,7 +49,8 @@ router.get('/my-season/:seasonId', requireAuth, async (req, res, next) => {
 
 router.get('/:decklistId', requireAuth, async (req, res, next) => {
   try {
-    const decklist = await getDecklistById(req.params.decklistId, req.user.id, req.user.role === 'admin');
+    const user = getAuthUser(req);
+    const decklist = await getDecklistById(req.params.decklistId, user.id, user.role === 'admin');
     res.json({ data: decklist });
   } catch (error) {
     next(error);
@@ -57,8 +59,9 @@ router.get('/:decklistId', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, validateBody(createDecklistSchema), async (req, res, next) => {
   try {
+    const user = getAuthUser(req);
     const decklist = await createDecklist({
-      userId: req.user.id,
+      userId: user.id,
       eventId: req.body.eventId,
       roundId: req.body.roundId,
       orderIndex: req.body.orderIndex,
@@ -73,7 +76,8 @@ router.post('/', requireAuth, validateBody(createDecklistSchema), async (req, re
 
 router.patch('/:decklistId', requireAuth, validateBody(updateDecklistSchema), async (req, res, next) => {
   try {
-    const updated = await updateDecklist(req.params.decklistId, req.user.id, req.user.role === 'admin', {
+    const user = getAuthUser(req);
+    const updated = await updateDecklist(req.params.decklistId, user.id, user.role === 'admin', {
       name: req.body.name,
       entries: req.body.entries,
     });
@@ -85,7 +89,8 @@ router.patch('/:decklistId', requireAuth, validateBody(updateDecklistSchema), as
 
 router.post('/:decklistId/submit', requireAuth, async (req, res, next) => {
   try {
-    const submitted = await submitDecklist(req.params.decklistId, req.user.id, req.user.role === 'admin');
+    const user = getAuthUser(req);
+    const submitted = await submitDecklist(req.params.decklistId, user.id, user.role === 'admin');
     res.json({ data: submitted });
   } catch (error) {
     next(error);
@@ -104,7 +109,8 @@ router.get('/:decklistId/export/:format', (_req, res) => {
 
 router.get('/:decklistId/validate', requireAuth, async (req, res, next) => {
   try {
-    const validation = await validateDecklist(req.params.decklistId, req.user.id, req.user.role === 'admin');
+    const user = getAuthUser(req);
+    const validation = await validateDecklist(req.params.decklistId, user.id, user.role === 'admin');
     res.json({ data: validation });
   } catch (error) {
     next(error);

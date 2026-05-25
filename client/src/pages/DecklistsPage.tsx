@@ -40,7 +40,7 @@ type SeasonDecklist = {
 };
 
 export function DecklistsPage() {
-  const { activeSeason, activeSeasonId, isLoading: loadingLeague } = useCurrentLeague();
+  const { activeSeasonId, isLoading: loadingLeague } = useCurrentLeague();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

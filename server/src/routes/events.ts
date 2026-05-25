@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth, getAuthUser } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { completeEvent, createEvent, getEvent, startEvent, updateEvent } from '../services/eventService.js';
 import { createRound } from '../services/roundService.js';
@@ -283,7 +283,8 @@ router.get('/:eventId/decklists', async (req, res, next) => {
 
 router.get('/:eventId/rounds/:roundId/my-decklists', requireAuth, async (req, res, next) => {
   try {
-    const data = await listMyDecklistsForRound(req.params.eventId, req.params.roundId, req.user.id);
+    const user = getAuthUser(req);
+    const data = await listMyDecklistsForRound(req.params.eventId, req.params.roundId, user.id);
     res.json({ data });
   } catch (error) {
     next(error);
@@ -292,7 +293,8 @@ router.get('/:eventId/rounds/:roundId/my-decklists', requireAuth, async (req, re
 
 router.get('/:eventId/my-decklists', requireAuth, async (req, res, next) => {
   try {
-    const data = await listMyDecklistsForEvent(req.params.eventId, req.user.id);
+    const user = getAuthUser(req);
+    const data = await listMyDecklistsForEvent(req.params.eventId, user.id);
     res.json({ data });
   } catch (error) {
     next(error);

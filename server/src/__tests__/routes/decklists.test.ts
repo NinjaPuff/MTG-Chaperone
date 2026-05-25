@@ -33,6 +33,7 @@ vi.mock('../../middleware/auth.js', () => ({
     next();
   },
   requireAdmin: (_req: any, _res: any, next: any) => next(),
+  getAuthUser: (req: any) => req.user,
 }));
 
 vi.mock('../../services/decklistService.js', () => ({

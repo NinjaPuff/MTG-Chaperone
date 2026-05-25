@@ -108,6 +108,7 @@ npm run build         # Production build (shared → client → server)
 - [Feature Specifications](docs/FEATURES.md) -- Detailed specs for all 20 planned features
 - [Data Model](docs/DATA_MODEL.md) -- Entity relationships, field definitions, lifecycle state machines
 - [API Reference](docs/API.md) -- RESTful endpoint catalog with request/response shapes
+- [Home Server Deployment](docs/DEPLOYMENT.md) -- Docker Compose, Cloudflare Tunnel, DNS, and OAuth setup
 
 ## Project Status
 

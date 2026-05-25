@@ -1,5 +1,6 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
+import type { Prisma } from '@prisma/client';
 import {
   assignRoundRobinPairings,
   generateRoundRobinSchedule,
@@ -51,7 +52,7 @@ async function createMatchesForRound(roundId: string, pairs: Array<{ player1Id: 
   );
 }
 
-async function tryAutoCompleteEvent(tx: typeof prisma, eventId: string) {
+async function tryAutoCompleteEvent(tx: Prisma.TransactionClient, eventId: string) {
   const event = await tx.event.findUnique({
     where: { id: eventId },
     include: {

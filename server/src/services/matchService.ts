@@ -1,5 +1,6 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
+import type { Prisma } from '@prisma/client';
 
 type GameInput = {
   winnerId?: string | null;
@@ -100,7 +101,7 @@ async function writeGameResults(matchId: string, gameResults: GameInput[]) {
   );
 }
 
-async function tryAutoCompleteRound(tx: typeof prisma, roundId: string) {
+async function tryAutoCompleteRound(tx: Prisma.TransactionClient, roundId: string) {
   const round = await tx.round.findUnique({
     where: { id: roundId },
     include: {

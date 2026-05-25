@@ -1,5 +1,3 @@
-type StagedRemovalAction = 'remove_one' | 'remove_all';
-
 type StagedPoolChangeLike = {
   action: string;
 };

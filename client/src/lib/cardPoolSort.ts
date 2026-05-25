@@ -161,7 +161,7 @@ function colorRank(card: PoolCard) {
   return MONO_COLOR_ORDER_MAP.get(colors[0]) ?? 999;
 }
 
-export function getPrimaryType(typeLine: string): string {
+export function getPrimaryType(typeLine: string): (typeof CARD_TYPE_ORDER)[number] {
   const leftSide = typeLine.split(' — ')[0]?.trim() ?? '';
   if (!leftSide) {
     return 'Other';
@@ -169,7 +169,9 @@ export function getPrimaryType(typeLine: string): string {
 
   const words = leftSide.split(' ').map((value) => value.trim()).filter(Boolean);
   const last = words[words.length - 1] ?? 'Other';
-  return TYPE_ORDER_MAP.has(last) ? last : 'Other';
+  return TYPE_ORDER_MAP.has(last as (typeof CARD_TYPE_ORDER)[number])
+    ? (last as (typeof CARD_TYPE_ORDER)[number])
+    : 'Other';
 }
 
 function compareByColor(a: PoolCard, b: PoolCard) {
