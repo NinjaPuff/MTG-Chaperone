@@ -296,18 +296,13 @@ function parseBulkNameSpecifier(name: string) {
   };
 }
 
-export async function bulkCreateAcquisition(
-  poolId: string,
-  phaseLabel: string,
-  items: BulkItemInput[],
-  setCodes: string[],
-) {
+export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCodes: string[]) {
   const normalizedItems = items
     .map((item) => {
       const parsed = parseBulkNameSpecifier(item.name);
       return {
         name: parsed.normalizedName,
-      quantity: item.quantity,
+        quantity: item.quantity,
         specifiedSetCode: parsed.specifiedSetCode,
       };
     })
@@ -331,7 +326,19 @@ export async function bulkCreateAcquisition(
     }
   }
 
-  const resolvedCards: AcquisitionCardInput[] = [];
+  type ResolvedCardAccumulator = {
+    cachedCardId: string;
+    quantity: number;
+    cachedCard: {
+      scryfallId: string;
+      name: string;
+      setCode: string;
+      imageUris: unknown;
+      manaCost: string | null;
+    };
+  };
+
+  const resolvedByCardId = new Map<string, ResolvedCardAccumulator>();
   const unresolved: string[] = [];
 
   for (const item of normalizedItems) {
@@ -356,7 +363,7 @@ export async function bulkCreateAcquisition(
           const canonicalSetCode = canonical.setCode.toUpperCase();
           const canonicalAllowed = allowedSetCodes.size === 0 || allowedSetCodes.has(canonicalSetCode);
           if (canonicalAllowed) {
-            match = canonical;
+            match = candidates.find((card) => card.scryfallId === canonical.scryfallId) ?? canonical;
           }
         }
       } catch {
@@ -369,32 +376,27 @@ export async function bulkCreateAcquisition(
       continue;
     }
 
-    resolvedCards.push({
+    const existing = resolvedByCardId.get(match.scryfallId);
+    if (existing) {
+      existing.quantity += item.quantity;
+      continue;
+    }
+
+    resolvedByCardId.set(match.scryfallId, {
       cachedCardId: match.scryfallId,
       quantity: item.quantity,
+      cachedCard: {
+        scryfallId: match.scryfallId,
+        name: match.name,
+        setCode: match.setCode,
+        imageUris: match.imageUris,
+        manaCost: match.manaCost,
+      },
     });
   }
 
-  if (resolvedCards.length === 0) {
-    return {
-      acquisition: null,
-      unresolved,
-    };
-  }
-
-  const quantityByCardId = new Map<string, number>();
-  for (const card of resolvedCards) {
-    quantityByCardId.set(card.cachedCardId, (quantityByCardId.get(card.cachedCardId) ?? 0) + card.quantity);
-  }
-
-  const aggregatedCards = [...quantityByCardId.entries()].map(([cachedCardId, quantity]) => ({
-    cachedCardId,
-    quantity,
-  }));
-
-  const acquisition = await createAcquisition(poolId, phaseLabel, aggregatedCards);
   return {
-    acquisition,
+    resolved: [...resolvedByCardId.values()],
     unresolved,
   };
 }
@@ -530,7 +532,7 @@ export function createCardPoolService() {
     getPoolDetail,
     listAcquisitions,
     createAcquisition,
-    bulkCreateAcquisition,
+    bulkResolveAcquisitionItems,
     deleteAcquisition,
     clearPhaseAcquisitions,
     adjustCardQuantityInPhase,

@@ -5,7 +5,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { validateBody } from '../lib/validate.js';
 import {
   adjustCardQuantityInPhase,
-  bulkCreateAcquisition,
+  bulkResolveAcquisitionItems,
   clearPhaseAcquisitions,
   createAcquisition,
   deleteAcquisition,
@@ -140,7 +140,7 @@ router.post(
     try {
       const pool = await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
       const setCodes = pool.boosterProduct.setCodes.map((setCode) => setCode.setCode);
-      const result = await bulkCreateAcquisition(req.params.poolId, req.body.phaseLabel, req.body.items, setCodes);
+      const result = await bulkResolveAcquisitionItems(req.body.items, setCodes);
       res.json({ data: result });
     } catch (error) {
       next(error);

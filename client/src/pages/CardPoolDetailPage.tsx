@@ -23,8 +23,11 @@ import { focusAndSelectInput } from '@/lib/focusSearchInputAfterStage';
 import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
 import {
   buildApplyStagedRemovalsConfirmMessage,
+  countStagedAddCardTotal,
   countStagedRemovals,
   hasStagedRemovals,
+  mergeStagedCardAdds,
+  sumStagedCardQuantities,
 } from '@/lib/poolStaging';
 
 type PoolDetail = {
@@ -111,7 +114,17 @@ type CreateAcquisitionResponse = {
 
 type BulkResponse = {
   data: {
-    acquisition: PoolAcquisition | null;
+    resolved: Array<{
+      cachedCardId: string;
+      quantity: number;
+      cachedCard: {
+        scryfallId: string;
+        name: string;
+        setCode: string;
+        imageUris: unknown;
+        manaCost: string | null;
+      };
+    }>;
     unresolved: string[];
   };
 };
@@ -233,7 +246,6 @@ export function CardPoolDetailPage() {
   const [bulkText, setBulkText] = useState('');
   const [bulkPhaseLabel, setBulkPhaseLabel] = useState('Initial Pool');
   const [bulkUnresolved, setBulkUnresolved] = useState<string[]>([]);
-  const [bulkAddedCount, setBulkAddedCount] = useState(0);
   const [bulkAdding, setBulkAdding] = useState(false);
   const [isBulkAddOpen, setIsBulkAddOpen] = useState(false);
   const [clearPhaseLabel, setClearPhaseLabel] = useState('Initial Pool');
@@ -450,6 +462,14 @@ export function CardPoolDetailPage() {
     () => visibleCards.reduce((sum, card) => sum + card.quantity, 0),
     [visibleCards],
   );
+  const bulkPasteCardCount = useMemo(
+    () => sumStagedCardQuantities(parseBulkItems(bulkText)),
+    [bulkText],
+  );
+  const stagedAddCardCount = useMemo(
+    () => countStagedAddCardTotal(stagedCards, stagedPoolChanges),
+    [stagedCards, stagedPoolChanges],
+  );
   const disableVisualViews = totalCards > VISUAL_VIEW_MAX_CARDS;
 
   useEffect(() => {
@@ -462,18 +482,14 @@ export function CardPoolDetailPage() {
     setSuccess(null);
     setError(null);
     setBulkUnresolved([]);
-    setBulkAddedCount(0);
 
     const quantity = 1;
     const imageUri = getSmallImage(card.imageUris);
     const targetPhaseLabel = phaseLabel;
-    setStagedCards((prev) => {
-      const existingIndex = prev.findIndex(
-        (entry) => entry.cachedCardId === card.scryfallId && entry.phaseLabel === targetPhaseLabel,
-      );
-      if (existingIndex === -1) {
-        return [
-          ...prev,
+    setStagedCards((prev) =>
+      mergeStagedCardAdds(
+        prev,
+        [
           {
             cachedCardId: card.scryfallId,
             name: card.name,
@@ -481,18 +497,11 @@ export function CardPoolDetailPage() {
             manaCost: card.manaCost,
             imageUri,
             quantity,
-            phaseLabel: targetPhaseLabel,
           },
-        ];
-      }
-
-      const next = [...prev];
-      next[existingIndex] = {
-        ...next[existingIndex],
-        quantity: next[existingIndex].quantity + 1,
-      };
-      return next;
-    });
+        ],
+        targetPhaseLabel,
+      ),
+    );
     showToast({ message: `Staged: ${card.name} (+${quantity})`, variant: 'success' });
     focusAndSelectInput(searchInputRef.current);
   };
@@ -527,7 +536,6 @@ export function CardPoolDetailPage() {
     setError(null);
     setSuccess(null);
     setBulkUnresolved([]);
-    setBulkAddedCount(0);
 
     try {
       const response = await apiRequest<BulkResponse>(`/api/card-pools/${poolId}/acquisitions/bulk`, {
@@ -538,16 +546,26 @@ export function CardPoolDetailPage() {
         },
       });
 
-      const addedCount =
-        response.data.acquisition?.entries.reduce((sum, entry) => sum + entry.quantity, 0) ?? 0;
-      setBulkAddedCount(addedCount);
+      const stagedCount = response.data.resolved.reduce((sum, entry) => sum + entry.quantity, 0);
       setBulkUnresolved(response.data.unresolved);
-      setSuccess(addedCount > 0 ? `Bulk added ${addedCount} cards.` : 'No cards were added.');
+
+      if (stagedCount > 0) {
+        const additions = response.data.resolved.map((entry) => ({
+          cachedCardId: entry.cachedCardId,
+          name: entry.cachedCard.name,
+          setCode: entry.cachedCard.setCode,
+          manaCost: entry.cachedCard.manaCost,
+          imageUri: getSmallImage(entry.cachedCard.imageUris),
+          quantity: entry.quantity,
+        }));
+        setStagedCards((prev) => mergeStagedCardAdds(prev, additions, bulkPhaseLabel));
+      }
+
+      setSuccess(stagedCount > 0 ? `Bulk staged ${stagedCount} cards.` : 'No cards were staged.');
       setBulkText('');
       setIsBulkAddOpen(false);
-      await loadPool();
-      if (addedCount > 0) {
-        showToast({ message: `Added ${addedCount} cards to pool`, variant: 'success' });
+      if (stagedCount > 0) {
+        showToast({ message: `Staged ${stagedCount} cards`, variant: 'success' });
       }
     } catch (bulkAddError) {
       setError(bulkAddError instanceof ApiError ? bulkAddError.message : 'Unable to bulk add cards');
@@ -919,7 +937,6 @@ export function CardPoolDetailPage() {
               type="button"
               onClick={() => {
                 setBulkUnresolved([]);
-                setBulkAddedCount(0);
                 setIsBulkAddOpen(true);
               }}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
@@ -1071,7 +1088,14 @@ export function CardPoolDetailPage() {
       {isOwner || isAdmin ? (
         <div className="rounded-md border border-border/70 bg-card px-3 py-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">Staged Changes</p>
+            <p className="text-sm font-medium">
+              Staged Changes
+              {stagedAddCardCount > 0 ? (
+                <span className="ml-1 font-normal text-muted-foreground">
+                  ({stagedAddCardCount} card{stagedAddCardCount === 1 ? '' : 's'})
+                </span>
+              ) : null}
+            </p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -1352,7 +1376,21 @@ export function CardPoolDetailPage() {
               placeholder={'Island\n2 Lightning Bolt\nCounterspell'}
             />
 
-            {bulkAddedCount > 0 ? <p className="text-sm text-emerald-600">{bulkAddedCount} cards added.</p> : null}
+            {bulkPasteCardCount > 0 || stagedAddCardCount > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {bulkPasteCardCount > 0 ? (
+                  <>
+                    {bulkPasteCardCount} card{bulkPasteCardCount === 1 ? '' : 's'} in this list
+                  </>
+                ) : null}
+                {bulkPasteCardCount > 0 && stagedAddCardCount > 0 ? ' · ' : null}
+                {stagedAddCardCount > 0 ? (
+                  <>
+                    {stagedAddCardCount} card{stagedAddCardCount === 1 ? '' : 's'} staged total
+                  </>
+                ) : null}
+              </p>
+            ) : null}
             {bulkUnresolved.length > 0 ? (
               <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
                 <p className="font-medium">Some names could not be resolved:</p>
@@ -1378,7 +1416,7 @@ export function CardPoolDetailPage() {
                 disabled={bulkAdding}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
               >
-                {bulkAdding ? 'Adding...' : 'Bulk Add'}
+                {bulkAdding ? 'Staging...' : 'Stage Cards'}
               </button>
             </div>
           </form>
