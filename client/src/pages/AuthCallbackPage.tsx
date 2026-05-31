@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { setStoredToken } from '@/lib/api';
+import { consumeReturnUrl } from '@/lib/returnUrl';
 import { useAuth } from '@/context/AuthContext';
 
 export function AuthCallbackPage() {
@@ -20,7 +21,7 @@ export function AuthCallbackPage() {
       try {
         setStoredToken(token);
         await refreshUser();
-        navigate('/', { replace: true });
+        navigate(consumeReturnUrl() ?? '/', { replace: true });
       } catch {
         setError('Unable to complete sign-in.');
       }

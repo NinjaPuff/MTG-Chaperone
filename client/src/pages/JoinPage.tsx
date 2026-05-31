@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
@@ -87,12 +87,12 @@ export function JoinPage() {
                   {submitting ? 'Joining...' : 'Join League'}
                 </button>
               ) : (
-                <a
-                  href="/login"
+                <Link
+                  to={`/login?returnUrl=${encodeURIComponent(`/join?token=${token}`)}`}
                   className="inline-flex items-center justify-center rounded-md bg-primary px-6 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
                 >
                   Sign In to Join
-                </a>
+                </Link>
               )}
             </div>
           </>

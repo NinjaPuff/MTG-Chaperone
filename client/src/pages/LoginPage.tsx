@@ -1,4 +1,17 @@
+import { useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { storeReturnUrl } from '@/lib/returnUrl';
+
 export function LoginPage() {
+  const [searchParams] = useSearchParams();
+
+  useEffect(() => {
+    const returnUrl = searchParams.get('returnUrl');
+    if (returnUrl) {
+      storeReturnUrl(returnUrl);
+    }
+  }, [searchParams]);
+
   return (
     <div className="mx-auto max-w-xl px-4 py-12">
       <div className="rounded-lg border border-border bg-card p-8 text-center shadow-sm">
@@ -24,4 +37,3 @@ export function LoginPage() {
     </div>
   );
 }
-

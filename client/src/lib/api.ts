@@ -54,7 +54,8 @@ export async function apiRequest<T = unknown>(path: string, init: ApiRequestInit
   if (response.status === 401) {
     clearStoredToken();
     if (!window.location.pathname.startsWith('/login')) {
-      window.location.assign('/login');
+      const returnUrl = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
+      window.location.assign(`/login?returnUrl=${returnUrl}`);
     }
     throw new ApiError(401, { code: 'UNAUTHORIZED', message: 'Authentication required' });
   }

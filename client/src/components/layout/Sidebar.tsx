@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
+import { useMemo } from 'react';
 import {
   Trophy,
   Calendar,
@@ -10,24 +11,34 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
 }
 
-const navItems = [
+const baseNavItems = [
   { to: '/', icon: Trophy, label: 'Dashboard' },
   { to: '/standings', icon: Trophy, label: 'Standings' },
   { to: '/schedule', icon: Calendar, label: 'Schedule' },
   { to: '/pools', icon: Layers, label: 'Card Pools' },
   { to: '/decks', icon: BookOpen, label: 'Decklists' },
   { to: '/profile', icon: User, label: 'Profile' },
-  { to: '/admin', icon: Settings, label: 'Admin' },
 ];
+
+const adminNavItem = { to: '/admin', icon: Settings, label: 'Admin' };
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation();
+  const { user, isLoading } = useAuth();
+
+  const navItems = useMemo(() => {
+    if (!isLoading && user?.role === 'admin') {
+      return [...baseNavItems, adminNavItem];
+    }
+    return baseNavItems;
+  }, [isLoading, user?.role]);
 
   return (
     <aside

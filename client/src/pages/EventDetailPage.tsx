@@ -481,10 +481,16 @@ export function EventDetailPage() {
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">
-            <Link className="underline" to="/admin">
-              Admin
-            </Link>{' '}
-            / Event
+            {isAdmin ? (
+              <>
+                <Link className="underline" to="/admin">
+                  Admin
+                </Link>{' '}
+                / Event
+              </>
+            ) : (
+              'Event'
+            )}
           </p>
           <h1 className="text-3xl font-bold tracking-tight">{event.name}</h1>
           <p className="text-sm text-muted-foreground mt-1">
