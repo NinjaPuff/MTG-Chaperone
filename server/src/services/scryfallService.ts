@@ -45,6 +45,12 @@ type ScryfallCard = {
   prices?: Record<string, string | null>;
 };
 
+type ScryfallPagedSearchResponse = {
+  data: ScryfallCard[];
+  has_more: boolean;
+  next_page?: string;
+};
+
 function resolveManaCost(card: ScryfallCard) {
   const topLevel = card.mana_cost?.trim();
   if (topLevel) {
@@ -241,11 +247,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     let nextUrl: string | null = buildSetImportSearchUrl(canonicalSetCode);
 
     while (nextUrl) {
-      const response = await fetchScryfall<{
-        data: ScryfallCard[];
-        has_more: boolean;
-        next_page?: string;
-      }>(nextUrl);
+      const response: ScryfallPagedSearchResponse = await fetchScryfall<ScryfallPagedSearchResponse>(nextUrl);
 
       const cards = response.data ?? [];
       if (cards.length > 0) {
