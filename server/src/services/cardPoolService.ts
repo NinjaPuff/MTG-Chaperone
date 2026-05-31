@@ -1,3 +1,4 @@
+import { parseDecklistLine } from '@mtg-league/shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { bulkLookupByName, getCard, lookupCanonicalByName } from './scryfallService.js';
@@ -187,6 +188,7 @@ export async function listAcquisitions(poolId: string) {
               scryfallId: true,
               name: true,
               setCode: true,
+              collectorNumber: true,
               imageUris: true,
               manaCost: true,
               typeLine: true,
@@ -281,31 +283,20 @@ type BulkItemInput = {
   quantity: number;
 };
 
-function parseBulkNameSpecifier(name: string) {
-  const match = name.match(/^(.*)\s+\[([A-Za-z0-9]{2,10})\]$/);
-  if (!match) {
-    return {
-      normalizedName: name.trim(),
-      specifiedSetCode: null as string | null,
-    };
-  }
-
+function parseBulkItemLine(item: BulkItemInput) {
+  const parsed = parseDecklistLine(`${item.quantity} ${item.name}`);
   return {
-    normalizedName: match[1].trim(),
-    specifiedSetCode: match[2].trim().toUpperCase(),
+    inputLabel: item.name,
+    name: parsed.name,
+    quantity: parsed.quantity,
+    specifiedSetCode: parsed.setCode ?? null,
+    specifiedCollectorNumber: parsed.collectorNumber ?? null,
   };
 }
 
 export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCodes: string[]) {
   const normalizedItems = items
-    .map((item) => {
-      const parsed = parseBulkNameSpecifier(item.name);
-      return {
-        name: parsed.normalizedName,
-        quantity: item.quantity,
-        specifiedSetCode: parsed.specifiedSetCode,
-      };
-    })
+    .map((item) => parseBulkItemLine(item))
     .filter((item) => item.name.length > 0 && item.quantity > 0);
 
   if (normalizedItems.length === 0) {
@@ -344,7 +335,7 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
   for (const item of normalizedItems) {
     const key = item.name.toLowerCase();
     if (item.specifiedSetCode && allowedSetCodes.size > 0 && !allowedSetCodes.has(item.specifiedSetCode)) {
-      unresolved.push(item.name);
+      unresolved.push(item.inputLabel);
       continue;
     }
 
@@ -353,10 +344,15 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
     );
     const candidates = filteredByAllowedSet
       .filter((card) => !item.specifiedSetCode || card.setCode.toUpperCase() === item.specifiedSetCode)
+      .filter(
+        (card) =>
+          !item.specifiedCollectorNumber ||
+          (card.collectorNumber ?? '').toLowerCase() === item.specifiedCollectorNumber.toLowerCase(),
+      )
       .sort((a, b) => a.setCode.localeCompare(b.setCode) || a.scryfallId.localeCompare(b.scryfallId));
 
     let match = candidates[0];
-    if (!item.specifiedSetCode && candidates.length > 1) {
+    if (!item.specifiedSetCode && !item.specifiedCollectorNumber && candidates.length > 1) {
       try {
         const canonical = await lookupCanonicalByName(item.name, [...allowedSetCodes]);
         if (canonical) {
@@ -372,7 +368,7 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
     }
 
     if (!match) {
-      unresolved.push(item.name);
+      unresolved.push(item.inputLabel);
       continue;
     }
 

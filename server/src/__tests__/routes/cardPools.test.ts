@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   bulkResolveAcquisitionItems: vi.fn(),
   clearPhaseAcquisitions: vi.fn(),
   getPoolDetail: vi.fn(),
+  listAcquisitions: vi.fn(),
 }));
 
 vi.mock('../../config/passport.js', () => ({
@@ -41,6 +42,7 @@ vi.mock('../../services/cardPoolService.js', async (importOriginal) => {
     bulkResolveAcquisitionItems: mocks.bulkResolveAcquisitionItems,
     clearPhaseAcquisitions: mocks.clearPhaseAcquisitions,
     getPoolDetail: mocks.getPoolDetail,
+    listAcquisitions: mocks.listAcquisitions,
   };
 });
 
@@ -53,6 +55,7 @@ describe('card pools routes', () => {
     mocks.bulkResolveAcquisitionItems.mockReset();
     mocks.clearPhaseAcquisitions.mockReset();
     mocks.getPoolDetail.mockReset();
+    mocks.listAcquisitions.mockReset();
     mocks.getPoolDetail.mockResolvedValue({
       user: { id: 'owner-1' },
       boosterProduct: { setCodes: [] },
@@ -171,5 +174,51 @@ describe('card pools routes', () => {
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe('FORBIDDEN');
     expect(mocks.bulkResolveAcquisitionItems).not.toHaveBeenCalled();
+  });
+
+  it('exports per-printing decklist lines with set and collector number', async () => {
+    mocks.getPoolDetail.mockResolvedValue({
+      user: { id: 'owner-1', slug: 'owner-slug', displayName: 'Owner' },
+      season: {
+        number: 1,
+        league: { slug: 'test-league', name: 'Test League' },
+      },
+      boosterProduct: { setCodes: [] },
+    });
+    mocks.listAcquisitions.mockResolvedValue([
+      {
+        entries: [
+          {
+            quantity: 1,
+            cachedCard: {
+              scryfallId: 'bolt-ecl',
+              name: 'Lightning Bolt',
+              setCode: 'ECL',
+              collectorNumber: '112',
+            },
+          },
+          {
+            quantity: 1,
+            cachedCard: {
+              scryfallId: 'bolt-mh2',
+              name: 'Lightning Bolt',
+              setCode: 'MH2',
+              collectorNumber: '261',
+            },
+          },
+        ],
+      },
+    ]);
+
+    const response = await request(app)
+      .get('/api/card-pools/pool-1/export/decklist')
+      .set('x-test-user', 'owner-1')
+      .set('x-test-role', 'user');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('text/plain');
+    expect(mocks.listAcquisitions).toHaveBeenCalledWith('pool-1');
+    expect(response.text).toContain('1 Lightning Bolt (ECL) 112');
+    expect(response.text).toContain('1 Lightning Bolt (MH2) 261');
   });
 });

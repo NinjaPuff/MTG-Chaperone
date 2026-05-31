@@ -26,6 +26,7 @@ vi.mock('../../services/scryfallService.js', () => ({
 }));
 
 import { bulkResolveAcquisitionItems } from '../../services/cardPoolService.js';
+import { formatDecklistLine } from '@mtg-league/shared';
 
 const trystanBase = {
   scryfallId: 'base-id',
@@ -159,5 +160,63 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
     expect(result.resolved).toHaveLength(1);
     expect(result.resolved[0]?.cachedCardId).toBe('base-id');
     expect(result.unresolved).toEqual(['Not A Real Card']);
+  });
+
+  it('resolves parenthetical set syntax', async () => {
+    scryfallMocks.bulkLookupByName.mockResolvedValue([trystanAbc]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Trystan (ABC)', quantity: 1 }], ['ECL', 'ABC']);
+
+    expect(result.resolved[0]?.cachedCardId).toBe('other-id');
+    expect(scryfallMocks.lookupCanonicalByName).not.toHaveBeenCalled();
+  });
+
+  it('matches collector number when multiple printings share a set', async () => {
+    scryfallMocks.bulkLookupByName.mockResolvedValue([
+      { ...lightningBolt, scryfallId: 'bolt-112', collectorNumber: '112' },
+      { ...lightningBolt, scryfallId: 'bolt-113', collectorNumber: '113' },
+    ]);
+
+    const result = await bulkResolveAcquisitionItems(
+      [{ name: 'Lightning Bolt (ECL) 113', quantity: 1 }],
+      ['ECL'],
+    );
+
+    expect(result.resolved[0]?.cachedCardId).toBe('bolt-113');
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('marks lines unresolved when collector number does not match', async () => {
+    scryfallMocks.bulkLookupByName.mockResolvedValue([
+      { ...lightningBolt, scryfallId: 'bolt-112', collectorNumber: '112' },
+    ]);
+
+    const result = await bulkResolveAcquisitionItems(
+      [{ name: 'Lightning Bolt (ECL) 999', quantity: 1 }],
+      ['ECL'],
+    );
+
+    expect(result.resolved).toEqual([]);
+    expect(result.unresolved).toEqual(['Lightning Bolt (ECL) 999']);
+  });
+
+  it('round-trips exported decklist lines through bulk resolve', async () => {
+    const exportedLine = formatDecklistLine({
+      quantity: 2,
+      name: 'Lightning Bolt',
+      setCode: 'ECL',
+      collectorNumber: '112',
+    });
+    scryfallMocks.bulkLookupByName.mockResolvedValue([
+      { ...lightningBolt, scryfallId: 'bolt-112', collectorNumber: '112' },
+    ]);
+
+    const result = await bulkResolveAcquisitionItems(
+      [{ name: exportedLine.replace(/^\d+\s+/, ''), quantity: 2 }],
+      ['ECL'],
+    );
+
+    expect(result.resolved[0]?.cachedCardId).toBe('bolt-112');
+    expect(result.resolved[0]?.quantity).toBe(2);
   });
 });

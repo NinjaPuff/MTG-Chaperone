@@ -12,6 +12,7 @@ import {
   getPoolDetail,
   listAcquisitions,
 } from '../services/cardPoolService.js';
+import { buildPoolDecklistExport } from '@mtg-league/shared';
 import { prisma } from '../lib/prisma.js';
 
 const router = Router();
@@ -84,21 +85,13 @@ router.get('/:poolId/export/decklist', requireAuth, async (req, res, next) => {
     const pool = await getPoolDetail(req.params.poolId);
     const acquisitions = await listAcquisitions(req.params.poolId);
 
-    const quantityByCardName = new Map<string, number>();
-    for (const acquisition of acquisitions) {
-      for (const entry of acquisition.entries) {
-        const cardName = entry.cachedCard.name.trim();
-        if (!cardName || entry.quantity < 1) {
-          continue;
-        }
-        quantityByCardName.set(cardName, (quantityByCardName.get(cardName) ?? 0) + entry.quantity);
-      }
-    }
-
-    const deckLines = [...quantityByCardName.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }))
-      .map(([name, quantity]) => `${quantity} ${name}`);
-    const deckText = deckLines.join('\n');
+    const flattenedEntries = acquisitions.flatMap((acquisition) =>
+      acquisition.entries.map((entry) => ({
+        quantity: entry.quantity,
+        cachedCard: entry.cachedCard,
+      })),
+    );
+    const deckText = buildPoolDecklistExport(flattenedEntries).join('\n');
 
     const fileName = [
       sanitizeFileNamePart(pool.season.league.slug || pool.season.league.name),

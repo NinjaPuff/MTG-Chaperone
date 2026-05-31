@@ -41,6 +41,7 @@ describe('scryfallService mana-cost normalization', () => {
               cmc: 3,
               rarity: 'mythic',
               set: 'TST',
+              collector_number: '112',
               card_faces: [
                 { name: 'Trystan, Callous Cultivator', mana_cost: '{2}{G}' },
                 { name: 'Trystan, Penitent Culler', mana_cost: '' },
@@ -71,6 +72,8 @@ describe('scryfallService mana-cost normalization', () => {
     const call = upsert.mock.calls[0][0];
     expect(call.update.manaCost).toBe('{2}{G}');
     expect(call.create.manaCost).toBe('{2}{G}');
+    expect(call.update.collectorNumber).toBe('112');
+    expect(call.create.collectorNumber).toBe('112');
   });
 
   it('refreshes stale cached DFC rows during bulk name lookup', async () => {

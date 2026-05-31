@@ -35,6 +35,7 @@ type ScryfallCard = {
   cmc?: number;
   rarity: string;
   set: string;
+  collector_number?: string;
   image_uris?: Record<string, string>;
   card_faces?: Array<{
     name?: string;
@@ -174,6 +175,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       cmc: card.cmc ?? 0,
       rarity: card.rarity,
       setCode: card.set.toUpperCase(),
+      collectorNumber: card.collector_number ?? null,
       imageUris: resolveImageUris(card),
       prices: card.prices ?? Prisma.JsonNull,
       lastFetched: deps.now(),
@@ -189,6 +191,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       cmc: card.cmc ?? 0,
       rarity: card.rarity,
       setCode: card.set.toUpperCase(),
+      collectorNumber: card.collector_number ?? null,
       imageUris: resolveImageUris(card),
       prices: card.prices ?? Prisma.JsonNull,
       lastFetched: deps.now(),

@@ -489,7 +489,8 @@ model CachedCard {
   colorIdentity String[]
   cmc           Float
   rarity        String
-  setCode       String
+  setCode         String
+  collectorNumber String?
   imageUris     Json?
   prices        Json?
   lastFetched   DateTime @default(now())

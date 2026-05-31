@@ -925,13 +925,16 @@ export function CardPoolDetailPage() {
             <p className="text-lg font-semibold">{ownerPrimary}</p>
             {ownerSubtitle ? <p className="text-xs text-muted-foreground">{ownerSubtitle}</p> : null}
           </div>
-          <button
-            type="button"
-            onClick={exportPool}
-            className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
-          >
-            Export Pool
-          </button>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              type="button"
+              onClick={exportPool}
+              className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              Export Pool
+            </button>
+            <p className="text-xs text-muted-foreground">Includes set and collector number per printing.</p>
+          </div>
           {isOwner ? (
             <button
               type="button"
@@ -1342,7 +1345,7 @@ export function CardPoolDetailPage() {
               <div>
                 <h2 className="text-lg font-semibold">Bulk Add Cards</h2>
                 <p className="text-sm text-muted-foreground">
-                  Paste one card per line. Prefix quantity like "2 Lightning Bolt". Choose the target phase below.
+                  Paste one card per line using Arena format, e.g. "2 Lightning Bolt (ECL) 112". Choose the target phase below.
                 </p>
               </div>
               <button
@@ -1373,7 +1376,7 @@ export function CardPoolDetailPage() {
               className="min-h-56 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               value={bulkText}
               onChange={(event) => setBulkText(event.target.value)}
-              placeholder={'Island\n2 Lightning Bolt\nCounterspell'}
+              placeholder={'Island (ECL) 289\n2 Lightning Bolt (ECL) 112\nCounterspell (ECL) 54'}
             />
 
             {bulkPasteCardCount > 0 || stagedAddCardCount > 0 ? (
