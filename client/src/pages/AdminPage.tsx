@@ -11,6 +11,10 @@ import { useToast } from '@/context/ToastContext';
 import { buildInviteJoinUrl, copyTextToClipboard } from '@/lib/inviteLink';
 import { SetCodePicker } from '@/components/SetCodePicker';
 import { BoosterProductSetBadges } from '@/components/BoosterProductSetBadges';
+import {
+  BoosterProductCacheControls,
+  type SetCacheStat,
+} from '@/components/admin/BoosterProductCacheControls';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { primaryName, profileSubtitle } from '@/lib/userDisplay';
 
@@ -214,6 +218,9 @@ export function AdminPage() {
   const [siteUsers, setSiteUsers] = useState<SiteUser[]>([]);
   const [userSearch, setUserSearch] = useState('');
   const [boosterProductSearch, setBoosterProductSearch] = useState('');
+  const [cacheStatsBySetCode, setCacheStatsBySetCode] = useState<Record<string, SetCacheStat>>({});
+  const [importingSetCode, setImportingSetCode] = useState<string | null>(null);
+  const [importingProductId, setImportingProductId] = useState<string | null>(null);
   const [scryfallSets, setScryfallSets] = useState<ScryfallSet[]>([]);
   const [selectedLeagueSlug, setSelectedLeagueSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -318,6 +325,26 @@ export function AdminPage() {
     return sortedBoosterProducts.filter((product) => matchesBoosterProductSearch(product, q));
   }, [sortedBoosterProducts, boosterProductSearch]);
 
+  const allBoosterSetCodes = useMemo(() => {
+    const codes = new Set<string>();
+    for (const product of boosterProducts) {
+      for (const entry of product.setCodes) {
+        codes.add(entry.setCode);
+      }
+    }
+    return [...codes].sort((a, b) => a.localeCompare(b));
+  }, [boosterProducts]);
+
+  const mergeCacheStats = (stats: SetCacheStat[]) => {
+    setCacheStatsBySetCode((previous) => {
+      const next = { ...previous };
+      for (const stat of stats) {
+        next[stat.setCode] = stat;
+      }
+      return next;
+    });
+  };
+
   const loadLeagues = async () => {
     const response = await apiRequest<ApiListResponse<League>>('/api/leagues');
     setLeagues(response.data);
@@ -391,6 +418,80 @@ export function AdminPage() {
     setBoosterProducts(response.data);
   };
 
+  const loadCacheStats = async (setCodes: string[]) => {
+    if (setCodes.length === 0) {
+      setCacheStatsBySetCode({});
+      return;
+    }
+
+    const response = await apiRequest<ApiListResponse<SetCacheStat>>(
+      `/api/admin/card-cache/stats?setCodes=${encodeURIComponent(setCodes.join(','))}`,
+    );
+    setCacheStatsBySetCode(Object.fromEntries(response.data.map((stat) => [stat.setCode, stat])));
+  };
+
+  const importSetToCache = async (setCode: string) => {
+    setImportingSetCode(setCode);
+    setError(null);
+    try {
+      const response = await apiRequest<{
+        data: { results: SetCacheStat[]; totalImported: number };
+      }>('/api/admin/card-cache/import-set', {
+        method: 'POST',
+        body: { setCode },
+      });
+      mergeCacheStats(response.data.results);
+      showToast({
+        message: `Imported ${response.data.totalImported} cards for ${setCode}`,
+        variant: 'success',
+      });
+    } catch (importError) {
+      const message = importError instanceof ApiError ? importError.message : 'Unable to import set';
+      setError(message);
+      showToast({ message, variant: 'default' });
+    } finally {
+      setImportingSetCode(null);
+    }
+  };
+
+  const importBoosterProductToCache = async (productId: string) => {
+    const product = boosterProducts.find((entry) => entry.id === productId);
+    const confirmed = await confirm({
+      title: 'Import all sets to cache',
+      message: `Import all cards for "${product?.name ?? 'this booster product'}"? Each configured set is imported from Scryfall and may take up to a minute.`,
+      confirmLabel: 'Import',
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setImportingProductId(productId);
+    setError(null);
+    try {
+      const response = await apiRequest<{
+        data: { results: Array<SetCacheStat & { imported: number }>; totalImported: number };
+      }>(`/api/admin/card-cache/import-booster-product/${productId}`, {
+        method: 'POST',
+      });
+      mergeCacheStats(response.data.results);
+      const failedSets = response.data.results.filter((result) => 'error' in result && result.error);
+      showToast({
+        message:
+          failedSets.length > 0
+            ? `Imported ${response.data.totalImported} cards; ${failedSets.length} set(s) failed`
+            : `Imported ${response.data.totalImported} cards across ${response.data.results.length} sets`,
+        variant: failedSets.length > 0 ? 'default' : 'success',
+      });
+    } catch (importError) {
+      const message =
+        importError instanceof ApiError ? importError.message : 'Unable to import booster product sets';
+      setError(message);
+      showToast({ message, variant: 'default' });
+    } finally {
+      setImportingProductId(null);
+    }
+  };
+
   const loadSiteUsers = async () => {
     const response = await apiRequest<ApiListResponse<SiteUser>>('/api/users');
     setSiteUsers(response.data);
@@ -406,6 +507,16 @@ export function AdminPage() {
     };
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!user || user.role !== 'admin') {
+      return;
+    }
+
+    void loadCacheStats(allBoosterSetCodes).catch((loadError) => {
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load card cache stats');
+    });
+  }, [allBoosterSetCodes, user]);
 
   useEffect(() => {
     const loadSetLookup = async () => {
@@ -1966,6 +2077,16 @@ export function AdminPage() {
                     </button>
                   </div>
                 </div>
+
+                <BoosterProductCacheControls
+                  product={product}
+                  cacheStats={cacheStatsBySetCode}
+                  importingSetCode={importingSetCode}
+                  importingProductId={importingProductId}
+                  onImportSet={importSetToCache}
+                  onImportProduct={importBoosterProductToCache}
+                  getSet={getSet}
+                />
 
                 {editingBoosterId === product.id ? (
                   <form className="mt-4 grid gap-4 border-t border-border pt-4 md:grid-cols-2" onSubmit={saveEditBooster}>

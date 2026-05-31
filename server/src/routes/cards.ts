@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { bulkImportSet, bulkLookupByName, getCard, getCardFaces, searchCards } from '../services/scryfallService.js';
 
@@ -57,7 +57,7 @@ router.post(
   },
 );
 
-router.post('/bulk-import', requireAuth, validateBody(z.object({ setCodes: z.array(z.string().min(2)).min(1) })), async (req, res, next) => {
+router.post('/bulk-import', requireAuth, requireAdmin, validateBody(z.object({ setCodes: z.array(z.string().min(2)).min(1) })), async (req, res, next) => {
   try {
     const result = await bulkImportSet(req.body.setCodes);
     res.json({ data: result });

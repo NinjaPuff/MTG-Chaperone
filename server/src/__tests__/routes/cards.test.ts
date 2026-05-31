@@ -17,13 +17,25 @@ vi.mock('../../config/passport.js', () => ({
   configurePassport: vi.fn(),
 }));
 
-vi.mock('../../middleware/auth.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../middleware/auth.js')>();
-  return {
-    ...actual,
-    requireAuth: (_req: any, _res: any, next: any) => next(),
-  };
-});
+vi.mock('../../middleware/auth.js', () => ({
+  requireAuth: (req: any, _res: any, next: any) => {
+    req.user = {
+      id: req.headers['x-test-user'] ?? 'user-1',
+      displayName: 'Test User',
+      slug: 'test-user',
+      avatarUrl: null,
+      role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
+    };
+    next();
+  },
+  requireAdmin: (req: any, _res: any, next: any) => {
+    if (req.user?.role !== 'admin') {
+      next(new AppError(403, 'FORBIDDEN', 'Admin access required'));
+      return;
+    }
+    next();
+  },
+}));
 
 vi.mock('../../services/scryfallService.js', () => ({
   getCard: mocks.getCard,
@@ -68,5 +80,32 @@ describe('cards routes', () => {
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe('NOT_FOUND');
     expect(response.body.error.message).toBe('Card not found');
+  });
+
+  it('rejects bulk import for non-admin users', async () => {
+    const response = await request(app)
+      .post('/api/cards/bulk-import')
+      .set('x-test-role', 'user')
+      .send({ setCodes: ['DMU'] });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+    expect(mocks.bulkImportSet).not.toHaveBeenCalled();
+  });
+
+  it('allows admins to bulk import sets', async () => {
+    mocks.bulkImportSet.mockResolvedValue({
+      results: [{ setCode: 'DMU', imported: 412 }],
+      totalImported: 412,
+    });
+
+    const response = await request(app)
+      .post('/api/cards/bulk-import')
+      .set('x-test-role', 'admin')
+      .send({ setCodes: ['DMU'] });
+
+    expect(response.status).toBe(200);
+    expect(mocks.bulkImportSet).toHaveBeenCalledWith(['DMU']);
+    expect(response.body.data.totalImported).toBe(412);
   });
 });

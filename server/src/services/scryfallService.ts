@@ -6,6 +6,23 @@ import type { PrismaClient } from '@prisma/client';
 const SCRYFALL_BASE_URL = 'https://api.scryfall.com';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const RATE_LIMIT_MS = 120;
+const UPSERT_BATCH_SIZE = 50;
+
+function normalizeSetCodes(setCodes: string[]) {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const code of setCodes) {
+    const upper = code.trim().toUpperCase();
+    if (!upper || seen.has(upper)) {
+      continue;
+    }
+    seen.add(upper);
+    normalized.push(upper);
+  }
+
+  return normalized.sort((a, b) => a.localeCompare(b));
+}
 
 type ScryfallCard = {
   id: string;
@@ -105,6 +122,44 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     return normalizedSets.length ? ` (${normalizedSets.map((setCode) => `set:${setCode}`).join(' OR ')})` : '';
   }
 
+  async function resolveCanonicalSetCode(setCode: string) {
+    const trimmed = setCode.trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    try {
+      const set = await fetchScryfall<{ code: string }>(
+        `${SCRYFALL_BASE_URL}/sets/${encodeURIComponent(trimmed.toLowerCase())}`,
+      );
+      return set.code.toUpperCase();
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 404) {
+        return trimmed.toUpperCase();
+      }
+      throw error;
+    }
+  }
+
+  function buildSetImportSearchUrl(canonicalSetCode: string) {
+    const query = encodeURIComponent(`set:${canonicalSetCode.toLowerCase()}`);
+    return `${SCRYFALL_BASE_URL}/cards/search?q=${query}&unique=prints&include_extras=true&include_variations=true`;
+  }
+
+  async function countCachedCardsForSet(canonicalSetCode: string) {
+    return deps.prisma.cachedCard.count({
+      where: { setCode: { equals: canonicalSetCode, mode: 'insensitive' } },
+    });
+  }
+
+  async function latestCachedFetchForSet(canonicalSetCode: string) {
+    return deps.prisma.cachedCard.findFirst({
+      where: { setCode: { equals: canonicalSetCode, mode: 'insensitive' } },
+      orderBy: { lastFetched: 'desc' },
+      select: { lastFetched: true },
+    });
+  }
+
   async function upsertCard(card: ScryfallCard) {
     const manaCost = resolveManaCost(card);
     return deps.prisma.cachedCard.upsert({
@@ -139,6 +194,66 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       lastFetched: deps.now(),
     },
   });
+  }
+
+  async function upsertCardsInBatches(cards: ScryfallCard[]) {
+    for (let index = 0; index < cards.length; index += UPSERT_BATCH_SIZE) {
+      const batch = cards.slice(index, index + UPSERT_BATCH_SIZE);
+      await Promise.all(batch.map((card) => upsertCard(card)));
+    }
+  }
+
+  async function getSetCacheStats(setCodes: string[]) {
+    const normalized = normalizeSetCodes(setCodes);
+    if (normalized.length === 0) {
+      return [];
+    }
+
+    return Promise.all(
+      normalized.map(async (requestedCode) => {
+        const canonicalSetCode = await resolveCanonicalSetCode(requestedCode);
+        const [cachedCount, latest] = await Promise.all([
+          countCachedCardsForSet(canonicalSetCode),
+          latestCachedFetchForSet(canonicalSetCode),
+        ]);
+
+        return {
+          setCode: requestedCode,
+          cachedCount,
+          lastFetched: latest?.lastFetched ?? null,
+        };
+      }),
+    );
+  }
+
+  async function importSetFromScryfall(setCode: string) {
+    const requestedCode = setCode.trim().toUpperCase();
+    if (!requestedCode) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Set code is required');
+    }
+
+    const canonicalSetCode = await resolveCanonicalSetCode(setCode);
+
+    let imported = 0;
+    let nextUrl: string | null = buildSetImportSearchUrl(canonicalSetCode);
+
+    while (nextUrl) {
+      const response = await fetchScryfall<{
+        data: ScryfallCard[];
+        has_more: boolean;
+        next_page?: string;
+      }>(nextUrl);
+
+      const cards = response.data ?? [];
+      if (cards.length > 0) {
+        await upsertCardsInBatches(cards);
+        imported += cards.length;
+      }
+
+      nextUrl = response.has_more && response.next_page ? response.next_page : null;
+    }
+
+    return { setCode: requestedCode, imported, canonicalSetCode };
   }
 
   async function searchCards(query: string, setCodes: string[] = []) {
@@ -256,6 +371,11 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
   }
 
   async function bulkImportSet(setCodes: string[]) {
+    const normalized = normalizeSetCodes(setCodes);
+    if (normalized.length === 0) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'At least one set code is required');
+    }
+
     const response = await fetchScryfall<{
       data: Array<{
         type: string;
@@ -269,10 +389,26 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     }
 
     const cards = await fetchScryfall<ScryfallCard[]>(defaultCards.download_uri);
-    const normalizedSetCodes = setCodes.map((code) => code.trim().toLowerCase());
-    const filtered = cards.filter((card) => normalizedSetCodes.includes(card.set.toLowerCase()));
-    await Promise.all(filtered.map((card) => upsertCard(card)));
-    return { imported: filtered.length };
+    const normalizedLower = new Set(normalized.map((code) => code.toLowerCase()));
+    const filtered = cards.filter((card) => normalizedLower.has(card.set.toLowerCase()));
+
+    const importedBySet = new Map<string, number>(normalized.map((code) => [code, 0]));
+    for (const card of filtered) {
+      const setCode = card.set.toUpperCase();
+      importedBySet.set(setCode, (importedBySet.get(setCode) ?? 0) + 1);
+    }
+
+    await upsertCardsInBatches(filtered);
+
+    const results = normalized.map((setCode) => ({
+      setCode,
+      imported: importedBySet.get(setCode) ?? 0,
+    }));
+
+    return {
+      results,
+      totalImported: filtered.length,
+    };
   }
 
   return {
@@ -282,6 +418,8 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     getCardFaces,
     bulkLookupByName,
     bulkImportSet,
+    importSetFromScryfall,
+    getSetCacheStats,
   };
 }
 
@@ -292,3 +430,5 @@ export const getCard = defaultScryfallService.getCard;
 export const getCardFaces = defaultScryfallService.getCardFaces;
 export const bulkLookupByName = defaultScryfallService.bulkLookupByName;
 export const bulkImportSet = defaultScryfallService.bulkImportSet;
+export const importSetFromScryfall = defaultScryfallService.importSetFromScryfall;
+export const getSetCacheStats = defaultScryfallService.getSetCacheStats;

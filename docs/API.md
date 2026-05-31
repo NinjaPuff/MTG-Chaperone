@@ -1818,6 +1818,115 @@ Get a user's match history across all leagues.
 
 ### Admin (`/api/admin`)
 
+All routes require site admin authentication (`user.role === 'admin'`).
+
+#### `GET /api/admin/card-cache/stats`
+
+Returns cached card counts and last-updated timestamps for the requested set codes.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Admin |
+| Query Params | `setCodes` (string, required) — comma-separated set codes, e.g. `DMU,MUL` |
+
+**Response `200`:**
+
+```json
+{
+  "data": [
+    {
+      "setCode": "DMU",
+      "cachedCount": 412,
+      "lastFetched": "2026-05-31T12:00:00.000Z"
+    },
+    {
+      "setCode": "MUL",
+      "cachedCount": 0,
+      "lastFetched": null
+    }
+  ]
+}
+```
+
+**Errors:** `FORBIDDEN`, `VALIDATION_ERROR`
+
+---
+
+#### `POST /api/admin/card-cache/import-set`
+
+Re-imports all printings for a single set using paginated Scryfall search (`set:CODE`). Safe to run repeatedly (upserts by Scryfall ID).
+
+| Property | Value |
+|----------|-------|
+| Auth     | Admin |
+
+**Request Body:**
+
+```json
+{
+  "setCode": "DMU"
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "data": {
+    "results": [
+      {
+        "setCode": "DMU",
+        "imported": 412,
+        "cachedCount": 412,
+        "lastFetched": "2026-05-31T12:00:00.000Z"
+      }
+    ],
+    "totalImported": 412
+  }
+}
+```
+
+**Errors:** `FORBIDDEN`, `VALIDATION_ERROR`, `SCRYFALL_ERROR`
+
+---
+
+#### `POST /api/admin/card-cache/import-sets`
+
+Imports multiple sets from Scryfall bulk data in one download. Prefer this for large multi-set imports.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Admin |
+
+**Request Body:**
+
+```json
+{
+  "setCodes": ["DMU", "STX"]
+}
+```
+
+**Response `200`:** Same shape as `import-set` (`data.results`, `data.totalImported`).
+
+**Errors:** `FORBIDDEN`, `VALIDATION_ERROR`, `SCRYFALL_ERROR`
+
+---
+
+#### `POST /api/admin/card-cache/import-booster-product/:id`
+
+Loads the booster product’s configured set codes and imports each set via paginated Scryfall search (`set:CODE`). Does not download the full Scryfall bulk catalog.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Admin |
+| Params   | `id` (string) — booster product ID |
+
+**Response `200`:** Same shape as `import-set`.
+
+**Errors:** `FORBIDDEN`, `NOT_FOUND`, `SCRYFALL_ERROR`
+
+---
+
 #### `POST /api/admin/matches/batch-report`
 
 Batch-report results for multiple matches in a round. Useful when the admin is entering results for an in-person event.
@@ -2146,6 +2255,40 @@ Bulk-lookup cards by name. Designed for pasting a list of card names from a pack
   ]
 }
 ```
+
+---
+
+#### `POST /api/cards/bulk-import`
+
+Imports all cards for the given set codes from Scryfall bulk data into the local cache. Admin-only; prefer `/api/admin/card-cache/*` for UI-driven imports.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Admin |
+
+**Request Body:**
+
+```json
+{
+  "setCodes": ["DMU", "STX"]
+}
+```
+
+**Response `200`:**
+
+```json
+{
+  "data": {
+    "results": [
+      { "setCode": "DMU", "imported": 412 },
+      { "setCode": "STX", "imported": 287 }
+    ],
+    "totalImported": 699
+  }
+}
+```
+
+**Errors:** `FORBIDDEN`, `VALIDATION_ERROR`, `SCRYFALL_ERROR`
 
 ---
 
