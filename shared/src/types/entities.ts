@@ -21,8 +21,11 @@ export interface User {
   discordId: string | null;
   googleId: string | null;
   displayName: string;
+  publicName: string | null;
+  discordHandle: string | null;
   slug: string;
   avatarUrl: string | null;
+  role?: 'admin' | 'user';
   createdAt: Date;
   updatedAt: Date;
 }

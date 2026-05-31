@@ -1,5 +1,6 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 type EventConfigInput = {
   format: 'swiss' | 'seeded_swiss' | 'round_robin';
@@ -269,13 +270,7 @@ export async function getEvent(eventId: string) {
                 select: {
                   userId: true,
                   user: {
-                    select: {
-                      id: true,
-                      displayName: true,
-                      publicName: true,
-                      slug: true,
-                      avatarUrl: true,
-                    },
+                    select: USER_PUBLIC_SELECT,
                   },
                 },
               },

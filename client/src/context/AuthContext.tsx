@@ -6,6 +6,8 @@ type AuthUser = {
   id: string;
   displayName: string;
   publicName: string | null;
+  discordHandle: string | null;
+  authProvider: 'discord' | 'google';
   slug: string;
   avatarUrl: string | null;
   role: 'admin' | 'user';

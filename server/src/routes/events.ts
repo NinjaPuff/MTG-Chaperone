@@ -9,6 +9,7 @@ import { createRound } from '../services/roundService.js';
 import { recomputeStandings } from '../services/standingsService.js';
 import { getEventResults } from '../services/eventRankingService.js';
 import { listMyDecklistsForEvent, listMyDecklistsForRound } from '../services/decklistService.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 const router = Router();
 
@@ -136,12 +137,7 @@ router.get('/:eventId/seeds', async (req, res, next) => {
       orderBy: { seedNum: 'asc' },
       include: {
         user: {
-          select: {
-            id: true,
-            displayName: true,
-            publicName: true,
-            slug: true,
-          },
+          select: USER_PUBLIC_SELECT,
         },
       },
     });
@@ -213,12 +209,7 @@ router.put('/:eventId/seeds', requireAuth, requireAdmin, validateBody(eventSeeds
       orderBy: { seedNum: 'asc' },
       include: {
         user: {
-          select: {
-            id: true,
-            displayName: true,
-            publicName: true,
-            slug: true,
-          },
+          select: USER_PUBLIC_SELECT,
         },
       },
     });
@@ -236,8 +227,8 @@ router.get('/:eventId/rounds', async (req, res, next) => {
       include: {
         matches: {
           include: {
-            player1: { select: { id: true, displayName: true, publicName: true, slug: true, avatarUrl: true } },
-            player2: { select: { id: true, displayName: true, publicName: true, slug: true, avatarUrl: true } },
+            player1: { select: USER_PUBLIC_SELECT },
+            player2: { select: USER_PUBLIC_SELECT },
             gameResults: true,
           },
         },
@@ -265,12 +256,7 @@ router.get('/:eventId/decklists', async (req, res, next) => {
       where: { eventId: req.params.eventId },
       include: {
         user: {
-          select: {
-            id: true,
-            displayName: true,
-            publicName: true,
-            slug: true,
-          },
+          select: USER_PUBLIC_SELECT,
         },
       },
       orderBy: { createdAt: 'desc' },

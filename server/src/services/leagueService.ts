@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { slugify, withSlugSuffix } from '../lib/slugify.js';
 import { recomputeStandings } from './standingsService.js';
 import type { PrismaClient } from '@prisma/client';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 type LeaguePayload = {
   name: string;
@@ -162,13 +163,7 @@ export function createLeagueService(partialDeps?: Partial<LeagueServiceDeps>) {
         leagueId: true,
         joinedAt: true,
         user: {
-          select: {
-            id: true,
-            displayName: true,
-            publicName: true,
-            slug: true,
-            avatarUrl: true,
-          },
+          select: USER_PUBLIC_SELECT,
         },
       },
       orderBy: { joinedAt: 'asc' },

@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { recomputeStandings } from '../services/standingsService.js';
 import { completeRound, deleteRound, regenerateRoundPairings, startRound } from '../services/roundService.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 const router = Router();
 
@@ -14,8 +15,8 @@ router.get('/:roundId', async (req, res, next) => {
       include: {
         matches: {
           include: {
-            player1: { select: { id: true, displayName: true, publicName: true, slug: true } },
-            player2: { select: { id: true, displayName: true, publicName: true, slug: true } },
+            player1: { select: USER_PUBLIC_SELECT },
+            player2: { select: USER_PUBLIC_SELECT },
             gameResults: true,
           },
         },
@@ -102,8 +103,8 @@ router.get('/:roundId/matches', async (req, res, next) => {
     const matches = await prisma.match.findMany({
       where: { roundId: req.params.roundId },
       include: {
-        player1: { select: { id: true, displayName: true, publicName: true, slug: true } },
-        player2: { select: { id: true, displayName: true, publicName: true, slug: true } },
+        player1: { select: USER_PUBLIC_SELECT },
+        player2: { select: USER_PUBLIC_SELECT },
         gameResults: true,
       },
     });

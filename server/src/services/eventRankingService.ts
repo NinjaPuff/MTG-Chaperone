@@ -1,10 +1,12 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 type EventResultUser = {
   id: string;
   displayName: string;
   publicName: string | null;
+  discordHandle: string | null;
   slug: string;
   avatarUrl: string | null;
 };
@@ -59,13 +61,7 @@ export async function getEventResults(eventId: string) {
               memberships: {
                 include: {
                   user: {
-                    select: {
-                      id: true,
-                      displayName: true,
-                      publicName: true,
-                      slug: true,
-                      avatarUrl: true,
-                    },
+                    select: USER_PUBLIC_SELECT,
                   },
                 },
               },

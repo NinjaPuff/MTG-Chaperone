@@ -5,6 +5,7 @@ import { validateBody } from '../lib/validate.js';
 import { confirmMatch, disputeMatch, reportMatch, resolveMatch } from '../services/matchService.js';
 import { prisma } from '../lib/prisma.js';
 import { recomputeStandings } from '../services/standingsService.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 const router = Router();
 
@@ -23,8 +24,8 @@ router.get('/:matchId', async (req, res, next) => {
     const match = await prisma.match.findUnique({
       where: { id: req.params.matchId },
       include: {
-        player1: { select: { id: true, displayName: true, publicName: true, slug: true } },
-        player2: { select: { id: true, displayName: true, publicName: true, slug: true } },
+        player1: { select: USER_PUBLIC_SELECT },
+        player2: { select: USER_PUBLIC_SELECT },
         gameResults: true,
         round: {
           include: {

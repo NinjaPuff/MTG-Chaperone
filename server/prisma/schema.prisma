@@ -111,6 +111,7 @@ model User {
   googleId    String?  @unique
   displayName String
   publicName  String?
+  discordHandle String?
   slug        String   @unique
   avatarUrl   String?
   role        SiteRole @default(user)

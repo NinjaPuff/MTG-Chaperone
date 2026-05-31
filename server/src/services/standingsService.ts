@@ -1,5 +1,6 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 type Stat = {
   userId: string;
@@ -216,13 +217,7 @@ export async function getStandings(seasonId: string) {
     where: { seasonId },
     include: {
       user: {
-        select: {
-          id: true,
-          displayName: true,
-          publicName: true,
-          slug: true,
-          avatarUrl: true,
-        },
+        select: USER_PUBLIC_SELECT,
       },
     },
     orderBy: [{ points: 'desc' }, { omwPercent: 'desc' }, { gwPercent: 'desc' }, { ogwPercent: 'desc' }],

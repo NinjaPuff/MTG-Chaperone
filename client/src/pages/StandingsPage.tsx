@@ -5,7 +5,7 @@ import { apiRequest } from '@/lib/api';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
-import { primaryName } from '@/lib/userDisplay';
+import { primaryName, discordHandleText } from '@/lib/userDisplay';
 
 type StandingRow = {
   id: string;
@@ -20,6 +20,7 @@ type StandingRow = {
     id: string;
     displayName: string;
     publicName?: string | null;
+    discordHandle?: string | null;
     slug: string;
   };
 };
@@ -121,16 +122,21 @@ export function StandingsPage() {
                       <RankChip index={index} />
                     </td>
                     <td className="p-3">
-                      <div className="flex items-center gap-2">
-                        <Link className="hover:underline" to={`/profile/${row.user.slug}`}>
-                          {primaryName(row.user)}
-                        </Link>
-                        <PlayerPoolSetSymbols
-                          userId={row.user.id}
-                          poolSetsByUserId={poolSetsByUserId}
-                          poolSetsLoading={poolSetsLoading}
-                          getSet={getSet}
-                        />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Link className="hover:underline" to={`/profile/${row.user.slug}`}>
+                            {primaryName(row.user)}
+                          </Link>
+                          <PlayerPoolSetSymbols
+                            userId={row.user.id}
+                            poolSetsByUserId={poolSetsByUserId}
+                            poolSetsLoading={poolSetsLoading}
+                            getSet={getSet}
+                          />
+                        </div>
+                        {discordHandleText(row.user) ? (
+                          <p className="text-xs text-muted-foreground">Discord: @{discordHandleText(row.user)}</p>
+                        ) : null}
                       </div>
                     </td>
                     <td className="p-3 text-right">{row.points}</td>

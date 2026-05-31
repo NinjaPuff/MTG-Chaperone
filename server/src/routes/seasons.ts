@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { createEvent, createRoundRobinEventSeries } from '../services/eventService.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 const router = Router();
 
@@ -14,13 +15,7 @@ router.get('/:seasonId/standings', async (req, res, next) => {
       where: { seasonId: req.params.seasonId },
       include: {
         user: {
-          select: {
-            id: true,
-            displayName: true,
-            publicName: true,
-            slug: true,
-            avatarUrl: true,
-          },
+          select: USER_PUBLIC_SELECT,
         },
       },
       orderBy: [
@@ -147,12 +142,7 @@ router.get('/:seasonId/card-pools', async (req, res, next) => {
       where: { seasonId: season.id },
       include: {
         user: {
-          select: {
-            id: true,
-            displayName: true,
-            publicName: true,
-            slug: true,
-          },
+          select: USER_PUBLIC_SELECT,
         },
         boosterProduct: true,
       },

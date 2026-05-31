@@ -41,6 +41,7 @@ describe('StandingsPage', () => {
                 id: 'user-1',
                 displayName: 'Alice',
                 publicName: null,
+                discordHandle: 'league_player',
                 slug: 'alice',
               },
             },
@@ -101,6 +102,7 @@ describe('StandingsPage', () => {
 
     expect(screen.getByTestId('set-symbol-DMU')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
+    expect(screen.getByText('Discord: @league_player')).toBeInTheDocument();
     expect(screen.queryAllByTestId('set-symbol-DMU')).toHaveLength(1);
   });
 });

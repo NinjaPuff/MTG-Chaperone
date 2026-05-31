@@ -12,12 +12,14 @@ const baseMatch: MatchCardMatch = {
     id: 'user-1',
     displayName: 'Alice',
     publicName: null,
+    discordHandle: null,
     avatarUrl: null,
   },
   player2: {
     id: 'user-2',
     displayName: 'Bob',
     publicName: null,
+    discordHandle: null,
     avatarUrl: null,
   },
 };
@@ -69,5 +71,42 @@ describe('MatchCard', () => {
     );
 
     expect(screen.queryByTestId(/set-symbol-/)).not.toBeInTheDocument();
+  });
+
+  it('shows discord handle subtitle when distinct from display name', () => {
+    render(
+      <MatchCard
+        match={{
+          ...baseMatch,
+          player1: {
+            ...baseMatch.player1,
+            discordHandle: 'alice_d',
+          },
+        }}
+        eventRecords={new Map()}
+        seasonPoints={new Map()}
+      />,
+    );
+
+    expect(screen.getByText('Discord: @alice_d')).toBeInTheDocument();
+  });
+
+  it('hides discord subtitle when handle matches display name', () => {
+    render(
+      <MatchCard
+        match={{
+          ...baseMatch,
+          player1: {
+            ...baseMatch.player1,
+            displayName: 'Alice',
+            discordHandle: 'alice',
+          },
+        }}
+        eventRecords={new Map()}
+        seasonPoints={new Map()}
+      />,
+    );
+
+    expect(screen.queryByText('Discord: @alice')).not.toBeInTheDocument();
   });
 });

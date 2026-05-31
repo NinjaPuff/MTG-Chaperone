@@ -4,6 +4,8 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { formatProfileResponse, validateDiscordHandle } from '../lib/userProfileRules.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 const router = Router();
 
@@ -15,11 +17,7 @@ router.get('/', requireAuth, requireAdmin, async (_req, res, next) => {
   try {
     const users = await prisma.user.findMany({
       select: {
-        id: true,
-        displayName: true,
-        publicName: true,
-        slug: true,
-        avatarUrl: true,
+        ...USER_PUBLIC_SELECT,
         role: true,
         createdAt: true,
       },
@@ -53,11 +51,7 @@ router.patch('/:id/role', requireAuth, requireAdmin, validateBody(updateRoleSche
       where: { id: target.id },
       data: { role: req.body.role },
       select: {
-        id: true,
-        displayName: true,
-        publicName: true,
-        slug: true,
-        avatarUrl: true,
+        ...USER_PUBLIC_SELECT,
         role: true,
         createdAt: true,
       },
@@ -71,6 +65,7 @@ router.patch('/:id/role', requireAuth, requireAdmin, validateBody(updateRoleSche
 
 const updateProfileSchema = z.object({
   publicName: z.string().max(50).trim().nullable(),
+  discordHandle: z.string().max(32).trim().nullable().optional(),
 });
 
 router.get('/profile', requireAuth, async (req, res, next) => {
@@ -78,11 +73,9 @@ router.get('/profile', requireAuth, async (req, res, next) => {
     const profile = await prisma.user.findUnique({
       where: { id: req.user!.id },
       select: {
-        id: true,
-        displayName: true,
-        publicName: true,
-        slug: true,
-        avatarUrl: true,
+        ...USER_PUBLIC_SELECT,
+        discordId: true,
+        googleId: true,
         role: true,
         createdAt: true,
       },
@@ -92,7 +85,7 @@ router.get('/profile', requireAuth, async (req, res, next) => {
       throw new AppError(404, 'NOT_FOUND', 'User not found');
     }
 
-    res.json({ data: profile });
+    res.json({ data: formatProfileResponse(profile) });
   } catch (error) {
     next(error);
   }
@@ -100,21 +93,41 @@ router.get('/profile', requireAuth, async (req, res, next) => {
 
 router.patch('/profile', requireAuth, validateBody(updateProfileSchema), async (req, res, next) => {
   try {
+    const current = await prisma.user.findUnique({
+      where: { id: req.user!.id },
+      select: { discordId: true },
+    });
+
+    if (!current) {
+      throw new AppError(404, 'NOT_FOUND', 'User not found');
+    }
+
+    const data: { publicName: string | null; discordHandle?: string | null } = {
+      publicName: req.body.publicName ?? null,
+    };
+
+    if ('discordHandle' in req.body) {
+      if (current.discordId) {
+        throw new AppError(400, 'VALIDATION_ERROR', 'Discord handle cannot be changed for Discord sign-in accounts', {
+          discordHandle: 'Synced from your Discord account',
+        });
+      }
+      data.discordHandle = validateDiscordHandle(req.body.discordHandle);
+    }
+
     const updated = await prisma.user.update({
       where: { id: req.user!.id },
-      data: { publicName: req.body.publicName || null },
+      data,
       select: {
-        id: true,
-        displayName: true,
-        publicName: true,
-        slug: true,
-        avatarUrl: true,
+        ...USER_PUBLIC_SELECT,
+        discordId: true,
+        googleId: true,
         role: true,
         createdAt: true,
       },
     });
 
-    res.json({ data: updated });
+    res.json({ data: formatProfileResponse(updated) });
   } catch (error) {
     next(error);
   }

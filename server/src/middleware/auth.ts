@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { AppError } from './errorHandler.js';
 import { verifyToken } from '../config/jwt.js';
 import type { PrismaClient } from '@prisma/client';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 declare global {
   namespace Express {
@@ -50,11 +51,7 @@ export function createAuthMiddleware(deps: {
       const user = await deps.prisma.user.findUnique({
         where: { id: payload.userId },
         select: {
-          id: true,
-          displayName: true,
-          publicName: true,
-          slug: true,
-          avatarUrl: true,
+          ...USER_PUBLIC_SELECT,
           role: true,
         },
       });
@@ -105,11 +102,7 @@ export function createAuthMiddleware(deps: {
       const user = await deps.prisma.user.findUnique({
         where: { id: payload.userId },
         select: {
-          id: true,
-          displayName: true,
-          publicName: true,
-          slug: true,
-          avatarUrl: true,
+          ...USER_PUBLIC_SELECT,
           role: true,
         },
       });

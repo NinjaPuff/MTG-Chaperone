@@ -5,6 +5,8 @@ import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/auth.js';
 import type { AppDeps } from '../di/types.js';
 import { loadConfig } from '../di/config.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
+import { formatProfileResponse } from '../lib/userProfileRules.js';
 
 function isStrategyConfigured(name: 'discord' | 'google') {
   return Boolean((passport as unknown as { _strategy?: (strategy: string) => unknown })._strategy?.(name));
@@ -92,11 +94,9 @@ export function createAuthRouter(deps?: Pick<AppDeps, 'config' | 'prisma' | 'ser
       const user = await prismaClient.user.findUnique({
         where: { id: req.user!.id },
         select: {
-          id: true,
-          displayName: true,
-          publicName: true,
-          slug: true,
-          avatarUrl: true,
+          ...USER_PUBLIC_SELECT,
+          discordId: true,
+          googleId: true,
           role: true,
           createdAt: true,
         },
@@ -107,7 +107,7 @@ export function createAuthRouter(deps?: Pick<AppDeps, 'config' | 'prisma' | 'ser
         return;
       }
 
-      res.json({ data: user });
+      res.json({ data: formatProfileResponse(user) });
     } catch (error) {
       next(error);
     }

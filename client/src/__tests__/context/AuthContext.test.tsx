@@ -40,6 +40,8 @@ describe('AuthContext', () => {
         id: 'user-1',
         displayName: 'User',
         publicName: null,
+        discordHandle: null,
+        authProvider: 'google',
         slug: 'user',
         avatarUrl: null,
         role: 'user',

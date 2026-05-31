@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { bulkLookupByName, getCard, lookupCanonicalByName } from './scryfallService.js';
+import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 async function refreshStaleDfcManaCost(cachedCardIds: string[]) {
   if (cachedCardIds.length === 0) {
@@ -38,15 +39,9 @@ export async function listPoolsBySeason(seasonId: string) {
   return prisma.cardPool.findMany({
     where: { seasonId },
     include: {
-      user: {
-        select: {
-          id: true,
-          displayName: true,
-          publicName: true,
-          slug: true,
-          avatarUrl: true,
+        user: {
+          select: USER_PUBLIC_SELECT,
         },
-      },
       boosterProduct: {
         include: {
           setCodes: true,
@@ -86,15 +81,9 @@ export async function createPool(userId: string, seasonId: string, boosterProduc
       boosterProductId,
     },
     include: {
-      user: {
-        select: {
-          id: true,
-          displayName: true,
-          publicName: true,
-          slug: true,
-          avatarUrl: true,
+        user: {
+          select: USER_PUBLIC_SELECT,
         },
-      },
       boosterProduct: {
         include: {
           setCodes: true,
@@ -125,15 +114,9 @@ export async function updatePool(poolId: string, boosterProductId: string) {
     where: { id: poolId },
     data: { boosterProductId },
     include: {
-      user: {
-        select: {
-          id: true,
-          displayName: true,
-          publicName: true,
-          slug: true,
-          avatarUrl: true,
+        user: {
+          select: USER_PUBLIC_SELECT,
         },
-      },
       boosterProduct: {
         include: {
           setCodes: true,
@@ -161,15 +144,9 @@ export async function getPoolDetail(poolId: string) {
   const pool = await prisma.cardPool.findUnique({
     where: { id: poolId },
     include: {
-      user: {
-        select: {
-          id: true,
-          displayName: true,
-          publicName: true,
-          slug: true,
-          avatarUrl: true,
+        user: {
+          select: USER_PUBLIC_SELECT,
         },
-      },
       boosterProduct: {
         include: {
           setCodes: true,

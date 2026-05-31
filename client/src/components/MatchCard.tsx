@@ -3,12 +3,13 @@ import { PlayerPoolSetSymbols } from '@/components/PlayerPoolSetSymbols';
 import type { ScryfallSetSummary } from '@/hooks/useScryfallSets';
 import type { PoolSetInfo } from '@/hooks/useSeasonPoolSets';
 import { getMatchOutcome } from '@/lib/matchUtils';
-import { primaryName, secondaryName } from '@/lib/userDisplay';
+import { discordHandleText, primaryName, secondaryName } from '@/lib/userDisplay';
 
 export type MatchCardUser = {
   id: string;
   displayName: string;
   publicName?: string | null;
+  discordHandle?: string | null;
   avatarUrl?: string | null;
 };
 
@@ -132,6 +133,9 @@ function PlayerNameWithSets({
         {symbols}
       </div>
       {secondaryName(user) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(user)}</p> : null}
+      {discordHandleText(user) ? (
+        <p className="text-xs text-muted-foreground truncate">Discord: @{discordHandleText(user)}</p>
+      ) : null}
     </div>
   );
 }
@@ -252,6 +256,9 @@ export function MatchCard({
                     ) : null}
                   </div>
                   {secondaryName(match.player1) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(match.player1)}</p> : null}
+                  {discordHandleText(match.player1) ? (
+                    <p className="text-xs text-muted-foreground truncate">Discord: @{discordHandleText(match.player1)}</p>
+                  ) : null}
                 </div>
               </div>
               <div className="mt-3">
@@ -300,6 +307,9 @@ export function MatchCard({
                     ) : null}
                   </div>
                   {secondaryName(match.player2) ? <p className="text-xs text-muted-foreground truncate">{secondaryName(match.player2)}</p> : null}
+                  {discordHandleText(match.player2) ? (
+                    <p className="text-xs text-muted-foreground truncate">Discord: @{discordHandleText(match.player2)}</p>
+                  ) : null}
                 </div>
                 <Avatar user={match.player2} sizeClass="h-14 w-14" />
               </div>
