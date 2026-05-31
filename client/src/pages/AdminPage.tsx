@@ -1,4 +1,5 @@
 import * as Tabs from '@radix-ui/react-tabs';
+import { Copy } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
@@ -6,6 +7,8 @@ import { hasRemovedSetCodes } from '@/lib/boosterProductEditGuards';
 import { resolveCreatePrimarySetCode } from '@/lib/boosterProductCreate';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
+import { buildInviteJoinUrl, copyTextToClipboard } from '@/lib/inviteLink';
 import { SetCodePicker } from '@/components/SetCodePicker';
 import { BoosterProductSetBadges } from '@/components/BoosterProductSetBadges';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
@@ -197,6 +200,7 @@ function formatMutationError(err: unknown, fallback: string) {
 export function AdminPage() {
   const { user } = useAuth();
   const { confirm } = useConfirm();
+  const { showToast } = useToast();
   const [leagues, setLeagues] = useState<League[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
@@ -584,6 +588,15 @@ export function AdminPage() {
       setSuccess('Invite revoked.');
     } catch (inviteError) {
       setError(inviteError instanceof ApiError ? inviteError.message : 'Unable to revoke invite');
+    }
+  };
+
+  const copyInviteLink = async (token: string) => {
+    try {
+      await copyTextToClipboard(buildInviteJoinUrl(token));
+      showToast({ message: 'Invite link copied', variant: 'success' });
+    } catch {
+      showToast({ message: 'Failed to copy invite link' });
     }
   };
 
@@ -1213,21 +1226,34 @@ export function AdminPage() {
             <div className="mt-4 space-y-3">
               {invites.map((invite) => (
                 <div key={invite.id} className="rounded-md border border-border p-3">
-                  <p className="font-mono text-xs break-all">{`${window.location.origin}/join?token=${invite.token}`}</p>
+                  <div className="flex items-start gap-2">
+                    <p className="flex-1 font-mono text-xs break-all">{buildInviteJoinUrl(invite.token)}</p>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void copyInviteLink(invite.token)}
+                        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                        aria-label="Copy invite link"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        Copy
+                      </button>
+                      {invite.status === 'active' ? (
+                        <button
+                          type="button"
+                          onClick={() => revokeInviteLink(invite.id)}
+                          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-accent"
+                        >
+                          Revoke
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {invite.status} • Uses {invite.useCount}
                     {invite.maxUses ? `/${invite.maxUses}` : ''} •{' '}
                     {invite.expiresAt ? `Expires ${new Date(invite.expiresAt).toLocaleString()}` : 'No expiry'}
                   </p>
-                  {invite.status === 'active' ? (
-                    <button
-                      type="button"
-                      onClick={() => revokeInviteLink(invite.id)}
-                      className="mt-2 rounded-md border border-border px-3 py-1 text-sm"
-                    >
-                      Revoke
-                    </button>
-                  ) : null}
                 </div>
               ))}
               {invites.length === 0 ? <p className="text-sm text-muted-foreground">No invites yet.</p> : null}
