@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env.js';
 import { loadConfig } from './di/config.js';
 import { createDeps } from './di/deps.js';
 import { createApp } from './app.js';

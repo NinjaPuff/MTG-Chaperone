@@ -22,10 +22,21 @@ services:
     image: mtg-chaperone:latest
     container_name: mtg-chaperone-app
     restart: unless-stopped
-    env_file: .env.production
+    # App env comes from `docker compose --env-file <path>` (not a repo-local env_file path).
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-mtgleague}
+      SERVER_PORT: ${SERVER_PORT:-3000}
+      CLIENT_URL: ${CLIENT_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      DISCORD_CALLBACK_URL: ${DISCORD_CALLBACK_URL:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
