@@ -18,10 +18,17 @@ export function discordHandleRaw(user: UserLike): string | null {
   return handle || null;
 }
 
-/** Public subtitle — suppress when handle duplicates OAuth displayName. */
+/** Subtitle for user lists: account name when using a public alias, otherwise discord handle. */
+export function profileSubtitle(user: UserLike): string | null {
+  const secondary = secondaryName(user);
+  const subtitle = secondary ?? discordHandleRaw(user);
+  if (!subtitle || subtitle === primaryName(user)) {
+    return null;
+  }
+  return subtitle;
+}
+
+/** Public subtitle — show whenever a discord handle is stored. */
 export function discordHandleText(user: UserLike): string | null {
-  const handle = discordHandleRaw(user);
-  if (!handle) return null;
-  if (handle.toLowerCase() === user.displayName.toLowerCase()) return null;
-  return handle;
+  return discordHandleRaw(user);
 }

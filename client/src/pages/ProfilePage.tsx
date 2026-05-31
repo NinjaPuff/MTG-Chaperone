@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { ApiError, apiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
-import { discordHandleRaw, primaryName, secondaryName } from '@/lib/userDisplay';
+import { discordHandleRaw, primaryName, profileSubtitle } from '@/lib/userDisplay';
 
 export function ProfilePage() {
   const { user, isLoading, refreshUser } = useAuth();
@@ -69,7 +69,7 @@ export function ProfilePage() {
 
   const isDiscordAuth = user.authProvider === 'discord';
   const primary = primaryName(user);
-  const secondary = secondaryName(user);
+  const subtitle = profileSubtitle(user);
   const savedDiscordHandle = discordHandleRaw(user);
   const syncedDiscordName = savedDiscordHandle || user.displayName;
 
@@ -98,11 +98,8 @@ export function ProfilePage() {
           )}
           <div>
             <p className="text-xl font-semibold">{primary}</p>
-            {secondary ? (
-              <p className="text-sm text-muted-foreground">{secondary}</p>
-            ) : null}
-            {savedDiscordHandle ? (
-              <p className="text-sm text-muted-foreground">Discord: @{savedDiscordHandle}</p>
+            {subtitle ? (
+              <p className="text-sm text-muted-foreground">{subtitle}</p>
             ) : null}
           </div>
         </div>

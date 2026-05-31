@@ -4,7 +4,7 @@ import { ApiError, apiRequest, getStoredToken } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
-import { primaryName, secondaryName } from '@/lib/userDisplay';
+import { primaryName, profileSubtitle } from '@/lib/userDisplay';
 import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
@@ -886,7 +886,7 @@ export function CardPoolDetailPage() {
   }
 
   const ownerPrimary = primaryName(pool.user);
-  const ownerSecondary = secondaryName(pool.user);
+  const ownerSubtitle = profileSubtitle(pool.user);
 
   return (
     <div className="space-y-6">
@@ -905,7 +905,7 @@ export function CardPoolDetailPage() {
           <div>
             <p className="text-sm text-muted-foreground">Pool Owner</p>
             <p className="text-lg font-semibold">{ownerPrimary}</p>
-            {ownerSecondary ? <p className="text-xs text-muted-foreground">{ownerSecondary}</p> : null}
+            {ownerSubtitle ? <p className="text-xs text-muted-foreground">{ownerSubtitle}</p> : null}
           </div>
           <button
             type="button"

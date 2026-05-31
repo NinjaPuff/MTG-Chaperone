@@ -12,7 +12,7 @@ import { buildInviteJoinUrl, copyTextToClipboard } from '@/lib/inviteLink';
 import { SetCodePicker } from '@/components/SetCodePicker';
 import { BoosterProductSetBadges } from '@/components/BoosterProductSetBadges';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
-import { primaryName, secondaryName } from '@/lib/userDisplay';
+import { primaryName, profileSubtitle } from '@/lib/userDisplay';
 
 type League = {
   id: string;
@@ -90,6 +90,7 @@ type Member = {
     id: string;
     displayName: string;
     publicName?: string | null;
+    discordHandle?: string | null;
     slug: string;
     avatarUrl: string | null;
   };
@@ -111,6 +112,7 @@ type SiteUser = {
   id: string;
   displayName: string;
   publicName?: string | null;
+  discordHandle?: string | null;
   slug: string;
   avatarUrl: string | null;
   role: 'admin' | 'user';
@@ -1389,7 +1391,7 @@ export function AdminPage() {
                     const uid = membershipRowUserId(member);
                     const pool = poolsByUserId.get(uid);
                     const name = primaryName(member.user);
-                    const sub = secondaryName(member.user);
+                    const sub = profileSubtitle(member.user);
                     const initials = name
                       .split(/\s+/)
                       .filter(Boolean)
@@ -2067,7 +2069,7 @@ export function AdminPage() {
             {filteredSiteUsers.map((siteUser) => {
               const isLastAdmin = siteUser.role === 'admin' && siteAdminCount <= 1;
               const sName = primaryName(siteUser);
-              const sSub = secondaryName(siteUser);
+              const sSub = profileSubtitle(siteUser);
               const initials = sName
                 .split(/\s+/)
                 .filter(Boolean)

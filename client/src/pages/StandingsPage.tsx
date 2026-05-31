@@ -5,7 +5,7 @@ import { apiRequest } from '@/lib/api';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
-import { primaryName, discordHandleText } from '@/lib/userDisplay';
+import { primaryName, profileSubtitle } from '@/lib/userDisplay';
 
 type StandingRow = {
   id: string;
@@ -134,8 +134,8 @@ export function StandingsPage() {
                             getSet={getSet}
                           />
                         </div>
-                        {discordHandleText(row.user) ? (
-                          <p className="text-xs text-muted-foreground">Discord: @{discordHandleText(row.user)}</p>
+                        {profileSubtitle(row.user) ? (
+                          <p className="text-xs text-muted-foreground">{profileSubtitle(row.user)}</p>
                         ) : null}
                       </div>
                     </td>

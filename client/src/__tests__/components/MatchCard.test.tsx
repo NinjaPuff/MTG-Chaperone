@@ -73,7 +73,7 @@ describe('MatchCard', () => {
     expect(screen.queryByTestId(/set-symbol-/)).not.toBeInTheDocument();
   });
 
-  it('shows discord handle subtitle when distinct from display name', () => {
+  it('shows discord handle subtitle when set', () => {
     render(
       <MatchCard
         match={{
@@ -88,10 +88,10 @@ describe('MatchCard', () => {
       />,
     );
 
-    expect(screen.getByText('Discord: @alice_d')).toBeInTheDocument();
+    expect(screen.getByText('alice_d')).toBeInTheDocument();
   });
 
-  it('hides discord subtitle when handle matches display name', () => {
+  it('shows discord subtitle when handle matches display name', () => {
     render(
       <MatchCard
         match={{
@@ -107,6 +107,6 @@ describe('MatchCard', () => {
       />,
     );
 
-    expect(screen.queryByText('Discord: @alice')).not.toBeInTheDocument();
+    expect(screen.getByText('alice')).toBeInTheDocument();
   });
 });

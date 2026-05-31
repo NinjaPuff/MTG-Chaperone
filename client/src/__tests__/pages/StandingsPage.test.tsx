@@ -102,7 +102,7 @@ describe('StandingsPage', () => {
 
     expect(screen.getByTestId('set-symbol-DMU')).toBeInTheDocument();
     expect(screen.getByText('Bob')).toBeInTheDocument();
-    expect(screen.getByText('Discord: @league_player')).toBeInTheDocument();
+    expect(screen.getByText('league_player')).toBeInTheDocument();
     expect(screen.queryAllByTestId('set-symbol-DMU')).toHaveLength(1);
   });
 });

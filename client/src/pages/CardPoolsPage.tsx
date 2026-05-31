@@ -4,7 +4,7 @@ import { ApiError, apiRequest } from '@/lib/api';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
-import { primaryName, secondaryName } from '@/lib/userDisplay';
+import { primaryName, profileSubtitle } from '@/lib/userDisplay';
 
 type CardPoolSummary = {
   id: string;
@@ -12,6 +12,7 @@ type CardPoolSummary = {
     id: string;
     displayName: string;
     publicName?: string | null;
+    discordHandle?: string | null;
     slug: string;
     avatarUrl: string | null;
   };
@@ -94,8 +95,8 @@ export function CardPoolsPage() {
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className="font-medium">{primaryName(pool.user)}</p>
-                    {secondaryName(pool.user) ? (
-                      <p className="text-xs text-muted-foreground">{secondaryName(pool.user)}</p>
+                    {profileSubtitle(pool.user) ? (
+                      <p className="text-xs text-muted-foreground">{profileSubtitle(pool.user)}</p>
                     ) : null}
                     <p className="mt-1 text-sm text-muted-foreground">
                       {pool.boosterProduct.name} ({pool.boosterProduct.boosterType})

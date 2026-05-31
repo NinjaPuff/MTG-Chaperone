@@ -147,7 +147,7 @@ describe('ProfilePage', () => {
     expect(screen.queryByText('Profile updated.')).not.toBeInTheDocument();
   });
 
-  it('shows saved discord handle in header preview even when it matches account name', () => {
+  it('does not duplicate subtitle when discord handle matches account name', () => {
     mocks.useAuth.mockReturnValue({
       user: { ...googleUser, displayName: 'same', discordHandle: 'same' },
       isLoading: false,
@@ -156,6 +156,6 @@ describe('ProfilePage', () => {
 
     render(<ProfilePage />);
 
-    expect(screen.getByText('Discord: @same')).toBeInTheDocument();
+    expect(screen.getAllByText('same')).toHaveLength(1);
   });
 });
