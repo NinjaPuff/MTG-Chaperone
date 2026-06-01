@@ -18,7 +18,10 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_KOFI_URL: ${VITE_KOFI_URL:-}
     container_name: mtg-chaperone-app
     restart: unless-stopped
     depends_on:

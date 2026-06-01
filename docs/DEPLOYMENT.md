@@ -64,20 +64,25 @@ Edit `.env.production` (this file is gitignored):
 - Set strong values for `POSTGRES_PASSWORD` and `JWT_SECRET`
 - Add OAuth client IDs and secrets
 - Ensure `DATABASE_URL` uses host `postgres` (the Docker service name)
+- Optional: `VITE_KOFI_URL=https://ko-fi.com/yourpage` for the footer support link (requires image rebuild)
 
 ## 5. Build and start
 
+Pass your env file on every compose command so build args and runtime config stay in sync:
+
 ```bash
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d
+docker compose --env-file .env.production -f docker-compose.prod.yml build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
+
+`VITE_KOFI_URL` from that file is passed into the image build and inlined by Vite. Changing it later requires `build` again, not just `up`.
 
 The app entrypoint runs `prisma migrate deploy` automatically on startup.
 
 To run migrations manually instead:
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm --entrypoint "" app npm run db:migrate:deploy --workspace=server
+docker compose --env-file .env.production -f docker-compose.prod.yml run --rm --entrypoint "" app npm run db:migrate:deploy --workspace=server
 ```
 
 ## 6. Verify
@@ -89,8 +94,8 @@ docker compose -f docker-compose.prod.yml run --rm --entrypoint "" app npm run d
 Check container logs if something fails:
 
 ```bash
-docker compose -f docker-compose.prod.yml logs -f app
-docker compose -f docker-compose.prod.yml logs -f cloudflared
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f app
+docker compose --env-file .env.production -f docker-compose.prod.yml logs -f cloudflared
 ```
 
 Confirm the tunnel is connected (no repeated `Invalid tunnel token` errors in `cloudflared` logs).
@@ -122,13 +127,13 @@ Or attach the old volume name temporarily in `docker-compose.prod.yml` under `vo
 If the old stack is running:
 
 ```bash
-docker compose -f docker-compose.prod.yml down
+docker compose --env-file .env.production -f docker-compose.prod.yml down
 docker rm -f mtgleague-caddy 2>/dev/null || true
 docker volume rm mtgboxleaguehelper_caddy_data mtgboxleaguehelper_caddy_config 2>/dev/null || true
 git pull
 # Merge existing .env.production secrets and add CLOUDFLARE_TUNNEL_TOKEN
-docker compose -f docker-compose.prod.yml build
-docker compose -f docker-compose.prod.yml up -d
+docker compose --env-file .env.production -f docker-compose.prod.yml build
+docker compose --env-file .env.production -f docker-compose.prod.yml up -d
 ```
 
 After the tunnel is verified, you can remove router port forwards for 80/443 (optional hardening).

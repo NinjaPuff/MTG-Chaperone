@@ -18,7 +18,11 @@ services:
       retries: 5
 
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # Baked into the client bundle at image build; set via `docker compose --env-file`.
+        VITE_KOFI_URL: ${VITE_KOFI_URL:-}
     image: mtg-chaperone:latest
     container_name: mtg-chaperone-app
     restart: unless-stopped

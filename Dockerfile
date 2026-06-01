@@ -9,6 +9,8 @@ COPY shared/package.json shared/
 RUN npm ci
 
 FROM deps AS builder
+ARG VITE_KOFI_URL=
+ENV VITE_KOFI_URL=$VITE_KOFI_URL
 COPY . .
 
 RUN npm run db:generate --workspace=server
