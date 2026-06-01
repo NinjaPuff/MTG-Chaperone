@@ -10,7 +10,7 @@ const prismaMock = vi.hoisted(() => ({
 }));
 
 const scryfallMocks = vi.hoisted(() => ({
-  bulkLookupByName: vi.fn(),
+  bulkLookupForPoolImport: vi.fn(),
   getCard: vi.fn(),
   lookupCanonicalByName: vi.fn(),
 }));
@@ -20,7 +20,7 @@ vi.mock('../../lib/prisma.js', () => ({
 }));
 
 vi.mock('../../services/scryfallService.js', () => ({
-  bulkLookupByName: scryfallMocks.bulkLookupByName,
+  bulkLookupForPoolImport: scryfallMocks.bulkLookupForPoolImport,
   getCard: scryfallMocks.getCard,
   lookupCanonicalByName: scryfallMocks.lookupCanonicalByName,
 }));
@@ -60,18 +60,28 @@ const lightningBolt = {
   manaCost: '{R}',
 };
 
+const adelineFca = {
+  scryfallId: '0b9579d8-bc8f-4d74-bfc1-dcdd42568f79',
+  name: 'Adeline, Resplendent Cathar',
+  flavorName: 'Hero of Light',
+  setCode: 'FCA',
+  collectorNumber: '1',
+  imageUris: { small: 'https://example.com/adeline.jpg' },
+  manaCost: '{1}{W}{W}',
+};
+
 describe('cardPoolService bulkResolveAcquisitionItems', () => {
   beforeEach(() => {
     prismaMock.cachedCard.findMany.mockReset();
     prismaMock.poolAcquisition.create.mockReset();
-    scryfallMocks.bulkLookupByName.mockReset();
+    scryfallMocks.bulkLookupForPoolImport.mockReset();
     scryfallMocks.getCard.mockReset();
     scryfallMocks.lookupCanonicalByName.mockReset();
     scryfallMocks.getCard.mockResolvedValue(null);
   });
 
   it('prefers canonical base print when multiple variants exist', async () => {
-    scryfallMocks.bulkLookupByName.mockResolvedValue([trystanVariant, trystanBase]);
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([trystanVariant, trystanBase]);
     scryfallMocks.lookupCanonicalByName.mockResolvedValue({
       scryfallId: 'base-id',
       setCode: 'ECL',
@@ -98,7 +108,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
   });
 
   it('uses explicitly specified set code when provided in bulk add line', async () => {
-    scryfallMocks.bulkLookupByName.mockResolvedValue([trystanBase, trystanAbc]);
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([trystanBase, trystanAbc]);
 
     const result = await bulkResolveAcquisitionItems([{ name: 'Trystan [ABC]', quantity: 1 }], ['ECL', 'ABC']);
 
@@ -110,7 +120,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
   });
 
   it('aggregates quantities for duplicate resolved card ids', async () => {
-    scryfallMocks.bulkLookupByName.mockResolvedValue([lightningBolt]);
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([lightningBolt]);
 
     const result = await bulkResolveAcquisitionItems(
       [
@@ -137,7 +147,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
   });
 
   it('returns empty resolved when all names are unresolved', async () => {
-    scryfallMocks.bulkLookupByName.mockResolvedValue([]);
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([]);
 
     const result = await bulkResolveAcquisitionItems([{ name: 'Not A Real Card', quantity: 1 }], ['ECL']);
 
@@ -147,7 +157,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
   });
 
   it('returns mixed resolved and unresolved entries in one batch', async () => {
-    scryfallMocks.bulkLookupByName.mockResolvedValue([trystanBase]);
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([trystanBase]);
 
     const result = await bulkResolveAcquisitionItems(
       [
@@ -163,7 +173,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
   });
 
   it('resolves parenthetical set syntax', async () => {
-    scryfallMocks.bulkLookupByName.mockResolvedValue([trystanAbc]);
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([trystanAbc]);
 
     const result = await bulkResolveAcquisitionItems([{ name: 'Trystan (ABC)', quantity: 1 }], ['ECL', 'ABC']);
 
@@ -172,7 +182,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
   });
 
   it('matches collector number when multiple printings share a set', async () => {
-    scryfallMocks.bulkLookupByName.mockResolvedValue([
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([
       { ...lightningBolt, scryfallId: 'bolt-112', collectorNumber: '112' },
       { ...lightningBolt, scryfallId: 'bolt-113', collectorNumber: '113' },
     ]);
@@ -187,7 +197,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
   });
 
   it('marks lines unresolved when collector number does not match', async () => {
-    scryfallMocks.bulkLookupByName.mockResolvedValue([
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([
       { ...lightningBolt, scryfallId: 'bolt-112', collectorNumber: '112' },
     ]);
 
@@ -207,7 +217,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
       setCode: 'ECL',
       collectorNumber: '112',
     });
-    scryfallMocks.bulkLookupByName.mockResolvedValue([
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([
       { ...lightningBolt, scryfallId: 'bolt-112', collectorNumber: '112' },
     ]);
 
@@ -218,5 +228,63 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
 
     expect(result.resolved[0]?.cachedCardId).toBe('bolt-112');
     expect(result.resolved[0]?.quantity).toBe(2);
+  });
+
+  it('resolves FCA flavor alias to canonical card', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([adelineFca]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Hero of Light (FCA)', quantity: 2 }], ['FCA']);
+
+    expect(scryfallMocks.bulkLookupForPoolImport).toHaveBeenCalledWith(['Hero of Light'], ['FCA']);
+    expect(result.resolved).toEqual([
+      {
+        cachedCardId: adelineFca.scryfallId,
+        quantity: 2,
+        cachedCard: {
+          scryfallId: adelineFca.scryfallId,
+          name: 'Adeline, Resplendent Cathar',
+          setCode: 'FCA',
+          imageUris: adelineFca.imageUris,
+          manaCost: '{1}{W}{W}',
+        },
+      },
+    ]);
+    expect(result.unresolved).toEqual([]);
+    expect(scryfallMocks.lookupCanonicalByName).not.toHaveBeenCalled();
+  });
+
+  it('aggregates duplicate alias lines', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([adelineFca]);
+
+    const result = await bulkResolveAcquisitionItems(
+      [
+        { name: 'Hero of Light (FCA)', quantity: 2 },
+        { name: 'Hero of Light (FCA)', quantity: 1 },
+      ],
+      ['FCA'],
+    );
+
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]?.quantity).toBe(3);
+    expect(result.resolved[0]?.cachedCard.name).toBe('Adeline, Resplendent Cathar');
+  });
+
+  it('resolves flavor alias case-insensitively', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([adelineFca]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'hero of light (fca)', quantity: 1 }], ['FCA']);
+
+    expect(result.resolved[0]?.cachedCard.name).toBe('Adeline, Resplendent Cathar');
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('keeps alias unresolved when set is outside pool allowed sets', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([adelineFca]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Hero of Light (FCA)', quantity: 1 }], ['ECL']);
+
+    expect(result.resolved).toEqual([]);
+    expect(result.unresolved).toEqual(['Hero of Light (FCA)']);
+    expect(scryfallMocks.lookupCanonicalByName).not.toHaveBeenCalled();
   });
 });

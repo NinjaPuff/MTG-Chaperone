@@ -482,6 +482,7 @@ model DeckUniquenessRule {
 model CachedCard {
   scryfallId    String   @id
   name          String
+  flavorName    String?
   manaCost      String?
   typeLine      String
   oracleText    String?
@@ -500,4 +501,5 @@ model CachedCard {
 
   @@index([setCode])
   @@index([name])
+  @@index([flavorName])
 }

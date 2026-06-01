@@ -28,6 +28,7 @@ function normalizeSetCodes(setCodes: string[]) {
 type ScryfallCard = {
   id: string;
   name: string;
+  flavor_name?: string;
   mana_cost?: string;
   type_line?: string;
   oracle_text?: string;
@@ -169,13 +170,20 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     });
   }
 
+  function resolveFlavorName(card: ScryfallCard) {
+    const trimmed = card.flavor_name?.trim();
+    return trimmed ? trimmed : null;
+  }
+
   async function upsertCard(card: ScryfallCard) {
     const manaCost = resolveManaCost(card);
     const typeLine = resolveTypeLine(card);
+    const flavorName = resolveFlavorName(card);
     return deps.prisma.cachedCard.upsert({
     where: { scryfallId: card.id },
     update: {
       name: card.name,
+      flavorName,
       manaCost,
       typeLine,
       oracleText: card.oracle_text ?? null,
@@ -192,6 +200,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     create: {
       scryfallId: card.id,
       name: card.name,
+      flavorName,
       manaCost,
       typeLine,
       oracleText: card.oracle_text ?? null,
@@ -326,6 +335,149 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     ];
   }
 
+  function cardMatchesLookupName(
+    card: { name: string; flavorName?: string | null },
+    lookupName: string,
+  ) {
+    const lower = lookupName.toLowerCase();
+    return (
+      card.name.toLowerCase() === lower ||
+      (card.flavorName?.trim().toLowerCase() ?? '') === lower
+    );
+  }
+
+  function namesStillMissing<T extends { name: string; flavorName?: string | null }>(
+    cards: T[],
+    lookupNames: string[],
+  ) {
+    return lookupNames.filter((name) => !cards.some((card) => cardMatchesLookupName(card, name)));
+  }
+
+  function mergeCachedCards<T extends { scryfallId: string }>(existing: T[], additions: T[]) {
+    const merged = [...existing];
+    for (const card of additions) {
+      if (!merged.some((entry) => entry.scryfallId === card.scryfallId)) {
+        merged.push(card);
+      }
+    }
+    return merged;
+  }
+
+  async function loadCachedCardsForLookupNames(names: string[]) {
+    return deps.prisma.cachedCard.findMany({
+      where: {
+        OR: [
+          { name: { in: names, mode: 'insensitive' } },
+          { flavorName: { in: names, mode: 'insensitive' } },
+        ],
+      },
+    });
+  }
+
+  async function tryResolveFlavorNameFromScryfall(name: string, setCodes: string[]) {
+    if (setCodes.length > 0) {
+      for (const setCode of setCodes) {
+        try {
+          const card = await fetchScryfall<ScryfallCard>(
+            `${SCRYFALL_BASE_URL}/cards/named?exact=${encodeURIComponent(name)}&set=${setCode.toLowerCase()}`,
+          );
+          return upsertCard(card);
+        } catch {
+          // Try the next allowed set code.
+        }
+      }
+      return null;
+    }
+
+    try {
+      const encodedQuery = encodeURIComponent(`"${name}"`);
+      const response = await fetchScryfall<{ data: ScryfallCard[] }>(
+        `${SCRYFALL_BASE_URL}/cards/search?q=${encodedQuery}&unique=cards`,
+      );
+      const match = response.data.find(
+        (card) => card.flavor_name?.trim().toLowerCase() === name.toLowerCase(),
+      );
+      if (!match) {
+        return null;
+      }
+      return upsertCard(match);
+    } catch {
+      return null;
+    }
+  }
+
+  async function bulkLookupForPoolImport(names: string[], setCodes: string[] = []) {
+    const normalizedNames = names.map((name) => name.trim()).filter(Boolean);
+    if (normalizedNames.length === 0) {
+      return [];
+    }
+
+    const normalizedSetCodes = normalizeSetCodes(setCodes);
+
+    let cached = await deps.prisma.cachedCard.findMany({
+      where: {
+        name: {
+          in: normalizedNames,
+          mode: 'insensitive',
+        },
+      },
+    });
+
+    let missing = namesStillMissing(cached, normalizedNames);
+
+    if (missing.length > 0) {
+      const byFlavor = await deps.prisma.cachedCard.findMany({
+        where: {
+          flavorName: {
+            in: missing,
+            mode: 'insensitive',
+          },
+        },
+      });
+      cached = mergeCachedCards(cached, byFlavor);
+      missing = namesStillMissing(cached, normalizedNames);
+    }
+
+    for (const name of missing) {
+      await tryResolveFlavorNameFromScryfall(name, normalizedSetCodes);
+    }
+
+    missing = namesStillMissing(await loadCachedCardsForLookupNames(normalizedNames), normalizedNames);
+
+    for (const name of missing) {
+      try {
+        await searchCards(`!"${name}"`);
+      } catch {
+        // Ignore unresolved names in bulk mode.
+      }
+    }
+
+    const results = await loadCachedCardsForLookupNames(normalizedNames);
+
+    const staleDoubleFacedIds = [
+      ...new Set(
+        results
+          .filter((card) => card.manaCost === null && card.cmc > 0 && card.name.includes('//'))
+          .map((card) => card.scryfallId),
+      ),
+    ];
+
+    for (const scryfallId of staleDoubleFacedIds) {
+      try {
+        const card = await fetchScryfall<ScryfallCard>(`${SCRYFALL_BASE_URL}/cards/${scryfallId}`);
+        await upsertCard(card);
+      } catch {
+        // Ignore refresh failures and preserve current cache row.
+      }
+    }
+
+    if (staleDoubleFacedIds.length > 0) {
+      return loadCachedCardsForLookupNames(normalizedNames);
+    }
+
+    return results;
+  }
+
   async function bulkLookupByName(names: string[]) {
     const normalizedNames = names.map((name) => name.trim()).filter(Boolean);
     if (normalizedNames.length === 0) {
@@ -425,6 +577,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     getCard,
     getCardFaces,
     bulkLookupByName,
+    bulkLookupForPoolImport,
     bulkImportSet,
     importSetFromScryfall,
     getSetCacheStats,
@@ -437,6 +590,7 @@ export const lookupCanonicalByName = defaultScryfallService.lookupCanonicalByNam
 export const getCard = defaultScryfallService.getCard;
 export const getCardFaces = defaultScryfallService.getCardFaces;
 export const bulkLookupByName = defaultScryfallService.bulkLookupByName;
+export const bulkLookupForPoolImport = defaultScryfallService.bulkLookupForPoolImport;
 export const bulkImportSet = defaultScryfallService.bulkImportSet;
 export const importSetFromScryfall = defaultScryfallService.importSetFromScryfall;
 export const getSetCacheStats = defaultScryfallService.getSetCacheStats;

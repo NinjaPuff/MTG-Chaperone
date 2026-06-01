@@ -505,3 +505,138 @@ describe('scryfallService card cache import', () => {
     expect(upsert).not.toHaveBeenCalled();
   });
 });
+
+const adelineFca = {
+  scryfallId: '0b9579d8-bc8f-4d74-bfc1-dcdd42568f79',
+  name: 'Adeline, Resplendent Cathar',
+  flavorName: 'Hero of Light',
+  setCode: 'FCA',
+  collectorNumber: '1',
+  manaCost: '{1}{W}{W}',
+  cmc: 3,
+  typeLine: 'Legendary Creature — Human Knight',
+  imageUris: { small: 'https://example.com/adeline.jpg' },
+};
+
+const adelineScryfallBody = {
+  id: adelineFca.scryfallId,
+  name: adelineFca.name,
+  flavor_name: adelineFca.flavorName,
+  set: 'fca',
+  collector_number: '1',
+  type_line: adelineFca.typeLine,
+  rarity: 'rare',
+  cmc: 3,
+  mana_cost: '{1}{W}{W}',
+};
+
+describe('scryfallService bulkLookupForPoolImport', () => {
+  it('persists flavorName on upsert when importing a card with flavor_name', async () => {
+    const fetchMock = createFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: { data: [adelineScryfallBody] },
+      },
+    ]);
+    const upsert = vi.fn(async (args: { create: { flavorName: string | null } }) => ({
+      scryfallId: adelineFca.scryfallId,
+      flavorName: args.create.flavorName,
+    }));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: async () => {},
+      prisma: {
+        cachedCard: {
+          upsert,
+          findMany: vi.fn(async () => []),
+          findUnique: vi.fn(async () => null),
+        },
+      } as never,
+    });
+
+    await service.searchCards('!"Adeline, Resplendent Cathar"');
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0][0].create.flavorName).toBe('Hero of Light');
+    expect(upsert.mock.calls[0][0].update.flavorName).toBe('Hero of Light');
+  });
+
+  it('returns card when alias is cached without calling fetch', async () => {
+    const fetchMock = createFetchMock([]);
+    const findMany = vi.fn(async (args: { where?: { flavorName?: unknown; OR?: unknown } }) => {
+      if (args.where && 'flavorName' in args.where) {
+        return [adelineFca];
+      }
+      if (args.where && 'OR' in args.where) {
+        return [adelineFca];
+      }
+      return [];
+    });
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { findMany, upsert: vi.fn() } } as never,
+    });
+
+    const result = await service.bulkLookupForPoolImport(['Hero of Light'], ['FCA']);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toEqual([adelineFca]);
+  });
+
+  it('resolves alias via named endpoint when cache is cold', async () => {
+    const fetchMock = createFetchMock([
+      { ok: true, status: 200, body: adelineScryfallBody },
+    ]);
+    const upsert = vi.fn(async () => {
+      return adelineFca;
+    });
+    const findMany = vi.fn(async (args: { where?: { flavorName?: unknown; OR?: unknown; name?: unknown } }) => {
+      if (args.where && 'name' in args.where && !('OR' in args.where)) {
+        return [];
+      }
+      if (args.where && 'flavorName' in args.where) {
+        return [];
+      }
+      return [adelineFca];
+    });
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { findMany, upsert } } as never,
+    });
+
+    const result = await service.bulkLookupForPoolImport(['Hero of Light'], ['FCA']);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/cards/named?');
+    expect(String(fetchMock.mock.calls[0][0])).toContain('set=fca');
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(result[0]?.name).toBe('Adeline, Resplendent Cathar');
+  });
+
+  it('tries pool set codes in order for named lookup', async () => {
+    const fetchMock = createFetchMock([
+      { ok: false, status: 404, body: {} },
+      { ok: true, status: 200, body: adelineScryfallBody },
+    ]);
+    const upsert = vi.fn(async () => adelineFca);
+    const findMany = vi.fn().mockResolvedValue([]);
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { findMany, upsert } } as never,
+    });
+
+    await service.bulkLookupForPoolImport(['Hero of Light'], ['ECL', 'FCA']);
+
+    expect(String(fetchMock.mock.calls[0][0])).toContain('set=ecl');
+    expect(String(fetchMock.mock.calls[1][0])).toContain('set=fca');
+  });
+});

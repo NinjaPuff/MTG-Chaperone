@@ -1,7 +1,7 @@
 import { parseDecklistLine } from '@mtg-league/shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { bulkLookupByName, getCard, lookupCanonicalByName } from './scryfallService.js';
+import { bulkLookupForPoolImport, getCard, lookupCanonicalByName } from './scryfallService.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 async function refreshStaleDfcManaCost(cachedCardIds: string[]) {
@@ -303,17 +303,26 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
     throw new AppError(400, 'VALIDATION_ERROR', 'At least one item is required');
   }
 
-  const lookupCards = await bulkLookupByName(normalizedItems.map((item) => item.name));
+  const lookupCards = await bulkLookupForPoolImport(
+    normalizedItems.map((item) => item.name),
+    setCodes,
+  );
   const allowedSetCodes = new Set(setCodes.map((setCode) => setCode.trim().toUpperCase()).filter(Boolean));
 
   const candidatesByName = new Map<string, typeof lookupCards>();
   for (const card of lookupCards) {
-    const key = card.name.toLowerCase();
-    const existing = candidatesByName.get(key);
-    if (existing) {
-      existing.push(card);
-    } else {
-      candidatesByName.set(key, [card]);
+    const keys = [card.name.toLowerCase()];
+    if (card.flavorName?.trim()) {
+      keys.push(card.flavorName.trim().toLowerCase());
+    }
+
+    for (const key of keys) {
+      const existing = candidatesByName.get(key);
+      if (existing) {
+        existing.push(card);
+      } else {
+        candidatesByName.set(key, [card]);
+      }
     }
   }
 

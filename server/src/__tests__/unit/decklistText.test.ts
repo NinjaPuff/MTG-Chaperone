@@ -178,4 +178,20 @@ describe('buildPoolDecklistExport', () => {
 
     expect(lines).toEqual(['1 Island (ECL)']);
   });
+
+  it('exports oracle name not flavor alias', () => {
+    const lines = buildPoolDecklistExport([
+      {
+        quantity: 2,
+        cachedCard: {
+          scryfallId: '0b9579d8-bc8f-4d74-bfc1-dcdd42568f79',
+          name: 'Adeline, Resplendent Cathar',
+          setCode: 'FCA',
+          collectorNumber: '1',
+        },
+      },
+    ]);
+
+    expect(lines).toEqual(['2 Adeline, Resplendent Cathar (FCA) 1']);
+  });
 });
