@@ -116,13 +116,17 @@ export function StandingsPage() {
                   </td>
                 </tr>
               ) : (
-                standings.map((row, index) => (
+                standings.map((row, index) => {
+                  const subtitle = profileSubtitle(row.user);
+                  return (
                   <tr key={row.id} className={`border-b border-border last:border-0 ${rowAccentClass(index)}`}>
                     <td className="p-3">
                       <RankChip index={index} />
                     </td>
                     <td className="p-3">
-                      <div>
+                      <div
+                        className={`flex min-h-[2.25rem] flex-col ${subtitle ? 'justify-start' : 'justify-center'}`}
+                      >
                         <div className="flex items-center gap-2">
                           <Link className="hover:underline" to={`/profile/${row.user.slug}`}>
                             {primaryName(row.user)}
@@ -134,8 +138,8 @@ export function StandingsPage() {
                             getSet={getSet}
                           />
                         </div>
-                        {profileSubtitle(row.user) ? (
-                          <p className="text-xs text-muted-foreground">{profileSubtitle(row.user)}</p>
+                        {subtitle ? (
+                          <p className="text-xs text-muted-foreground">{subtitle}</p>
                         ) : null}
                       </div>
                     </td>
@@ -145,7 +149,8 @@ export function StandingsPage() {
                     <td className="p-3 text-right">{(row.gwPercent * 100).toFixed(1)}</td>
                     <td className="p-3 text-right">{(row.ogwPercent * 100).toFixed(1)}</td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
