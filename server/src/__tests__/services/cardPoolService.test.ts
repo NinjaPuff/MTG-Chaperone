@@ -110,6 +110,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
         cachedCard: {
           scryfallId: 'base-id',
           name: 'Trystan',
+          flavorName: null,
           setCode: 'ECL',
           imageUris: trystanBase.imageUris,
           manaCost: '{2}{G}',
@@ -150,6 +151,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
         cachedCard: {
           scryfallId: 'bolt-id',
           name: 'Lightning Bolt',
+          flavorName: null,
           setCode: 'ECL',
           imageUris: lightningBolt.imageUris,
           manaCost: '{R}',
@@ -256,6 +258,7 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
         cachedCard: {
           scryfallId: adelineFca.scryfallId,
           name: 'Adeline, Resplendent Cathar',
+          flavorName: 'Hero of Light',
           setCode: 'FCA',
           imageUris: adelineFca.imageUris,
           manaCost: '{1}{W}{W}',

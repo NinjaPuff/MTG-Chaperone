@@ -108,6 +108,7 @@ type BulkResponse = {
       cachedCard: {
         scryfallId: string;
         name: string;
+        flavorName?: string | null;
         setCode: string;
         imageUris: unknown;
         manaCost: string | null;
@@ -481,6 +482,7 @@ export function CardPoolDetailPage() {
           {
             cachedCardId: card.scryfallId,
             name: card.name,
+            flavorName: card.flavorName ?? null,
             setCode: card.setCode,
             manaCost: card.manaCost,
             imageUri,
@@ -540,6 +542,7 @@ export function CardPoolDetailPage() {
         const additions = response.data.resolved.map((entry) => ({
           cachedCardId: entry.cachedCardId,
           name: entry.cachedCard.name,
+          flavorName: entry.cachedCard.flavorName ?? null,
           setCode: entry.cachedCard.setCode,
           manaCost: entry.cachedCard.manaCost,
           imageUri: getSmallImage(entry.cachedCard.imageUris),
@@ -1045,6 +1048,7 @@ export function CardPoolDetailPage() {
                   key={`${card.cachedCardId}-${card.phaseLabel}`}
                   cachedCardId={card.cachedCardId}
                   name={card.name}
+                  flavorName={card.flavorName}
                   phaseLabel={card.phaseLabel}
                   imageUri={card.imageUri}
                   quantity={card.quantity}

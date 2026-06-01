@@ -336,6 +336,7 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
     cachedCard: {
       scryfallId: string;
       name: string;
+      flavorName: string | null;
       setCode: string;
       imageUris: unknown;
       manaCost: string | null;
@@ -397,6 +398,7 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
       cachedCard: {
         scryfallId: match.scryfallId,
         name: match.name,
+        flavorName: match.flavorName ?? null,
         setCode: match.setCode,
         imageUris: match.imageUris,
         manaCost: match.manaCost,

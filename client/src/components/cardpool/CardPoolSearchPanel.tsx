@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, type RefObject } from 'react';
+import { CardNameWithFlavorSubtitle } from '@/components/cardpool/CardNameWithFlavorSubtitle';
 import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
 import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
 import type { SearchResult } from '@/components/cardpool/types';
@@ -157,7 +158,11 @@ export function CardPoolSearchPanel({
                       />
                     ) : null}
                     <div className="min-w-0">
-                      <p className="text-sm font-medium">{card.name}</p>
+                      <CardNameWithFlavorSubtitle
+                        name={card.name}
+                        flavorName={card.flavorName}
+                        nameClassName="truncate text-sm font-medium"
+                      />
                       <p className="flex items-center gap-1 text-xs text-muted-foreground">
                         <SetSymbol
                           setCode={card.setCode}

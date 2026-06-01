@@ -58,6 +58,46 @@ describe('StagedOwnerCardRow', () => {
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
 
+  it('shows flavor name as muted subtitle under oracle name', () => {
+    renderWithAppProviders(
+      <StagedOwnerCardRow
+        cachedCardId="adeline-id"
+        name="Adeline, Resplendent Cathar"
+        flavorName="Hero of Light"
+        phaseLabel="Pack 1"
+        imageUri={null}
+        quantity={1}
+        applying={false}
+        onQuantityChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Adeline, Resplendent Cathar')).toBeInTheDocument();
+    expect(screen.getByText('Hero of Light')).toBeInTheDocument();
+    expect(screen.getByText('Pack 1')).toBeInTheDocument();
+    expect(screen.queryByText(/Adeline, Resplendent Cathar · Pack 1/)).not.toBeInTheDocument();
+  });
+
+  it('omits flavor subtitle when flavorName is null', () => {
+    renderWithAppProviders(
+      <StagedOwnerCardRow
+        cachedCardId="card-1"
+        name="Lightning Bolt"
+        flavorName={null}
+        phaseLabel="Pack 1"
+        imageUri={null}
+        quantity={1}
+        applying={false}
+        onQuantityChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Lightning Bolt')).toBeInTheDocument();
+    expect(screen.queryByText('Hero of Light')).not.toBeInTheDocument();
+  });
+
   it('renders quantity input before the card name', () => {
     renderWithAppProviders(
       <StagedOwnerCardRow
@@ -73,7 +113,7 @@ describe('StagedOwnerCardRow', () => {
     );
 
     const quantityInput = screen.getByRole('spinbutton');
-    const nameText = screen.getByText('Lightning Bolt · Pack 1');
+    const nameText = screen.getByText('Lightning Bolt');
     expect(quantityInput.compareDocumentPosition(nameText) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -91,7 +131,7 @@ describe('StagedOwnerCardRow', () => {
       />,
     );
 
-    const nameText = screen.getByText('Lightning Bolt · Pack 1');
+    const nameText = screen.getByText('Lightning Bolt');
     const removeButton = screen.getByRole('button', { name: 'Remove' });
     expect(nameText.compareDocumentPosition(removeButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });

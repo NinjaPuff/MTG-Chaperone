@@ -28,6 +28,7 @@ export type ViewPreferences = {
 export type SearchResult = {
   scryfallId: string;
   name: string;
+  flavorName?: string | null;
   setCode: string;
   imageUris: unknown;
   manaCost: string | null;

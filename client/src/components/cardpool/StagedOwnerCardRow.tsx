@@ -1,3 +1,4 @@
+import { CardNameWithFlavorSubtitle } from '@/components/cardpool/CardNameWithFlavorSubtitle';
 import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
 import { StagedRowQuantityPrefix } from '@/components/cardpool/StagedRowQuantityPrefix';
 import { StagedRowRemoveButton } from '@/components/cardpool/StagedRowRemoveButton';
@@ -5,6 +6,7 @@ import { StagedRowRemoveButton } from '@/components/cardpool/StagedRowRemoveButt
 type StagedOwnerCardRowProps = {
   cachedCardId: string;
   name: string;
+  flavorName?: string | null;
   phaseLabel: string;
   imageUri: string | null;
   quantity: number;
@@ -16,6 +18,7 @@ type StagedOwnerCardRowProps = {
 export function StagedOwnerCardRow({
   cachedCardId,
   name,
+  flavorName,
   phaseLabel,
   imageUri,
   quantity,
@@ -41,9 +44,10 @@ export function StagedOwnerCardRow({
         </HoverTarget>
       ) : null}
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span className="min-w-0 truncate font-medium">
-          {name} · {phaseLabel}
-        </span>
+        <div className="min-w-0 flex-1">
+          <CardNameWithFlavorSubtitle name={name} flavorName={flavorName} nameClassName="truncate font-medium" />
+          <p className="truncate text-xs text-muted-foreground">{phaseLabel}</p>
+        </div>
         <StagedRowRemoveButton onClick={onRemove} disabled={applying} />
       </div>
     </div>

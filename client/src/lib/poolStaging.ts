@@ -5,6 +5,7 @@ type StagedPoolChangeLike = {
 export type StagedCardAddInput = {
   cachedCardId: string;
   name: string;
+  flavorName?: string | null;
   setCode: string;
   manaCost: string | null;
   imageUri: string | null;
@@ -57,6 +58,7 @@ export function mergeStagedCardAdds(
       next.push({
         cachedCardId: addition.cachedCardId,
         name: addition.name,
+        flavorName: addition.flavorName ?? null,
         setCode: addition.setCode,
         manaCost: addition.manaCost,
         imageUri: addition.imageUri,

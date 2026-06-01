@@ -2,7 +2,7 @@ import { createRef } from 'react';
 import { fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CardPoolSearchPanel } from '../../../components/cardpool/CardPoolSearchPanel';
-import { threeSearchResults } from '../../helpers/cardPoolSearchFixtures';
+import { makeSearchResult, threeSearchResults } from '../../helpers/cardPoolSearchFixtures';
 import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
 function renderPanel(overrides?: Partial<Parameters<typeof CardPoolSearchPanel>[0]>) {
@@ -179,6 +179,37 @@ describe('CardPoolSearchPanel', () => {
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(screen.getByText('Searching...')).toBeInTheDocument();
+  });
+
+  it('shows flavor name as muted subtitle under oracle name in search results', () => {
+    const adelineOracle = 'Adeline, Resplendent Cathar';
+    const adelineFlavor = 'Hero of Light';
+    renderPanel({
+      searchResults: [
+        makeSearchResult({
+          scryfallId: 'adeline-id',
+          name: adelineOracle,
+          flavorName: adelineFlavor,
+          setCode: 'FCA',
+        }),
+      ],
+    });
+
+    const option = getResultOptions()[0];
+    expect(within(option).getByText(adelineOracle)).toBeInTheDocument();
+    expect(within(option).getByText(adelineFlavor)).toBeInTheDocument();
+  });
+
+  it('omits flavor subtitle when flavorName is null', () => {
+    const adelineOracle = 'Adeline, Resplendent Cathar';
+    const adelineFlavor = 'Hero of Light';
+    renderPanel({
+      searchResults: [makeSearchResult({ name: adelineOracle, flavorName: null })],
+    });
+
+    const option = getResultOptions()[0];
+    expect(within(option).getByText(adelineOracle)).toBeInTheDocument();
+    expect(within(option).queryByText(adelineFlavor)).not.toBeInTheDocument();
   });
 
   it('clears highlight when the search query changes', () => {

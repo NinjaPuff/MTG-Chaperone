@@ -75,6 +75,7 @@ describe('mergeStagedCardAdds', () => {
       {
         cachedCardId: 'card-1',
         name: 'Lightning Bolt',
+        flavorName: null,
         setCode: 'ECL',
         manaCost: '{R}',
         imageUri: 'https://example.com/bolt.jpg',
@@ -121,6 +122,40 @@ describe('mergeStagedCardAdds', () => {
     expect(result).toHaveLength(2);
     expect(result.find((card) => card.phaseLabel === 'After Round 1')?.quantity).toBe(2);
     expect(result.find((card) => card.phaseLabel === 'Initial Pool')?.quantity).toBe(1);
+  });
+
+  it('preserves flavorName on a new staged card row', () => {
+    const result = mergeStagedCardAdds(
+      [],
+      [{ ...addition, name: 'Adeline, Resplendent Cathar', flavorName: 'Hero of Light' }],
+      'Initial Pool',
+    );
+
+    expect(result[0]?.flavorName).toBe('Hero of Light');
+  });
+
+  it('keeps flavorName when merging quantity for the same card and phase', () => {
+    const existing = [
+      {
+        cachedCardId: 'card-1',
+        name: 'Adeline, Resplendent Cathar',
+        flavorName: 'Hero of Light',
+        setCode: 'FCA',
+        manaCost: '{1}{W}{W}',
+        imageUri: null,
+        quantity: 1,
+        phaseLabel: 'Initial Pool',
+      },
+    ];
+
+    const result = mergeStagedCardAdds(
+      existing,
+      [{ ...addition, name: 'Adeline, Resplendent Cathar', flavorName: 'Hero of Light', quantity: 2 }],
+      'Initial Pool',
+    );
+
+    expect(result[0]?.quantity).toBe(3);
+    expect(result[0]?.flavorName).toBe('Hero of Light');
   });
 
   it('merges multiple additions in one batch', () => {
