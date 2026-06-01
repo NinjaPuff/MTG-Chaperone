@@ -25,6 +25,7 @@ import {
   hasStagedRemovals,
   mergeStagedCardAdds,
   sumStagedCardQuantities,
+  type StagedCardLike,
 } from '@/lib/poolStaging';
 
 type PoolDetail = {
@@ -137,16 +138,6 @@ type SeasonEventsResponse = {
   data: SeasonEvent[];
 };
 
-type StagedCard = {
-  cachedCardId: string;
-  name: string;
-  setCode: string;
-  manaCost: string | null;
-  imageUri: string | null;
-  quantity: number;
-  phaseLabel: string;
-};
-
 type AdminContextMenuState = {
   pageX: number;
   pageY: number;
@@ -230,7 +221,7 @@ export function CardPoolDetailPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [stagedCards, setStagedCards] = useState<StagedCard[]>([]);
+  const [stagedCards, setStagedCards] = useState<StagedCardLike[]>([]);
 
   const [bulkText, setBulkText] = useState('');
   const [bulkPhaseLabel, setBulkPhaseLabel] = useState('Initial Pool');
