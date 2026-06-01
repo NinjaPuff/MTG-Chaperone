@@ -18,14 +18,18 @@ export function discordHandleRaw(user: UserLike): string | null {
   return handle || null;
 }
 
-/** Subtitle for user lists: account name when using a public alias, otherwise discord handle. */
+/** Subtitle for user lists: discord handle when set, otherwise OAuth account name for aliased users. */
 export function profileSubtitle(user: UserLike): string | null {
-  const secondary = secondaryName(user);
-  const subtitle = secondary ?? discordHandleRaw(user);
-  if (!subtitle || subtitle === primaryName(user)) {
-    return null;
+  const primary = primaryName(user);
+  const handle = discordHandleRaw(user);
+  if (handle && handle !== primary) {
+    return handle;
   }
-  return subtitle;
+  const secondary = secondaryName(user);
+  if (secondary && secondary !== primary) {
+    return secondary;
+  }
+  return null;
 }
 
 /** Public subtitle — show whenever a discord handle is stored. */

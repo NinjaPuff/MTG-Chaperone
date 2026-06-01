@@ -29,16 +29,25 @@ describe('userDisplay', () => {
   });
 
   describe('profileSubtitle', () => {
-    it('shows account name when public alias is set', () => {
+    it('prefers discord handle over account name when both are set', () => {
       expect(
         profileSubtitle({ displayName: 'ninjapuff', publicName: 'Scott', discordHandle: 'ninjapuff' }),
       ).toBe('ninjapuff');
+      expect(
+        profileSubtitle({ displayName: 'Scott Harris', publicName: 'Scott Harris', discordHandle: 'hi_im_scoot' }),
+      ).toBe('hi_im_scoot');
     });
 
     it('shows discord handle when no public alias is set', () => {
       expect(
         profileSubtitle({ displayName: 'Scott Harris', publicName: null, discordHandle: 'scott_discord' }),
       ).toBe('scott_discord');
+    });
+
+    it('shows account name when public alias is set and no discord handle', () => {
+      expect(
+        profileSubtitle({ displayName: 'Scott Harris', publicName: 'Scott', discordHandle: null }),
+      ).toBe('Scott Harris');
     });
 
     it('returns null when neither applies', () => {
