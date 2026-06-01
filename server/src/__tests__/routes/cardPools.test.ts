@@ -20,19 +20,23 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../middleware/auth.js', () => ({
-  requireAuth: (req: any, _res: any, next: any) => {
-    req.user = {
-      id: req.headers['x-test-user'] ?? 'user-1',
-      displayName: 'Test User',
-      slug: 'test-user',
-      avatarUrl: null,
-      role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
-    };
-    next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-}));
+vi.mock('../../middleware/auth.js', async () => {
+  const { mockOptionalAuth } = await import('../helpers/mockOptionalAuth.js');
+  return {
+    optionalAuth: mockOptionalAuth,
+    requireAuth: (req: any, _res: any, next: any) => {
+      req.user = {
+        id: req.headers['x-test-user'] ?? 'user-1',
+        displayName: 'Test User',
+        slug: 'test-user',
+        avatarUrl: null,
+        role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
+      };
+      next();
+    },
+    requireAdmin: (_req: any, _res: any, next: any) => next(),
+  };
+});
 
 vi.mock('../../services/cardPoolService.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/cardPoolService.js')>();
@@ -178,12 +182,20 @@ describe('card pools routes', () => {
 
   it('exports per-printing decklist lines with set and collector number', async () => {
     mocks.getPoolDetail.mockResolvedValue({
+      userId: 'owner-1',
+      seasonId: 'season-1',
       user: { id: 'owner-1', slug: 'owner-slug', displayName: 'Owner' },
       season: {
+        id: 'season-1',
         number: 1,
         league: { slug: 'test-league', name: 'Test League' },
       },
       boosterProduct: { setCodes: [] },
+    });
+    prismaMock.season.findUnique.mockResolvedValue({
+      poolVisibility: false,
+      decklistVisibility: false,
+      scheduleVisibility: false,
     });
     mocks.listAcquisitions.mockResolvedValue([
       {

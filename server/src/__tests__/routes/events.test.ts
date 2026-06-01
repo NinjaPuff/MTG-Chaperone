@@ -19,14 +19,18 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../middleware/auth.js', () => ({
-  requireAuth: (req: any, _res: any, next: any) => {
-    req.user = { id: 'admin-1', displayName: 'Admin', slug: 'admin', avatarUrl: null, role: 'admin' };
-    next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-  getAuthUser: (req: any) => req.user,
-}));
+vi.mock('../../middleware/auth.js', async () => {
+  const { mockOptionalAuth } = await import('../helpers/mockOptionalAuth.js');
+  return {
+    optionalAuth: mockOptionalAuth,
+    requireAuth: (req: any, _res: any, next: any) => {
+      req.user = { id: 'admin-1', displayName: 'Admin', slug: 'admin', avatarUrl: null, role: 'admin' };
+      next();
+    },
+    requireAdmin: (_req: any, _res: any, next: any) => next(),
+    getAuthUser: (req: any) => req.user,
+  };
+});
 
 vi.mock('../../services/eventService.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/eventService.js')>();
@@ -166,5 +170,31 @@ describe('events routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.roundNumber).toBe(2);
     expect(mocks.listMyDecklistsForEvent).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'admin-1');
+  });
+
+  it('omits not_started rounds when schedule visibility is off for anonymous viewers', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      season: {
+        scheduleVisibility: false,
+        poolVisibility: false,
+        decklistVisibility: false,
+      },
+    });
+    prismaMock.round.findMany.mockResolvedValue([
+      { id: 'round-1', status: 'in_progress', roundNumber: 1, matches: [] },
+    ]);
+
+    const response = await request(app).get('/api/events/event-1/rounds');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(1);
+    expect(prismaMock.round.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventId: 'event-1',
+          status: { not: 'not_started' },
+        }),
+      }),
+    );
   });
 });

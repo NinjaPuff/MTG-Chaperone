@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
+  authApiRequest: vi.fn(),
   refreshUser: vi.fn(),
   useAuth: vi.fn(),
   ApiError: class ApiError extends Error {
@@ -18,6 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/api', () => ({
   apiRequest: mocks.apiRequest,
+  authApiRequest: mocks.authApiRequest,
   ApiError: mocks.ApiError,
 }));
 
@@ -38,20 +41,77 @@ const googleUser = {
   role: 'user' as const,
 };
 
-const discordUser = {
-  id: 'user-2',
-  displayName: 'discord_user',
-  publicName: null,
-  discordHandle: 'discord_user',
-  authProvider: 'discord' as const,
-  slug: 'discord-user',
-  avatarUrl: null,
-  role: 'user' as const,
+const publicProfile = {
+  user: {
+    id: 'user-1',
+    displayName: 'Google Name',
+    publicName: null,
+    slug: 'google-name',
+    avatarUrl: null,
+    role: 'user' as const,
+  },
+  league: { slug: 'test-league', name: 'Test League' },
+  activeSeason: {
+    id: 'season-1',
+    number: 1,
+    name: 'Season 1',
+    poolVisibility: true,
+    decklistVisibility: true,
+    scheduleVisibility: true,
+  },
+  currentStanding: {
+    rank: 2,
+    points: 9,
+    matchWins: 3,
+    matchLosses: 1,
+    matchDraws: 0,
+    omwPercent: 0.5,
+    gwPercent: 0.5,
+    ogwPercent: 0.5,
+  },
+  career: {
+    seasonsPlayed: 1,
+    totalMatches: 4,
+    matchWins: 3,
+    matchLosses: 1,
+    matchDraws: 0,
+    winRate: 0.75,
+  },
+  seasonHistory: [
+    {
+      seasonId: 'season-1',
+      number: 1,
+      name: 'Season 1',
+      isActive: true,
+      rank: 2,
+      points: 9,
+      matchWins: 3,
+      matchLosses: 1,
+      matchDraws: 0,
+    },
+  ],
+  links: {
+    poolId: 'pool-1',
+    poolVisible: true,
+    decklistsVisible: true,
+  },
 };
+
+function renderProfile(initialPath: string) {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/profile/:slug" element={<ProfilePage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
 
 describe('ProfilePage', () => {
   beforeEach(() => {
     mocks.apiRequest.mockReset();
+    mocks.authApiRequest.mockReset();
     mocks.refreshUser.mockReset();
     mocks.refreshUser.mockResolvedValue(undefined);
     mocks.useAuth.mockReturnValue({
@@ -59,47 +119,66 @@ describe('ProfilePage', () => {
       isLoading: false,
       refreshUser: mocks.refreshUser,
     });
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/users/google-name/match-history')) {
+        return {
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+        };
+      }
+      if (path === '/api/users/google-name') {
+        return { data: publicProfile };
+      }
+      throw new Error(`Unexpected path: ${path}`);
+    });
   });
 
-  it('shows editable fields by default and hides synced account details until expanded', () => {
-    render(<ProfilePage />);
+  it('redirects /profile to the signed-in user slug', async () => {
+    renderProfile('/profile');
 
-    expect(screen.getByLabelText(/Public Display Name/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/Discord Handle/)).toBeEnabled();
-    expect(screen.queryByLabelText(/Account Name/)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Show synced account details' }));
-
-    expect(screen.getByLabelText(/Account Name/)).toBeDisabled();
-    expect(screen.getByLabelText(/Account Name/)).toHaveValue('Google Name');
-    expect(screen.queryByLabelText(/Discord Username/)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Google Name' })).toBeInTheDocument();
+    });
   });
 
-  it('shows discord username as read-only only for discord sign-in users when expanded', () => {
+  it('shows standings hint when visiting /profile logged out', () => {
     mocks.useAuth.mockReturnValue({
-      user: discordUser,
+      user: null,
       isLoading: false,
       refreshUser: mocks.refreshUser,
     });
 
-    render(<ProfilePage />);
+    renderProfile('/profile');
 
-    expect(screen.queryByLabelText(/Discord Handle/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Show synced account details' }));
-    expect(screen.getByLabelText(/Discord Username/)).toBeDisabled();
-    expect(screen.getByLabelText(/Discord Username/)).toHaveValue('discord_user');
+    expect(screen.getByText(/Choose a player from the/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'standings' })).toHaveAttribute('href', '/standings');
   });
 
-  it('submits publicName and discordHandle for google users', async () => {
-    mocks.apiRequest.mockResolvedValue({ data: googleUser });
+  it('renders public profile sections for a slug', async () => {
+    renderProfile('/profile/google-name');
 
-    render(<ProfilePage />);
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Google Name' })).toBeInTheDocument();
+    });
+    expect(screen.getByText('75%')).toBeInTheDocument();
+    expect(screen.getByText('Edit Profile')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'View Card Pool' })).toHaveAttribute('href', '/pools/pool-1');
+  });
+
+  it('submits profile edits with authApiRequest for owners', async () => {
+    mocks.authApiRequest.mockResolvedValue({ data: googleUser });
+
+    renderProfile('/profile/google-name');
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Discord Handle/)).toBeInTheDocument();
+    });
 
     fireEvent.change(screen.getByLabelText(/Discord Handle/), { target: { value: 'my_handle' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
 
     await waitFor(() => {
-      expect(mocks.apiRequest).toHaveBeenCalledWith('/api/users/profile', {
+      expect(mocks.authApiRequest).toHaveBeenCalledWith('/api/users/profile', {
         method: 'PATCH',
         body: {
           publicName: null,
@@ -107,55 +186,34 @@ describe('ProfilePage', () => {
         },
       });
     });
-    expect(mocks.refreshUser).toHaveBeenCalled();
-    expect(screen.getByText('Profile updated.')).toBeInTheDocument();
   });
 
-  it('submits only publicName for discord users', async () => {
+  it('does not show edit form for other users profiles', async () => {
     mocks.useAuth.mockReturnValue({
-      user: discordUser,
+      user: googleUser,
       isLoading: false,
       refreshUser: mocks.refreshUser,
     });
-    mocks.apiRequest.mockResolvedValue({ data: discordUser });
-
-    render(<ProfilePage />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
-
-    await waitFor(() => {
-      expect(mocks.apiRequest).toHaveBeenCalledWith('/api/users/profile', {
-        method: 'PATCH',
-        body: {
-          publicName: null,
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/users/other-user/match-history')) {
+        return {
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+        };
+      }
+      return {
+        data: {
+          ...publicProfile,
+          user: { ...publicProfile.user, slug: 'other-user', displayName: 'Other User' },
         },
-      });
+      };
     });
-  });
 
-  it('shows API validation errors', async () => {
-    mocks.apiRequest.mockRejectedValue(new mocks.ApiError(400, { code: 'VALIDATION_ERROR', message: 'Invalid discord handle' }));
-
-    render(<ProfilePage />);
-
-    fireEvent.change(screen.getByLabelText(/Discord Handle/), { target: { value: 'bad!' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save Profile' }));
+    renderProfile('/profile/other-user');
 
     await waitFor(() => {
-      expect(screen.getByText('Invalid discord handle')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Other User' })).toBeInTheDocument();
     });
-    expect(screen.queryByText('Profile updated.')).not.toBeInTheDocument();
-  });
-
-  it('does not duplicate subtitle when discord handle matches account name', () => {
-    mocks.useAuth.mockReturnValue({
-      user: { ...googleUser, displayName: 'same', discordHandle: 'same' },
-      isLoading: false,
-      refreshUser: mocks.refreshUser,
-    });
-
-    render(<ProfilePage />);
-
-    expect(screen.getAllByText('same')).toHaveLength(1);
+    expect(screen.queryByText('Edit Profile')).not.toBeInTheDocument();
   });
 });

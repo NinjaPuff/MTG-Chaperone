@@ -19,19 +19,23 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../middleware/auth.js', () => ({
-  requireAuth: (req: any, _res: any, next: any) => {
-    req.user = {
-      id: req.headers['x-test-user'] ?? 'user-1',
-      displayName: 'Test User',
-      slug: 'test-user',
-      avatarUrl: null,
-      role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
-    };
-    next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-}));
+vi.mock('../../middleware/auth.js', async () => {
+  const { mockOptionalAuth } = await import('../helpers/mockOptionalAuth.js');
+  return {
+    optionalAuth: mockOptionalAuth,
+    requireAuth: (req: any, _res: any, next: any) => {
+      req.user = {
+        id: req.headers['x-test-user'] ?? 'user-1',
+        displayName: 'Test User',
+        slug: 'test-user',
+        avatarUrl: null,
+        role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
+      };
+      next();
+    },
+    requireAdmin: (_req: any, _res: any, next: any) => next(),
+  };
+});
 
 vi.mock('../../services/boosterProductService.js', () => ({
   createBoosterProduct: mocks.createBoosterProduct,

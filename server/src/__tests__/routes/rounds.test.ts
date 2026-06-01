@@ -19,13 +19,17 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../middleware/auth.js', () => ({
-  requireAuth: (req: any, _res: any, next: any) => {
-    req.user = { id: 'admin-1', displayName: 'Admin', slug: 'admin', avatarUrl: null, role: 'admin' };
-    next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-}));
+vi.mock('../../middleware/auth.js', async () => {
+  const { mockOptionalAuth } = await import('../helpers/mockOptionalAuth.js');
+  return {
+    optionalAuth: mockOptionalAuth,
+    requireAuth: (req: any, _res: any, next: any) => {
+      req.user = { id: 'admin-1', displayName: 'Admin', slug: 'admin', avatarUrl: null, role: 'admin' };
+      next();
+    },
+    requireAdmin: (_req: any, _res: any, next: any) => next(),
+  };
+});
 
 vi.mock('../../services/roundService.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../services/roundService.js')>();

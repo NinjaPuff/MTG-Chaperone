@@ -25,12 +25,13 @@ type CardPoolSummary = {
   };
 };
 
-type ApiListResponse<T> = { data: T[] };
+type ApiListResponse<T> = { data: T[]; meta?: { poolVisibility?: boolean } };
 
 export function CardPoolsPage() {
   const { league, activeSeason, isLoading } = useCurrentLeague();
   const { getSet } = useScryfallSets();
   const [pools, setPools] = useState<CardPoolSummary[]>([]);
+  const [poolVisibility, setPoolVisibility] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export function CardPoolsPage() {
           `/api/leagues/${league.slug}/seasons/${activeSeason.number}/pools`,
         );
         setPools(response.data);
+        setPoolVisibility(response.meta?.poolVisibility ?? true);
       } catch (loadError) {
         setError(loadError instanceof ApiError ? loadError.message : 'Unable to load card pools');
       }
@@ -110,7 +112,13 @@ export function CardPoolsPage() {
                 </div>
               </Link>
             ))}
-            {pools.length === 0 ? <p className="text-muted-foreground text-sm">No pools registered.</p> : null}
+            {pools.length === 0 ? (
+              <p className="text-muted-foreground text-sm">
+                {poolVisibility === false
+                  ? 'Card pools are hidden for this season. Sign in to view your own pool.'
+                  : 'No pools registered.'}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ApiError, apiRequest } from '@/lib/api';
+import { ApiError, authApiRequest } from '@/lib/api';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
 import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
 import { CurveView } from '@/components/cardpool/CurveView';
@@ -181,8 +181,8 @@ export function DeckBuilderPage() {
     setLoading(true);
     setError(null);
     try {
-      const deckResponse = await apiRequest<RoundDeckBuilderResponse>(`/api/events/${eventId}/my-decklists`);
-      const poolResponse = await apiRequest<PoolResponse>(`/api/card-pools/${deckResponse.data.poolId}`);
+      const deckResponse = await authApiRequest<RoundDeckBuilderResponse>(`/api/events/${eventId}/my-decklists`);
+      const poolResponse = await authApiRequest<PoolResponse>(`/api/card-pools/${deckResponse.data.poolId}`);
 
       const flattened = flattenEntries(poolResponse.data.acquisitions, 'flat');
       setPoolCards(flattened);
@@ -305,7 +305,7 @@ export function DeckBuilderPage() {
         zone: card.zone,
       }));
 
-    await apiRequest(`/api/decklists/${deck.id}`, {
+    await authApiRequest(`/api/decklists/${deck.id}`, {
       method: 'PATCH',
       body: {
         name: deck.name,

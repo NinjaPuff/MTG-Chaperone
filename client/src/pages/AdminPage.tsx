@@ -2,7 +2,7 @@ import * as Tabs from '@radix-ui/react-tabs';
 import { Copy } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ApiError, apiRequest } from '@/lib/api';
+import { ApiError, authApiRequest } from '@/lib/api';
 import { hasRemovedSetCodes } from '@/lib/boosterProductEditGuards';
 import { resolveCreatePrimarySetCode } from '@/lib/boosterProductCreate';
 import { useAuth } from '@/context/AuthContext';
@@ -346,7 +346,7 @@ export function AdminPage() {
   };
 
   const loadLeagues = async () => {
-    const response = await apiRequest<ApiListResponse<League>>('/api/leagues');
+    const response = await authApiRequest<ApiListResponse<League>>('/api/leagues');
     setLeagues(response.data);
     const first = response.data[0] ?? null;
     if (first && !selectedLeagueSlug) {
@@ -362,7 +362,7 @@ export function AdminPage() {
   };
 
   const loadSeasons = async (leagueSlug: string) => {
-    const response = await apiRequest<ApiListResponse<Season>>(`/api/leagues/${leagueSlug}/seasons`);
+    const response = await authApiRequest<ApiListResponse<Season>>(`/api/leagues/${leagueSlug}/seasons`);
     setSeasons(response.data);
     const season = response.data.find((item) => item.isActive) ?? response.data[0];
     if (season) {
@@ -382,22 +382,22 @@ export function AdminPage() {
       setEvents([]);
       return;
     }
-    const response = await apiRequest<ApiListResponse<Event>>(`/api/seasons/${seasonId}/events`);
+    const response = await authApiRequest<ApiListResponse<Event>>(`/api/seasons/${seasonId}/events`);
     setEvents(response.data);
   };
 
   const loadInvites = async (leagueSlug: string) => {
-    const response = await apiRequest<ApiListResponse<InviteLink>>(`/api/leagues/${leagueSlug}/invites`);
+    const response = await authApiRequest<ApiListResponse<InviteLink>>(`/api/leagues/${leagueSlug}/invites`);
     setInvites(response.data);
   };
 
   const loadMembers = async (leagueSlug: string) => {
-    const response = await apiRequest<ApiListResponse<Member>>(`/api/leagues/${leagueSlug}/members`);
+    const response = await authApiRequest<ApiListResponse<Member>>(`/api/leagues/${leagueSlug}/members`);
     setMembers(response.data);
   };
 
   const loadCardPools = async (leagueSlug: string, seasonNumber: number) => {
-    const response = await apiRequest<ApiListResponse<CardPoolSummary>>(
+    const response = await authApiRequest<ApiListResponse<CardPoolSummary>>(
       `/api/leagues/${leagueSlug}/seasons/${seasonNumber}/pools`,
     );
     setCardPools(response.data);
@@ -414,7 +414,7 @@ export function AdminPage() {
   };
 
   const loadBoosterProducts = async () => {
-    const response = await apiRequest<ApiListResponse<BoosterProduct>>('/api/booster-products');
+    const response = await authApiRequest<ApiListResponse<BoosterProduct>>('/api/booster-products');
     setBoosterProducts(response.data);
   };
 
@@ -424,7 +424,7 @@ export function AdminPage() {
       return;
     }
 
-    const response = await apiRequest<ApiListResponse<SetCacheStat>>(
+    const response = await authApiRequest<ApiListResponse<SetCacheStat>>(
       `/api/admin/card-cache/stats?setCodes=${encodeURIComponent(setCodes.join(','))}`,
     );
     setCacheStatsBySetCode(Object.fromEntries(response.data.map((stat) => [stat.setCode, stat])));
@@ -434,7 +434,7 @@ export function AdminPage() {
     setImportingSetCode(setCode);
     setError(null);
     try {
-      const response = await apiRequest<{
+      const response = await authApiRequest<{
         data: { results: SetCacheStat[]; totalImported: number };
       }>('/api/admin/card-cache/import-set', {
         method: 'POST',
@@ -468,7 +468,7 @@ export function AdminPage() {
     setImportingProductId(productId);
     setError(null);
     try {
-      const response = await apiRequest<{
+      const response = await authApiRequest<{
         data: { results: Array<SetCacheStat & { imported: number }>; totalImported: number };
       }>(`/api/admin/card-cache/import-booster-product/${productId}`, {
         method: 'POST',
@@ -493,7 +493,7 @@ export function AdminPage() {
   };
 
   const loadSiteUsers = async () => {
-    const response = await apiRequest<ApiListResponse<SiteUser>>('/api/users');
+    const response = await authApiRequest<ApiListResponse<SiteUser>>('/api/users');
     setSiteUsers(response.data);
   };
 
@@ -521,7 +521,7 @@ export function AdminPage() {
   useEffect(() => {
     const loadSetLookup = async () => {
       try {
-        const response = await apiRequest<ApiListResponse<ScryfallSet>>('/api/sets');
+        const response = await authApiRequest<ApiListResponse<ScryfallSet>>('/api/sets');
         setScryfallSets(response.data);
       } catch {
         setScryfallSets([]);
@@ -637,13 +637,13 @@ export function AdminPage() {
 
     try {
       if (!selectedLeague) {
-        const created = await apiRequest<ApiItemResponse<League>>('/api/leagues', {
+        const created = await authApiRequest<ApiItemResponse<League>>('/api/leagues', {
           method: 'POST',
           body: leaguePayload,
         });
         setSelectedLeagueSlug(created.data.slug);
       } else {
-        await apiRequest<ApiItemResponse<League>>(`/api/leagues/${selectedLeague.slug}`, {
+        await authApiRequest<ApiItemResponse<League>>(`/api/leagues/${selectedLeague.slug}`, {
           method: 'PATCH',
           body: leaguePayload,
         });
@@ -663,7 +663,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/invites`, {
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/invites`, {
         method: 'POST',
         body: {
           maxUses: inviteForm.maxUses ? Number(inviteForm.maxUses) : null,
@@ -696,7 +696,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/invites/${inviteId}`, { method: 'DELETE' });
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/invites/${inviteId}`, { method: 'DELETE' });
       await loadInvites(selectedLeagueSlug);
       setSuccess('Invite revoked.');
     } catch (inviteError) {
@@ -726,7 +726,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons`, {
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/seasons`, {
         method: 'POST',
         body: {
           name: seasonCreateForm.name.trim(),
@@ -753,7 +753,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}`, {
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}`, {
         method: 'PATCH',
         body: seasonSettingsForm,
       });
@@ -772,7 +772,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/seasons/${activeSeason.id}/events`, {
+      await authApiRequest(`/api/seasons/${activeSeason.id}/events`, {
         method: 'POST',
         body: eventForm,
       });
@@ -798,7 +798,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      const response = await apiRequest<ApiSeriesResponse<Event>>(`/api/seasons/${activeSeason.id}/events/round-robin-series`, {
+      const response = await authApiRequest<ApiSeriesResponse<Event>>(`/api/seasons/${activeSeason.id}/events/round-robin-series`, {
         method: 'POST',
         body: {
           baseName: roundRobinSeriesForm.baseName.trim(),
@@ -839,7 +839,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/events/${eventId}/${action}`, { method: 'POST' });
+      await authApiRequest(`/api/events/${eventId}/${action}`, { method: 'POST' });
       await loadEvents(activeSeason.id);
       setSuccess(`Event ${action}ed.`);
     } catch (transitionError) {
@@ -866,7 +866,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      const created = await apiRequest<ApiItemResponse<Season>>(`/api/leagues/${selectedLeagueSlug}/seasons`, {
+      const created = await authApiRequest<ApiItemResponse<Season>>(`/api/leagues/${selectedLeagueSlug}/seasons`, {
         method: 'POST',
         body: {
           name: nextSeasonName.trim(),
@@ -877,7 +877,7 @@ export function AdminPage() {
           pointConfig: seasonSettingsForm.pointConfig,
         },
       });
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${created.data.number}`, {
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${created.data.number}`, {
         method: 'PATCH',
         body: { isActive: true },
       });
@@ -897,7 +897,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      const response = await apiRequest<{ data: Record<string, string[]> }>(`/api/mtgjson/${setCode}/boosters`);
+      const response = await authApiRequest<{ data: Record<string, string[]> }>(`/api/mtgjson/${setCode}/boosters`);
       const directMatch = response.data[boosterForm.boosterType];
       const fallback = response.data.default;
       const nextSetCodes = directMatch ?? fallback ?? [];
@@ -927,7 +927,7 @@ export function AdminPage() {
     setSuccess(null);
     try {
       const primarySetCode = resolveCreatePrimarySetCode(boosterForm.seedSet, boosterForm.setCodes);
-      await apiRequest('/api/booster-products', {
+      await authApiRequest('/api/booster-products', {
         method: 'POST',
         body: {
           name: boosterForm.name,
@@ -990,7 +990,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/booster-products/${editingBoosterId}`, {
+      await authApiRequest(`/api/booster-products/${editingBoosterId}`, {
         method: 'PATCH',
         body: {
           name: editBoosterForm.name,
@@ -1023,7 +1023,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/booster-products/${id}`, { method: 'DELETE' });
+      await authApiRequest(`/api/booster-products/${id}`, { method: 'DELETE' });
       await loadBoosterProducts();
       setSuccess('Booster product deleted.');
     } catch (deleteError) {
@@ -1049,7 +1049,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/members/${encodeURIComponent(membershipRowUserId(member))}`, {
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/members/${encodeURIComponent(membershipRowUserId(member))}`, {
         method: 'DELETE',
       });
       await loadMembers(selectedLeagueSlug);
@@ -1076,7 +1076,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools`, {
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools`, {
         method: 'POST',
         body: { userId, boosterProductId },
       });
@@ -1102,7 +1102,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools/${poolId}`, {
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools/${poolId}`, {
         method: 'PATCH',
         body: { boosterProductId },
       });
@@ -1132,7 +1132,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools/${poolId}`, {
+      await authApiRequest(`/api/leagues/${selectedLeagueSlug}/seasons/${activeSeason.number}/pools/${poolId}`, {
         method: 'DELETE',
       });
       await loadMembers(selectedLeagueSlug);
@@ -1172,7 +1172,7 @@ export function AdminPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/users/${targetUser.id}/role`, {
+      await authApiRequest(`/api/users/${targetUser.id}/role`, {
         method: 'PATCH',
         body: { role: newRole },
       });

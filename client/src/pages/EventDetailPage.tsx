@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
-import { ApiError, apiRequest } from '@/lib/api';
+import { ApiError, apiRequest, authApiRequest } from '@/lib/api';
 import { MatchCard } from '@/components/MatchCard';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
@@ -299,7 +299,7 @@ export function EventDetailPage() {
       return;
     }
     await mutate(`Event ${action}ed.`, async () => {
-      await apiRequest(`/api/events/${eventId}/${action}`, { method: 'POST' });
+      await authApiRequest(`/api/events/${eventId}/${action}`, { method: 'POST' });
     });
   };
 
@@ -311,7 +311,7 @@ export function EventDetailPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/events/${eventId}`, { method: 'DELETE' });
+      await authApiRequest(`/api/events/${eventId}`, { method: 'DELETE' });
       navigate('/admin');
     } catch (mutationError) {
       setError(mutationError instanceof ApiError ? mutationError.message : 'Unable to delete event');
@@ -325,7 +325,7 @@ export function EventDetailPage() {
       return;
     }
     await mutate('Round created.', async () => {
-      await apiRequest(`/api/events/${eventId}/rounds`, { method: 'POST' });
+      await authApiRequest(`/api/events/${eventId}/rounds`, { method: 'POST' });
     });
   };
 
@@ -342,13 +342,13 @@ export function EventDetailPage() {
       }
     }
     await mutate(`Round ${action}ed.`, async () => {
-      await apiRequest(`/api/rounds/${roundId}/${action}`, { method: 'POST' });
+      await authApiRequest(`/api/rounds/${roundId}/${action}`, { method: 'POST' });
     });
   };
 
   const deleteRound = async (roundId: string) => {
     await mutate('Round deleted.', async () => {
-      await apiRequest(`/api/rounds/${roundId}`, { method: 'DELETE' });
+      await authApiRequest(`/api/rounds/${roundId}`, { method: 'DELETE' });
     });
   };
 
@@ -378,7 +378,7 @@ export function EventDetailPage() {
 
   const confirmOrDisputeMatch = async (matchId: string, action: 'confirm' | 'dispute') => {
     await mutate(`Match ${action}ed.`, async () => {
-      await apiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
+      await authApiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
     });
   };
 
@@ -429,7 +429,7 @@ export function EventDetailPage() {
 
     const endpoint = selectedMatchMode === 'resolve' ? 'resolve' : 'report';
     await mutate(`Match ${endpoint}ed.`, async () => {
-      await apiRequest(`/api/matches/${selectedMatch.id}/${endpoint}`, {
+      await authApiRequest(`/api/matches/${selectedMatch.id}/${endpoint}`, {
         method: 'POST',
         body: { gameResults: payload },
       });
@@ -451,7 +451,7 @@ export function EventDetailPage() {
     }
 
     await mutate('Seeds saved.', async () => {
-      await apiRequest(`/api/events/${eventId}/seeds`, {
+      await authApiRequest(`/api/events/${eventId}/seeds`, {
         method: 'PUT',
         body: { seeds: payload },
       });

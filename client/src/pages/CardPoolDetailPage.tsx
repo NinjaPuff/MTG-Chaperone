@@ -1,6 +1,6 @@
 import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { ApiError, apiRequest, getStoredToken } from '@/lib/api';
+import { ApiError, apiRequest, authApiRequest, getStoredToken } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
@@ -525,7 +525,7 @@ export function CardPoolDetailPage() {
     setBulkUnresolved([]);
 
     try {
-      const response = await apiRequest<BulkResponse>(`/api/card-pools/${poolId}/acquisitions/bulk`, {
+      const response = await authApiRequest<BulkResponse>(`/api/card-pools/${poolId}/acquisitions/bulk`, {
         method: 'POST',
         body: {
           phaseLabel: bulkPhaseLabel,
@@ -615,7 +615,7 @@ export function CardPoolDetailPage() {
     setError(null);
     setSuccess(null);
     try {
-      await apiRequest(`/api/card-pools/${poolId}/phases`, {
+      await authApiRequest(`/api/card-pools/${poolId}/phases`, {
         method: 'DELETE',
         body: {
           phaseLabel: clearPhaseLabel,
@@ -827,7 +827,7 @@ export function CardPoolDetailPage() {
       }
 
       for (const [stagedPhaseLabel, cards] of cardsByPhase.entries()) {
-        await apiRequest<CreateAcquisitionResponse>(`/api/card-pools/${poolId}/acquisitions`, {
+        await authApiRequest<CreateAcquisitionResponse>(`/api/card-pools/${poolId}/acquisitions`, {
           method: 'POST',
           body: {
             phaseLabel: stagedPhaseLabel,
@@ -843,7 +843,7 @@ export function CardPoolDetailPage() {
       for (const change of orderedChanges) {
         const repeatCount = change.action === 'remove_all' ? 1 : Math.max(1, change.quantity);
         for (let index = 0; index < repeatCount; index += 1) {
-          await apiRequest(`/api/card-pools/${poolId}/cards/adjust`, {
+          await authApiRequest(`/api/card-pools/${poolId}/cards/adjust`, {
             method: 'PATCH',
             body: {
               phaseLabel: change.phaseLabel,

@@ -34,8 +34,10 @@ type Event = {
 type Match = {
   id: string;
   status: string;
-  player1: { id: string; displayName: string; publicName?: string | null };
-  player2: { id: string; displayName: string; publicName?: string | null } | null;
+  confirmedAt?: string | null;
+  createdAt?: string;
+  player1: { id: string; displayName: string; publicName?: string | null; slug?: string };
+  player2: { id: string; displayName: string; publicName?: string | null; slug?: string } | null;
   gameResults: Array<{ winnerId: string | null; isDraw: boolean }>;
 };
 
@@ -196,7 +198,21 @@ export function DashboardPage() {
     }
     return nextMatch.player1.id === user.id ? nextMatch.player2 : nextMatch.player1;
   }, [nextMatch, user]);
-  const recentResults = useMemo(() => userMatches.slice(-5).reverse(), [userMatches]);
+  const leagueRecentResults = useMemo(() => {
+    return allMatches
+      .filter((match) => ['confirmed', 'resolved'].includes(match.status))
+      .sort((a, b) => {
+        const aTime = new Date(a.confirmedAt ?? a.createdAt ?? 0).getTime();
+        const bTime = new Date(b.confirmedAt ?? b.createdAt ?? 0).getTime();
+        return bTime - aTime;
+      })
+      .slice(0, 5);
+  }, [allMatches]);
+
+  const recentResults = useMemo(
+    () => (user ? userMatches.slice(-5).reverse() : leagueRecentResults),
+    [user, userMatches, leagueRecentResults],
+  );
 
   const roundProgress = useMemo(() => {
     const inProgressRound = rounds.find((round) => round.status === 'in_progress');
@@ -243,26 +259,42 @@ export function DashboardPage() {
 
   const renderRecentResults = () => (
     <div className="rounded-lg border border-border bg-card p-4">
-      <h3 className="text-sm font-medium text-muted-foreground">Recent Results</h3>
+      <h3 className="text-sm font-medium text-muted-foreground">
+        {user ? 'Recent Results' : 'League Recent Results'}
+      </h3>
       {isLoading ? (
         <p className="mt-2 text-sm text-muted-foreground">...</p>
-      ) : recentResults.length === 0 || !user ? (
+      ) : recentResults.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">No recent results.</p>
       ) : (
         <div className="mt-3 space-y-2">
           {recentResults.map((match) => {
-            const opponent = match.player1.id === user.id ? match.player2 : match.player1;
-            const record = computeMatchRecord(user.id, match.gameResults);
-            const verdict = playerVerdict(match, user.id);
+            if (user) {
+              const opponent = match.player1.id === user.id ? match.player2 : match.player1;
+              const record = computeMatchRecord(user.id, match.gameResults);
+              const verdict = playerVerdict(match, user.id);
+              return (
+                <div key={match.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate">{opponent ? primaryName(opponent) : 'BYE'}</span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="rounded border border-border px-2 py-0.5 text-muted-foreground">
+                      {record.wins}-{record.losses}-{record.draws}
+                    </span>
+                    <span className="font-semibold">{verdict}</span>
+                  </div>
+                </div>
+              );
+            }
+
+            const record = computeMatchRecord(match.player1.id, match.gameResults);
             return (
               <div key={match.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="truncate">{opponent ? primaryName(opponent) : 'BYE'}</span>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="rounded border border-border px-2 py-0.5 text-muted-foreground">
-                    {record.wins}-{record.losses}-{record.draws}
-                  </span>
-                  <span className="font-semibold">{verdict}</span>
-                </div>
+                <span className="truncate">
+                  {primaryName(match.player1)} vs {match.player2 ? primaryName(match.player2) : 'BYE'}
+                </span>
+                <span className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                  {record.wins}-{record.losses}-{record.draws}
+                </span>
               </div>
             );
           })}
@@ -303,24 +335,37 @@ export function DashboardPage() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-4">
-          <StatCard
-            title="Your Rank"
-            value={isLoading ? '...' : userRank ? `${formatOrdinal(userRank)} of ${standings.length}` : '--'}
-            subtext="Season standings"
-          />
-          <StatCard
-            title="Your Record"
-            value={isLoading ? '...' : userStanding ? `${userStanding.matchWins}-${userStanding.matchLosses}-${userStanding.matchDraws}` : '0-0-0'}
-            subtext="Wins - Losses - Draws"
-          />
-          <StatCard title="Your Points" value={isLoading ? '...' : userStanding?.points ?? 0} subtext="Season points" />
-          {(viewingActiveSeason && nextMatch) ? (
-            <StatCard
-              title="Next Match"
-              value={nextMatchOpponent ? primaryName(nextMatchOpponent) : 'BYE'}
-              subtext={`${activeEvent?.name ?? 'Current event'} - Pending`}
-            />
-          ) : null}
+          {user ? (
+            <>
+              <StatCard
+                title="Your Rank"
+                value={isLoading ? '...' : userRank ? `${formatOrdinal(userRank)} of ${standings.length}` : '--'}
+                subtext="Season standings"
+              />
+              <StatCard
+                title="Your Record"
+                value={
+                  isLoading ? '...' : userStanding ? `${userStanding.matchWins}-${userStanding.matchLosses}-${userStanding.matchDraws}` : '0-0-0'
+                }
+                subtext="Wins - Losses - Draws"
+              />
+              <StatCard title="Your Points" value={isLoading ? '...' : userStanding?.points ?? 0} subtext="Season points" />
+              {viewingActiveSeason && nextMatch ? (
+                <StatCard
+                  title="Next Match"
+                  value={nextMatchOpponent ? primaryName(nextMatchOpponent) : 'BYE'}
+                  subtext={`${activeEvent?.name ?? 'Current event'} - Pending`}
+                />
+              ) : null}
+            </>
+          ) : (
+            <div className="rounded-lg border border-border bg-card p-4">
+              <h3 className="text-sm font-medium text-muted-foreground">Spectator View</h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Sign in to see your personal rank, record, and upcoming matches.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4">

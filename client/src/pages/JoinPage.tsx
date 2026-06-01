@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ApiError, apiRequest } from '@/lib/api';
+import { ApiError, apiRequest, authApiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
 type InvitePreview = {
@@ -53,7 +53,7 @@ export function JoinPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await apiRequest(`/api/leagues/${invite.league.slug}/join`, {
+      await authApiRequest(`/api/leagues/${invite.league.slug}/join`, {
         method: 'POST',
         body: { token },
       });

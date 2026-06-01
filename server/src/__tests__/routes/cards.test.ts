@@ -17,25 +17,29 @@ vi.mock('../../config/passport.js', () => ({
   configurePassport: vi.fn(),
 }));
 
-vi.mock('../../middleware/auth.js', () => ({
-  requireAuth: (req: any, _res: any, next: any) => {
-    req.user = {
-      id: req.headers['x-test-user'] ?? 'user-1',
-      displayName: 'Test User',
-      slug: 'test-user',
-      avatarUrl: null,
-      role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
-    };
-    next();
-  },
-  requireAdmin: (req: any, _res: any, next: any) => {
-    if (req.user?.role !== 'admin') {
+vi.mock('../../middleware/auth.js', async () => {
+  const { mockOptionalAuth } = await import('../helpers/mockOptionalAuth.js');
+  return {
+    optionalAuth: mockOptionalAuth,
+    requireAuth: (req: any, _res: any, next: any) => {
+      req.user = {
+        id: req.headers['x-test-user'] ?? 'user-1',
+        displayName: 'Test User',
+        slug: 'test-user',
+        avatarUrl: null,
+        role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
+      };
+      next();
+    },
+    requireAdmin: (req: any, _res: any, next: any) => {
+      if (req.user?.role !== 'admin') {
       next(new AppError(403, 'FORBIDDEN', 'Admin access required'));
       return;
     }
     next();
   },
-}));
+  };
+});
 
 vi.mock('../../services/scryfallService.js', () => ({
   getCard: mocks.getCard,

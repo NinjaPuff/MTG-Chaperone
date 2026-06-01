@@ -12,22 +12,34 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../middleware/auth.js', () => ({
-  requireAuth: (req: any, _res: any, next: any) => {
-    req.user = {
-      id: 'user-1',
-      displayName: 'User',
-      publicName: null,
-      slug: 'user',
-      avatarUrl: null,
-      role: 'user',
-    };
-    next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
+vi.mock('../../middleware/auth.js', async () => {
+  const { mockOptionalAuth } = await import('../helpers/mockOptionalAuth.js');
+  return {
+    optionalAuth: mockOptionalAuth,
+    requireAuth: (req: any, _res: any, next: any) => {
+      req.user = {
+        id: 'user-1',
+        displayName: 'User',
+        publicName: null,
+        slug: 'user',
+        avatarUrl: null,
+        role: 'user',
+      };
+      next();
+    },
+    requireAdmin: (_req: any, _res: any, next: any) => next(),
+  };
+});
+
+vi.mock('../../services/userProfileService.js', () => ({
+  getPublicProfile: vi.fn(),
+  getUserMatchHistory: vi.fn(),
 }));
 
 import app from '../../index.js';
+import { getPublicProfile, getUserMatchHistory } from '../../services/userProfileService.js';
+
+const profileMocks = vi.mocked({ getPublicProfile, getUserMatchHistory });
 
 const baseProfile = {
   id: 'user-1',
@@ -49,6 +61,8 @@ const googleProfileRow = {
 describe('users routes', () => {
   beforeEach(() => {
     resetPrismaMock();
+    profileMocks.getPublicProfile.mockReset();
+    profileMocks.getUserMatchHistory.mockReset();
   });
 
   describe('GET /api/users/profile', () => {
@@ -205,6 +219,52 @@ describe('users routes', () => {
         .send({ publicName: null, discordHandle: 'mydiscord' });
 
       expect(prismaMock.user.update.mock.calls[0][0].data).not.toHaveProperty('displayName');
+    });
+  });
+
+  describe('GET /api/users/:slug', () => {
+    it('returns public profile payload', async () => {
+      profileMocks.getPublicProfile.mockResolvedValue({
+        user: { slug: 'alice', displayName: 'Alice' },
+        league: { slug: 'test-league', name: 'Test League' },
+        activeSeason: null,
+        currentStanding: null,
+        career: {
+          seasonsPlayed: 0,
+          totalMatches: 0,
+          matchWins: 0,
+          matchLosses: 0,
+          matchDraws: 0,
+          winRate: 0,
+        },
+        seasonHistory: [],
+        links: { poolId: null, poolVisible: false, decklistsVisible: false },
+      } as any);
+
+      const response = await request(app).get('/api/users/alice');
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.user.slug).toBe('alice');
+      expect(profileMocks.getPublicProfile).toHaveBeenCalledWith('alice', null);
+    });
+  });
+
+  describe('GET /api/users/:slug/match-history', () => {
+    it('returns paginated match history', async () => {
+      profileMocks.getUserMatchHistory.mockResolvedValue({
+        data: [{ matchId: 'match-1', result: 'win' }],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      } as any);
+
+      const response = await request(app).get('/api/users/alice/match-history?page=1&limit=20');
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toHaveLength(1);
+      expect(profileMocks.getUserMatchHistory).toHaveBeenCalledWith('alice', {
+        seasonId: undefined,
+        page: 1,
+        limit: 20,
+      });
     });
   });
 });

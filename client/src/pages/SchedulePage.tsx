@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { MatchCard } from '@/components/MatchCard';
-import { ApiError, apiRequest } from '@/lib/api';
+import { ApiError, apiRequest, authApiRequest } from '@/lib/api';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
@@ -188,7 +188,7 @@ export function SchedulePage() {
     }
 
     try {
-      await apiRequest(`/api/matches/${selectedMatch.id}/report`, {
+      await authApiRequest(`/api/matches/${selectedMatch.id}/report`, {
         method: 'POST',
         body: {
           gameResults,
@@ -206,7 +206,7 @@ export function SchedulePage() {
 
   const confirmOrDispute = async (matchId: string, action: 'confirm' | 'dispute') => {
     try {
-      await apiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
+      await authApiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
       if (selectedEventId) {
         const response = await apiRequest<ApiListResponse<Round>>(`/api/events/${selectedEventId}/rounds`);
         setRounds(response.data);
@@ -224,7 +224,7 @@ export function SchedulePage() {
     setIsMutatingRound(true);
     setError(null);
     try {
-      await apiRequest(`/api/rounds/${roundId}/${action}`, { method: 'POST' });
+      await authApiRequest(`/api/rounds/${roundId}/${action}`, { method: 'POST' });
       if (selectedEventId) {
         const response = await apiRequest<ApiListResponse<Round>>(`/api/events/${selectedEventId}/rounds`);
         setRounds(response.data);

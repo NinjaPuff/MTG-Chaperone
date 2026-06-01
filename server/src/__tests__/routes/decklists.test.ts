@@ -21,20 +21,24 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
 
-vi.mock('../../middleware/auth.js', () => ({
-  requireAuth: (req: any, _res: any, next: any) => {
-    req.user = {
-      id: req.headers['x-test-user'] ?? 'user-1',
-      displayName: 'Test User',
-      slug: 'test-user',
-      avatarUrl: null,
-      role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
-    };
-    next();
-  },
-  requireAdmin: (_req: any, _res: any, next: any) => next(),
-  getAuthUser: (req: any) => req.user,
-}));
+vi.mock('../../middleware/auth.js', async () => {
+  const { mockOptionalAuth } = await import('../helpers/mockOptionalAuth.js');
+  return {
+    optionalAuth: mockOptionalAuth,
+    requireAuth: (req: any, _res: any, next: any) => {
+      req.user = {
+        id: req.headers['x-test-user'] ?? 'user-1',
+        displayName: 'Test User',
+        slug: 'test-user',
+        avatarUrl: null,
+        role: req.headers['x-test-role'] === 'admin' ? 'admin' : 'user',
+      };
+      next();
+    },
+    requireAdmin: (_req: any, _res: any, next: any) => next(),
+    getAuthUser: (req: any) => req.user,
+  };
+});
 
 vi.mock('../../services/decklistService.js', () => ({
   createDecklist: mocks.createDecklist,
@@ -65,7 +69,7 @@ describe('decklists routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.id).toBe('deck-1');
-    expect(mocks.getDecklistById).toHaveBeenCalledWith('deck-1', 'user-1', false);
+    expect(mocks.getDecklistById).toHaveBeenCalledWith('deck-1', { id: 'user-1', role: 'user' });
   });
 
   it('lists user decklists for a season', async () => {

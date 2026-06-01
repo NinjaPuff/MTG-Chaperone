@@ -40,20 +40,7 @@ describe('apiRequest', () => {
     expect(init?.body).toBe(JSON.stringify({ ping: 'pong' }));
   });
 
-  it('clears token and throws ApiError on 401', async () => {
-    setStoredToken('expired-token');
-    window.history.pushState({}, '', '/login');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 401 }));
-
-    const thrown = await apiRequest('/api/protected').catch((error) => error as ApiError);
-    expect(thrown).toBeInstanceOf(ApiError);
-    expect(thrown.status).toBe(401);
-    expect(thrown.code).toBe('UNAUTHORIZED');
-    expect(localStorage.getItem('mtg_league_token')).toBeNull();
-    clearStoredToken();
-  });
-
-  it('redirects to login with returnUrl on 401 when not already on login', async () => {
+  it('clears token and throws ApiError on 401 without redirect by default', async () => {
     setStoredToken('expired-token');
     const assign = vi.fn();
     Object.defineProperty(window, 'location', {
@@ -66,7 +53,29 @@ describe('apiRequest', () => {
     });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 401 }));
 
-    await apiRequest('/api/protected').catch(() => undefined);
+    const thrown = await apiRequest('/api/protected').catch((error) => error as ApiError);
+    expect(thrown).toBeInstanceOf(ApiError);
+    expect(thrown.status).toBe(401);
+    expect(thrown.code).toBe('UNAUTHORIZED');
+    expect(localStorage.getItem('mtg_league_token')).toBeNull();
+    expect(assign).not.toHaveBeenCalled();
+    clearStoredToken();
+  });
+
+  it('redirects to login with returnUrl on 401 when redirectOn401 is enabled', async () => {
+    setStoredToken('expired-token');
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: {
+        pathname: '/join',
+        search: '?token=abc',
+        assign,
+      },
+    });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 401 }));
+
+    await apiRequest('/api/protected', { redirectOn401: true }).catch(() => undefined);
 
     expect(assign).toHaveBeenCalledWith('/login?returnUrl=%2Fjoin%3Ftoken%3Dabc');
     expect(localStorage.getItem('mtg_league_token')).toBeNull();
@@ -85,7 +94,7 @@ describe('apiRequest', () => {
     });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 401 }));
 
-    await apiRequest('/api/protected').catch(() => undefined);
+    await apiRequest('/api/protected', { redirectOn401: true }).catch(() => undefined);
 
     expect(assign).not.toHaveBeenCalled();
   });

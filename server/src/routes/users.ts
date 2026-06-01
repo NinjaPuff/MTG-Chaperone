@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, optionalAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { formatProfileResponse, validateDiscordHandle } from '../lib/userProfileRules.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
+import { getPublicProfile, getUserMatchHistory } from '../services/userProfileService.js';
 
 const router = Router();
 
@@ -133,16 +134,25 @@ router.patch('/profile', requireAuth, validateBody(updateProfileSchema), async (
   }
 });
 
-router.get('/:slug', (_req, res) => {
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Get user not yet implemented' } });
+router.get('/:slug/match-history', optionalAuth, async (req, res, next) => {
+  try {
+    const seasonId = typeof req.query.seasonId === 'string' ? req.query.seasonId : undefined;
+    const page = typeof req.query.page === 'string' ? Number(req.query.page) : undefined;
+    const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+    const result = await getUserMatchHistory(req.params.slug, { seasonId, page, limit });
+    res.json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
-router.patch('/:slug', (_req, res) => {
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Update user not yet implemented' } });
-});
-
-router.get('/:slug/match-history', (_req, res) => {
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Get match history not yet implemented' } });
+router.get('/:slug', optionalAuth, async (req, res, next) => {
+  try {
+    const profile = await getPublicProfile(req.params.slug, req.user?.id ?? null);
+    res.json({ data: profile });
+  } catch (error) {
+    next(error);
+  }
 });
 
 export { router as usersRouter };

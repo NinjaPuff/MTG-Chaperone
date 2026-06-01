@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
-import { requireAdmin, requireAuth, getAuthUser } from '../middleware/auth.js';
+import { requireAdmin, requireAuth, getAuthUser, optionalAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
+import { canViewFullSchedule } from '../lib/visibilityRules.js';
 import { completeEvent, createEvent, getEvent, startEvent, updateEvent } from '../services/eventService.js';
 import { createRound } from '../services/roundService.js';
 import { recomputeStandings } from '../services/standingsService.js';
@@ -220,10 +221,32 @@ router.put('/:eventId/seeds', requireAuth, requireAdmin, validateBody(eventSeeds
   }
 });
 
-router.get('/:eventId/rounds', async (req, res, next) => {
+router.get('/:eventId/rounds', optionalAuth, async (req, res, next) => {
   try {
+    const event = await prisma.event.findUnique({
+      where: { id: req.params.eventId },
+      select: {
+        season: {
+          select: {
+            scheduleVisibility: true,
+            poolVisibility: true,
+            decklistVisibility: true,
+          },
+        },
+      },
+    });
+    if (!event) {
+      throw new AppError(404, 'NOT_FOUND', 'Event not found');
+    }
+
+    const viewer = req.user ? { id: req.user.id, role: req.user.role } : null;
+    const showFullSchedule = canViewFullSchedule(event.season, viewer);
+
     const rounds = await prisma.round.findMany({
-      where: { eventId: req.params.eventId },
+      where: {
+        eventId: req.params.eventId,
+        ...(showFullSchedule ? {} : { status: { not: 'not_started' } }),
+      },
       include: {
         matches: {
           include: {

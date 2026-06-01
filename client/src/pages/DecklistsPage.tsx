@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ApiError, apiRequest } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
+import { primaryName } from '@/lib/userDisplay';
 
-type ApiListResponse<T> = { data: T[] };
+type ApiListResponse<T> = { data: T[]; meta?: { decklistVisibility?: boolean } };
 
 type SeasonEvent = {
   id: string;
@@ -17,6 +19,12 @@ type SeasonDecklist = {
   orderIndex: number;
   name: string | null;
   status: 'draft' | 'submitted' | 'locked';
+  user?: {
+    id: string;
+    displayName: string;
+    publicName?: string | null;
+    slug: string;
+  };
   event: {
     id: string;
     name: string;
@@ -40,12 +48,14 @@ type SeasonDecklist = {
 };
 
 export function DecklistsPage() {
+  const { user } = useAuth();
   const { activeSeasonId, isLoading: loadingLeague } = useCurrentLeague();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentEvent, setCurrentEvent] = useState<SeasonEvent | null>(null);
   const [seasonDecklists, setSeasonDecklists] = useState<SeasonDecklist[]>([]);
+  const [decklistVisibility, setDecklistVisibility] = useState<boolean | null>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -60,17 +70,29 @@ export function DecklistsPage() {
       setLoading(true);
       setError(null);
       try {
-        const [eventsResponse, decklistsResponse] = await Promise.all([
-          apiRequest<ApiListResponse<SeasonEvent>>(`/api/seasons/${activeSeasonId}/events`),
-          apiRequest<ApiListResponse<SeasonDecklist>>(`/api/decklists/my-season/${activeSeasonId}`),
-        ]);
+        const eventsResponse = await apiRequest<ApiListResponse<SeasonEvent>>(
+          `/api/seasons/${activeSeasonId}/events`,
+        );
 
         const activeEvent =
           eventsResponse.data.find((event) => event.status === 'active') ??
           eventsResponse.data.find((event) => event.status === 'setup') ??
           null;
         setCurrentEvent(activeEvent);
-        setSeasonDecklists(decklistsResponse.data);
+
+        if (user) {
+          const myDecklistsResponse = await apiRequest<ApiListResponse<SeasonDecklist>>(
+            `/api/decklists/my-season/${activeSeasonId}`,
+          );
+          setSeasonDecklists(myDecklistsResponse.data);
+          setDecklistVisibility(true);
+        } else {
+          const seasonResponse = await apiRequest<ApiListResponse<SeasonDecklist>>(
+            `/api/seasons/${activeSeasonId}/decklists`,
+          );
+          setSeasonDecklists(seasonResponse.data);
+          setDecklistVisibility(seasonResponse.meta?.decklistVisibility ?? true);
+        }
       } catch (loadError) {
         setError(loadError instanceof ApiError ? loadError.message : 'Unable to load deck context');
       } finally {
@@ -79,7 +101,7 @@ export function DecklistsPage() {
     };
 
     void run();
-  }, [activeSeasonId, loadingLeague]);
+  }, [activeSeasonId, loadingLeague, user]);
 
   const previousDecks = useMemo(
     () => seasonDecklists.filter((decklist) => decklist.event.status === 'completed'),
@@ -97,34 +119,42 @@ export function DecklistsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Decklists</h1>
-        <p className="text-muted-foreground mt-1">View and build decklists from your card pool.</p>
+        <p className="text-muted-foreground mt-1">
+          {user ? 'View and build decklists from your card pool.' : 'Browse submitted decklists for the current season.'}
+        </p>
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      <div className="rounded-lg border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">Current Event Deck</h2>
-        {loading ? <p className="mt-2 text-sm text-muted-foreground">Detecting current event...</p> : null}
-        {!loading && currentEvent ? (
-          <div className="mt-3 space-y-3">
-            <p className="text-sm text-muted-foreground">{currentEvent.name}</p>
-            <button
-              type="button"
-              onClick={openCurrentDeckbuilder}
-              className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              Open Current Deckbuilder
-            </button>
-          </div>
-        ) : null}
-        {!loading && !currentEvent ? (
-          <p className="mt-2 text-sm text-muted-foreground">No active event found for your current season.</p>
-        ) : null}
-      </div>
+      {user ? (
+        <div className="rounded-lg border border-border bg-card p-6">
+          <h2 className="text-lg font-semibold">Current Event Deck</h2>
+          {loading ? <p className="mt-2 text-sm text-muted-foreground">Detecting current event...</p> : null}
+          {!loading && currentEvent ? (
+            <div className="mt-3 space-y-3">
+              <p className="text-sm text-muted-foreground">{currentEvent.name}</p>
+              <button
+                type="button"
+                onClick={openCurrentDeckbuilder}
+                className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
+              >
+                Open Current Deckbuilder
+              </button>
+            </div>
+          ) : null}
+          {!loading && !currentEvent ? (
+            <p className="mt-2 text-sm text-muted-foreground">No active event found for your current season.</p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="rounded-lg border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">Previous Decks This Season</h2>
-        {previousDecks.length === 0 ? (
+        <h2 className="text-lg font-semibold">{user ? 'Previous Decks This Season' : 'Season Decklists'}</h2>
+        {!user && decklistVisibility === false ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Decklists are hidden for this season. Sign in to view your own decklists.
+          </p>
+        ) : previousDecks.length === 0 ? (
           <p className="mt-2 text-sm text-muted-foreground">No previous decks yet.</p>
         ) : (
           <div className="mt-3 space-y-3">
@@ -134,7 +164,9 @@ export function DecklistsPage() {
               return (
                 <details key={decklist.id} className="rounded-md border border-border/70 p-3">
                   <summary className="cursor-pointer text-sm font-medium">
-                    {decklist.name ?? `Deck ${decklist.orderIndex + 1}`} - {decklist.event.name} Round {decklist.round.roundNumber}{' '}
+                    {decklist.user ? `${primaryName(decklist.user)} — ` : ''}
+                    {decklist.name ?? `Deck ${decklist.orderIndex + 1}`} - {decklist.event.name} Round{' '}
+                    {decklist.round.roundNumber}{' '}
                     <span className="text-xs text-muted-foreground">(read-only)</span>
                   </summary>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">

@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth, getAuthUser } from '../middleware/auth.js';
+import { requireAuth, getAuthUser, optionalAuth } from '../middleware/auth.js';
 import {
   createDecklist,
   getDecklistById,
   listDecklistsForSeason,
+  listVisibleDecklistsForSeason,
   submitDecklist,
   updateDecklist,
   validateDecklist,
@@ -47,10 +48,10 @@ router.get('/my-season/:seasonId', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/:decklistId', requireAuth, async (req, res, next) => {
+router.get('/:decklistId', optionalAuth, async (req, res, next) => {
   try {
-    const user = getAuthUser(req);
-    const decklist = await getDecklistById(req.params.decklistId, user.id, user.role === 'admin');
+    const viewer = req.user ? { id: req.user.id, role: req.user.role } : null;
+    const decklist = await getDecklistById(req.params.decklistId, viewer);
     res.json({ data: decklist });
   } catch (error) {
     next(error);

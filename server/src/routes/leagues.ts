@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth, optionalAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import {
   createLeague,
@@ -16,6 +16,7 @@ import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { createInvite, listInvites, revokeInvite, validateAndJoin } from '../services/inviteService.js';
 import { createPool, deletePool, listPoolsBySeason, updatePool } from '../services/cardPoolService.js';
+import { canViewSeasonPools } from '../lib/visibilityRules.js';
 
 const router = Router();
 
@@ -78,6 +79,9 @@ async function getSeasonByLeagueAndNumber(leagueId: string, seasonNumberParam: s
     select: {
       id: true,
       number: true,
+      poolVisibility: true,
+      decklistVisibility: true,
+      scheduleVisibility: true,
     },
   });
   if (!season) {
@@ -251,12 +255,27 @@ router.get('/:slug/seasons/:number', async (req, res, next) => {
   }
 });
 
-router.get('/:slug/seasons/:number/pools', requireAuth, async (req, res, next) => {
+router.get('/:slug/seasons/:number/pools', optionalAuth, async (req, res, next) => {
   try {
     const leagueId = await getLeagueIdBySlug(req.params.slug);
     const season = await getSeasonByLeagueAndNumber(leagueId, req.params.number);
     const pools = await listPoolsBySeason(season.id);
-    res.json({ data: pools });
+    const viewer = req.user ? { id: req.user.id, role: req.user.role } : null;
+
+    if (season.poolVisibility) {
+      res.json({ data: pools, meta: { poolVisibility: true } });
+      return;
+    }
+
+    if (!viewer) {
+      res.json({ data: [], meta: { poolVisibility: false } });
+      return;
+    }
+
+    const filtered = pools.filter(
+      (pool) => canViewSeasonPools(season, viewer, pool.userId),
+    );
+    res.json({ data: filtered, meta: { poolVisibility: false } });
   } catch (error) {
     next(error);
   }

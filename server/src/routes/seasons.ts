@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
-import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { requireAdmin, requireAuth, optionalAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { createEvent, createRoundRobinEventSeries } from '../services/eventService.js';
+import { listVisibleDecklistsForSeason } from '../services/decklistService.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 const router = Router();
@@ -128,6 +129,30 @@ router.post(
     }
   },
 );
+
+router.get('/:seasonId/decklists', optionalAuth, async (req, res, next) => {
+  try {
+    const season = await prisma.season.findUnique({
+      where: { id: req.params.seasonId },
+      select: {
+        id: true,
+        decklistVisibility: true,
+      },
+    });
+    if (!season) {
+      throw new AppError(404, 'NOT_FOUND', 'Season not found');
+    }
+
+    const viewer = req.user ? { id: req.user.id, role: req.user.role } : null;
+    const decklists = await listVisibleDecklistsForSeason(season.id, viewer);
+    res.json({
+      data: decklists,
+      meta: { decklistVisibility: season.decklistVisibility },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get('/:seasonId/card-pools', async (req, res, next) => {
   try {

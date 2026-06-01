@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, optionalAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { validateBody } from '../lib/validate.js';
+import { canViewPool } from '../lib/visibilityRules.js';
 import {
   adjustCardQuantityInPhase,
   bulkResolveAcquisitionItems,
@@ -70,9 +71,29 @@ function sanitizeFileNamePart(value: string) {
     .toLowerCase();
 }
 
-router.get('/:poolId', requireAuth, async (req, res, next) => {
+async function assertCanViewPool(poolId: string, viewer?: { id: string; role: 'admin' | 'user' } | null) {
+  const pool = await getPoolDetail(poolId);
+  const season = await prisma.season.findUnique({
+    where: { id: pool.seasonId },
+    select: {
+      poolVisibility: true,
+      decklistVisibility: true,
+      scheduleVisibility: true,
+    },
+  });
+  if (!season) {
+    throw new AppError(404, 'NOT_FOUND', 'Season not found');
+  }
+  if (!canViewPool(pool, season, viewer ?? null)) {
+    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to view this pool');
+  }
+  return pool;
+}
+
+router.get('/:poolId', optionalAuth, async (req, res, next) => {
   try {
-    const pool = await getPoolDetail(req.params.poolId);
+    const viewer = req.user ? { id: req.user.id, role: req.user.role } : null;
+    const pool = await assertCanViewPool(req.params.poolId, viewer);
     const acquisitions = await listAcquisitions(req.params.poolId);
     res.json({ data: { pool, acquisitions } });
   } catch (error) {
@@ -80,9 +101,10 @@ router.get('/:poolId', requireAuth, async (req, res, next) => {
   }
 });
 
-router.get('/:poolId/export/decklist', requireAuth, async (req, res, next) => {
+router.get('/:poolId/export/decklist', optionalAuth, async (req, res, next) => {
   try {
-    const pool = await getPoolDetail(req.params.poolId);
+    const viewer = req.user ? { id: req.user.id, role: req.user.role } : null;
+    const pool = await assertCanViewPool(req.params.poolId, viewer);
     const acquisitions = await listAcquisitions(req.params.poolId);
 
     const flattenedEntries = acquisitions.flatMap((acquisition) =>

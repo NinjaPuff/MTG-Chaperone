@@ -1732,49 +1732,99 @@ Get a public user profile.
 
 | Property | Value |
 |----------|-------|
-| Auth     | Public |
+| Auth     | Public (optional auth adds `authProvider` for self) |
 | Params   | `slug` (string) — user slug |
 
 **Response `200`:**
 
 ```json
 {
-  "id": "clxuser001",
-  "slug": "wizardplayer42",
-  "displayName": "WizardPlayer42",
-  "avatarUrl": "https://cdn.example.com/avatars/abc.png",
-  "bio": "Standard and Limited enthusiast",
-  "leagues": [
-    { "slug": "friday-night-box-league", "name": "Friday Night Box League", "role": "admin" }
-  ],
-  "joinedAt": "2026-01-15T08:30:00Z"
+  "data": {
+    "user": {
+      "id": "clxuser001",
+      "slug": "wizardplayer42",
+      "displayName": "WizardPlayer42",
+      "publicName": "Wizard",
+      "discordHandle": "wizard_discord",
+      "avatarUrl": "https://cdn.example.com/avatars/abc.png",
+      "role": "user"
+    },
+    "league": { "slug": "friday-night-box-league", "name": "Friday Night Box League" },
+    "activeSeason": {
+      "id": "clxseason003",
+      "number": 3,
+      "name": "Season 3",
+      "poolVisibility": true,
+      "decklistVisibility": true,
+      "scheduleVisibility": false
+    },
+    "currentStanding": {
+      "rank": 4,
+      "points": 9,
+      "matchWins": 3,
+      "matchLosses": 1,
+      "matchDraws": 0,
+      "omwPercent": 0.52,
+      "gwPercent": 0.58,
+      "ogwPercent": 0.49
+    },
+    "career": {
+      "seasonsPlayed": 3,
+      "totalMatches": 24,
+      "matchWins": 14,
+      "matchLosses": 8,
+      "matchDraws": 2,
+      "winRate": 0.583
+    },
+    "seasonHistory": [
+      {
+        "seasonId": "clxseason003",
+        "number": 3,
+        "name": "Season 3",
+        "isActive": true,
+        "rank": 4,
+        "points": 9,
+        "matchWins": 3,
+        "matchLosses": 1,
+        "matchDraws": 0
+      }
+    ],
+    "links": {
+      "poolId": "clxpool001",
+      "poolVisible": true,
+      "decklistsVisible": true
+    }
+  }
 }
 ```
+
+When the request is authenticated as the profile owner, `user.authProvider` is included.
+
+**Errors:** `404 NOT_FOUND` when slug is unknown.
 
 ---
 
-#### `PATCH /api/users/:slug`
+#### `GET /api/users/profile`
 
-Update own profile. Users can only update their own profile.
+Get the authenticated user's editable profile (includes `authProvider`, `discordHandle`).
 
 | Property | Value |
 |----------|-------|
-| Auth     | Authenticated (self) |
-| Params   | `slug` (string) — user slug |
+| Auth     | Authenticated |
 
-**Request Body (all fields optional):**
+---
 
-```json
-{
-  "displayName": "NewDisplayName",
-  "bio": "Updated bio",
-  "avatarUrl": "https://cdn.example.com/avatars/new.png"
-}
-```
+#### `PATCH /api/users/profile`
 
-**Response `200`:** Updated user profile object.
+Update own profile fields (`publicName`, `discordHandle` for Google sign-in users).
 
-**Errors:** `FORBIDDEN` (not self), `VALIDATION_ERROR`, `CONFLICT` (display name taken)
+| Property | Value |
+|----------|-------|
+| Auth     | Authenticated |
+
+**Response `200`:** Updated profile object under `data`.
+
+**Errors:** `VALIDATION_ERROR`, `FORBIDDEN` (discord handle update for Discord sign-in users)
 
 ---
 
@@ -1786,7 +1836,7 @@ Get a user's match history across all leagues.
 |----------|-------|
 | Auth     | Public |
 | Params   | `slug` (string) — user slug |
-| Query Params | `leagueSlug` (string, optional), `seasonNumber` (int, optional), `page` (int), `limit` (int) |
+| Query Params | `seasonId` (string, optional), `page` (int, default 1), `limit` (int, default 20, max 50) |
 
 **Response `200`:**
 

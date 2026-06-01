@@ -1,0 +1,72 @@
+export type SeasonVisibility = {
+  poolVisibility: boolean;
+  decklistVisibility: boolean;
+  scheduleVisibility: boolean;
+};
+
+export type VisibilityViewer = {
+  id: string;
+  role: 'admin' | 'user';
+};
+
+function isSiteAdmin(viewer?: VisibilityViewer | null) {
+  return viewer?.role === 'admin';
+}
+
+export function canViewSeasonPools(
+  season: SeasonVisibility,
+  viewer?: VisibilityViewer | null,
+  ownerUserId?: string | null,
+) {
+  if (season.poolVisibility || isSiteAdmin(viewer)) {
+    return true;
+  }
+  if (ownerUserId && viewer?.id === ownerUserId) {
+    return true;
+  }
+  return false;
+}
+
+export function canViewPool(
+  pool: { userId: string },
+  season: SeasonVisibility,
+  viewer?: VisibilityViewer | null,
+) {
+  if (season.poolVisibility || isSiteAdmin(viewer)) {
+    return true;
+  }
+  return viewer?.id === pool.userId;
+}
+
+export function canViewSeasonDecklists(
+  season: SeasonVisibility,
+  viewer?: VisibilityViewer | null,
+  decklistOwnerId?: string | null,
+) {
+  if (season.decklistVisibility || isSiteAdmin(viewer)) {
+    return true;
+  }
+  if (decklistOwnerId && viewer?.id === decklistOwnerId) {
+    return true;
+  }
+  return false;
+}
+
+export function canViewDecklist(
+  decklist: { userId: string },
+  season: SeasonVisibility,
+  viewer?: VisibilityViewer | null,
+) {
+  if (season.decklistVisibility || isSiteAdmin(viewer)) {
+    return true;
+  }
+  return viewer?.id === decklist.userId;
+}
+
+export function canViewFullSchedule(season: SeasonVisibility, viewer?: VisibilityViewer | null) {
+  return season.scheduleVisibility || isSiteAdmin(viewer);
+}
+
+export function isPublicDecklistStatus(status: 'draft' | 'submitted' | 'locked') {
+  return status === 'submitted' || status === 'locked';
+}

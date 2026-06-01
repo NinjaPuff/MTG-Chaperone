@@ -1,6 +1,7 @@
 import type { DeckZone } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { canViewDecklist, isPublicDecklistStatus } from '../lib/visibilityRules.js';
 
 type ConstraintType = 'no_repeat_previous' | 'minimum_changes' | 'cumulative_ban';
 
@@ -413,7 +414,10 @@ async function buildRestrictionContext(userId: string, eventId: string, roundNum
   };
 }
 
-export async function getDecklistById(decklistId: string, userId: string, isAdmin = false) {
+export async function getDecklistById(
+  decklistId: string,
+  viewer?: { id: string; role: 'admin' | 'user' } | null,
+) {
   const decklist = await prisma.decklist.findUnique({
     where: { id: decklistId },
     include: {
@@ -423,6 +427,9 @@ export async function getDecklistById(decklistId: string, userId: string, isAdmi
           season: {
             select: {
               id: true,
+              poolVisibility: true,
+              decklistVisibility: true,
+              scheduleVisibility: true,
             },
           },
         },
@@ -444,7 +451,14 @@ export async function getDecklistById(decklistId: string, userId: string, isAdmi
   if (!decklist) {
     throw new AppError(404, 'NOT_FOUND', 'Decklist not found');
   }
-  if (!isAdmin && decklist.userId !== userId) {
+
+  const season = decklist.event.season;
+  if (!canViewDecklist(decklist, season, viewer ?? null)) {
+    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to access this decklist');
+  }
+
+  const isOwnerOrAdmin = viewer?.role === 'admin' || viewer?.id === decklist.userId;
+  if (!isOwnerOrAdmin && !isPublicDecklistStatus(decklist.status)) {
     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to access this decklist');
   }
 
@@ -453,6 +467,85 @@ export async function getDecklistById(decklistId: string, userId: string, isAdmi
     ...decklist,
     poolId,
   };
+}
+
+const seasonDecklistInclude = {
+  user: {
+    select: {
+      id: true,
+      displayName: true,
+      publicName: true,
+      discordHandle: true,
+      slug: true,
+      avatarUrl: true,
+    },
+  },
+  event: {
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      orderIndex: true,
+    },
+  },
+  round: {
+    select: {
+      id: true,
+      roundNumber: true,
+      status: true,
+    },
+  },
+  entries: {
+    include: {
+      cachedCard: {
+        select: {
+          scryfallId: true,
+          name: true,
+          manaCost: true,
+          typeLine: true,
+          cmc: true,
+          colorIdentity: true,
+        },
+      },
+    },
+  },
+} as const;
+
+export async function listVisibleDecklistsForSeason(
+  seasonId: string,
+  viewer?: { id: string; role: 'admin' | 'user' } | null,
+) {
+  const season = await prisma.season.findUnique({
+    where: { id: seasonId },
+    select: {
+      id: true,
+      decklistVisibility: true,
+      poolVisibility: true,
+      scheduleVisibility: true,
+    },
+  });
+  if (!season) {
+    throw new AppError(404, 'NOT_FOUND', 'Season not found');
+  }
+
+  const decklists = await prisma.decklist.findMany({
+    where: {
+      event: { seasonId },
+    },
+    include: seasonDecklistInclude,
+    orderBy: [{ event: { orderIndex: 'asc' } }, { round: { roundNumber: 'asc' } }, { orderIndex: 'asc' }],
+  });
+
+  return decklists.filter((decklist) => {
+    if (!canViewDecklist(decklist, season, viewer ?? null)) {
+      return false;
+    }
+    const isOwnerOrAdmin = viewer?.role === 'admin' || viewer?.id === decklist.userId;
+    if (isOwnerOrAdmin) {
+      return true;
+    }
+    return isPublicDecklistStatus(decklist.status);
+  });
 }
 
 export async function listDecklistsForSeason(userId: string, seasonId: string) {

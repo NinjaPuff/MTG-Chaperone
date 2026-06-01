@@ -35,25 +35,27 @@ export function clearStoredToken() {
 
 type ApiRequestInit = Omit<RequestInit, 'body'> & {
   body?: unknown;
+  redirectOn401?: boolean;
 };
 
 export async function apiRequest<T = unknown>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const { redirectOn401 = false, body, ...requestInit } = init;
   const token = getStoredToken();
-  const headers = new Headers(init.headers);
+  const headers = new Headers(requestInit.headers);
   headers.set('Content-Type', 'application/json');
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
 
   const response = await fetch(path, {
-    ...init,
+    ...requestInit,
     headers,
-    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
 
   if (response.status === 401) {
     clearStoredToken();
-    if (!window.location.pathname.startsWith('/login')) {
+    if (redirectOn401 && !window.location.pathname.startsWith('/login')) {
       const returnUrl = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
       window.location.assign(`/login?returnUrl=${returnUrl}`);
     }
@@ -79,3 +81,6 @@ export async function apiRequest<T = unknown>(path: string, init: ApiRequestInit
   return (await response.json()) as T;
 }
 
+export async function authApiRequest<T = unknown>(path: string, init: Omit<ApiRequestInit, 'redirectOn401'> = {}) {
+  return apiRequest<T>(path, { ...init, redirectOn401: true });
+}
