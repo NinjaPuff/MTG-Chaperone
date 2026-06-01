@@ -327,6 +327,47 @@ describe('scryfallService card cache import', () => {
     expect(fetchMock.mock.calls[1][0]).toContain('set%3Atmt');
   });
 
+  it('importSetFromScryfall upserts reversible_card without top-level type_line', async () => {
+    const fetchMock = createFetchMock([
+      setResolveResponse('ECL'),
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [
+            {
+              id: 'ecl-blood-crypt-reversible',
+              name: 'Blood Crypt // Blood Crypt',
+              layout: 'reversible_card',
+              rarity: 'rare',
+              set: 'ecl',
+              collector_number: '349',
+              card_faces: [
+                { type_line: 'Land — Swamp Mountain' },
+                { type_line: 'Land — Swamp Mountain' },
+              ],
+            },
+          ],
+          has_more: false,
+        },
+      },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert } } as any,
+    });
+
+    const result = await service.importSetFromScryfall('ECL');
+
+    expect(result).toEqual({ setCode: 'ECL', imported: 1, canonicalSetCode: 'ECL' });
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0][0].create.typeLine).toBe('Land — Swamp Mountain');
+    expect(upsert.mock.calls[0][0].update.typeLine).toBe('Land — Swamp Mountain');
+  });
+
   it('importSetFromScryfall throws when Scryfall returns an error', async () => {
     const fetchMock = createFetchMock([
       setResolveResponse('DMU'),

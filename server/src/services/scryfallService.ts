@@ -1,4 +1,5 @@
 import { AppError } from '../middleware/errorHandler.js';
+import { resolveTypeLine } from '../lib/scryfallCardNormalize.js';
 import { prisma } from '../lib/prisma.js';
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
@@ -28,7 +29,7 @@ type ScryfallCard = {
   id: string;
   name: string;
   mana_cost?: string;
-  type_line: string;
+  type_line?: string;
   oracle_text?: string;
   colors?: string[];
   color_identity?: string[];
@@ -40,6 +41,7 @@ type ScryfallCard = {
   card_faces?: Array<{
     name?: string;
     mana_cost?: string;
+    type_line?: string;
     image_uris?: Record<string, string>;
   }>;
   prices?: Record<string, string | null>;
@@ -169,12 +171,13 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 
   async function upsertCard(card: ScryfallCard) {
     const manaCost = resolveManaCost(card);
+    const typeLine = resolveTypeLine(card);
     return deps.prisma.cachedCard.upsert({
     where: { scryfallId: card.id },
     update: {
       name: card.name,
       manaCost,
-      typeLine: card.type_line,
+      typeLine,
       oracleText: card.oracle_text ?? null,
       colors: card.colors ?? [],
       colorIdentity: card.color_identity ?? [],
@@ -190,7 +193,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       scryfallId: card.id,
       name: card.name,
       manaCost,
-      typeLine: card.type_line,
+      typeLine,
       oracleText: card.oracle_text ?? null,
       colors: card.colors ?? [],
       colorIdentity: card.color_identity ?? [],
