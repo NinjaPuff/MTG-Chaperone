@@ -13,6 +13,7 @@ const scryfallMocks = vi.hoisted(() => ({
   bulkLookupForPoolImport: vi.fn(),
   getCard: vi.fn(),
   lookupCanonicalByName: vi.fn(),
+  tryResolvePrintingInPoolSet: vi.fn(),
 }));
 
 vi.mock('../../lib/prisma.js', () => ({
@@ -23,9 +24,13 @@ vi.mock('../../services/scryfallService.js', () => ({
   bulkLookupForPoolImport: scryfallMocks.bulkLookupForPoolImport,
   getCard: scryfallMocks.getCard,
   lookupCanonicalByName: scryfallMocks.lookupCanonicalByName,
+  tryResolvePrintingInPoolSet: scryfallMocks.tryResolvePrintingInPoolSet,
 }));
 
-import { bulkResolveAcquisitionItems } from '../../services/cardPoolService.js';
+import {
+  bulkResolveAcquisitionItems,
+  filterBulkResolveCandidates,
+} from '../../services/cardPoolService.js';
 import { formatDecklistLine } from '@mtg-league/shared';
 
 const trystanBase = {
@@ -90,7 +95,81 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
     scryfallMocks.bulkLookupForPoolImport.mockReset();
     scryfallMocks.getCard.mockReset();
     scryfallMocks.lookupCanonicalByName.mockReset();
+    scryfallMocks.tryResolvePrintingInPoolSet.mockReset();
+    scryfallMocks.tryResolvePrintingInPoolSet.mockResolvedValue(null);
     scryfallMocks.getCard.mockResolvedValue(null);
+  });
+
+  it('matches set printing when collector number is missing from cache', () => {
+    const allowed = new Set(['FIN']);
+    const candidates = filterBulkResolveCandidates(
+      [
+        {
+          scryfallId: 'airship-fin',
+          name: "Adventurer's Airship",
+          setCode: 'FIN',
+          collectorNumber: null,
+          imageUris: null,
+          manaCost: '{2}',
+        },
+      ],
+      'FIN',
+      '252',
+      allowed,
+    );
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]?.scryfallId).toBe('airship-fin');
+  });
+
+  it('fetches pool-set printing when cache only has a different set', async () => {
+    const wrongSetPrinting = {
+      scryfallId: 'airship-mh2',
+      name: "Adventurer's Airship",
+      setCode: 'MH2',
+      collectorNumber: '99',
+      imageUris: { small: 'https://example.com/wrong.jpg' },
+      manaCost: '{2}',
+    };
+    const finPrinting = {
+      scryfallId: 'airship-fin',
+      name: "Adventurer's Airship",
+      flavorName: null,
+      setCode: 'FIN',
+      collectorNumber: '252',
+      imageUris: { small: 'https://example.com/fin.jpg' },
+      manaCost: '{2}',
+    };
+
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([wrongSetPrinting]);
+    scryfallMocks.tryResolvePrintingInPoolSet.mockResolvedValue(finPrinting);
+
+    const result = await bulkResolveAcquisitionItems(
+      [{ name: "Adventurer's Airship (FIN) 252", quantity: 2 }],
+      ['FIN'],
+    );
+
+    expect(scryfallMocks.tryResolvePrintingInPoolSet).toHaveBeenCalledWith(
+      "Adventurer's Airship",
+      'FIN',
+      '252',
+      ['FIN'],
+    );
+    expect(result.resolved).toEqual([
+      {
+        cachedCardId: 'airship-fin',
+        quantity: 2,
+        cachedCard: {
+          scryfallId: 'airship-fin',
+          name: "Adventurer's Airship",
+          flavorName: null,
+          setCode: 'FIN',
+          imageUris: finPrinting.imageUris,
+          manaCost: '{2}',
+        },
+      },
+    ]);
+    expect(result.unresolved).toEqual([]);
   });
 
   it('prefers canonical base print when multiple variants exist', async () => {
@@ -243,6 +322,25 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
 
     expect(result.resolved[0]?.cachedCardId).toBe('bolt-112');
     expect(result.resolved[0]?.quantity).toBe(2);
+  });
+
+  it('resolves by oracle name when another cached card shares that text as flavorName', async () => {
+    const decoyWithFlavorBolt = {
+      scryfallId: 'decoy-id',
+      name: 'Decoy Planeswalker',
+      flavorName: 'Lightning Bolt',
+      setCode: 'AAA',
+      imageUris: { small: 'https://example.com/decoy.jpg' },
+      manaCost: '{3}',
+    };
+
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([decoyWithFlavorBolt, lightningBolt]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Lightning Bolt', quantity: 1 }], ['ECL', 'AAA']);
+
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]?.cachedCardId).toBe('bolt-id');
+    expect(result.unresolved).toEqual([]);
   });
 
   it('resolves FCA flavor alias to canonical card', async () => {

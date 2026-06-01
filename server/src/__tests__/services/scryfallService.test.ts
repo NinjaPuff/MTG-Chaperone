@@ -620,6 +620,69 @@ describe('scryfallService bulkLookupForPoolImport', () => {
     expect(result[0]?.name).toBe('Adeline, Resplendent Cathar');
   });
 
+  it('treats a name as missing when only a non-pool-set printing is cached', async () => {
+    const finScryfallBody = {
+      id: 'airship-fin',
+      name: "Adventurer's Airship",
+      set: 'fin',
+      collector_number: '252',
+      rarity: 'common',
+      type_line: 'Artifact — Vehicle',
+      cmc: 3,
+    };
+    const fetchMock = createFetchMock([
+      { ok: false, status: 404, body: {} },
+      {
+        ok: true,
+        status: 200,
+        body: { data: [finScryfallBody] },
+      },
+    ]);
+    const upsert = vi.fn(async () => ({
+      scryfallId: 'airship-fin',
+      name: "Adventurer's Airship",
+      flavorName: null,
+      setCode: 'FIN',
+      collectorNumber: '252',
+    }));
+    const wrongSetOnly = {
+      scryfallId: 'airship-mh2',
+      name: "Adventurer's Airship",
+      flavorName: null,
+      setCode: 'MH2',
+      collectorNumber: '99',
+    };
+    const findMany = vi.fn(async (args: { where?: Record<string, unknown> }) => {
+      if (args.where && 'name' in args.where && !('OR' in args.where)) {
+        return [wrongSetOnly];
+      }
+      if (args.where && 'OR' in args.where) {
+        return [
+          wrongSetOnly,
+          {
+            scryfallId: 'airship-fin',
+            name: "Adventurer's Airship",
+            flavorName: null,
+            setCode: 'FIN',
+            collectorNumber: '252',
+          },
+        ];
+      }
+      return [];
+    });
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { findMany, upsert } } as never,
+    });
+
+    const result = await service.bulkLookupForPoolImport(["Adventurer's Airship"], ['FIN']);
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(result.some((card) => card.setCode === 'FIN')).toBe(true);
+  });
+
   it('tries pool set codes in order for named lookup', async () => {
     const fetchMock = createFetchMock([
       { ok: false, status: 404, body: {} },

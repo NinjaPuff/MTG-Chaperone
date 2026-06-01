@@ -5,7 +5,12 @@ import {
 } from '@mtg-league/shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { bulkLookupForPoolImport, getCard, lookupCanonicalByName } from './scryfallService.js';
+import {
+  bulkLookupForPoolImport,
+  getCard,
+  lookupCanonicalByName,
+  tryResolvePrintingInPoolSet,
+} from './scryfallService.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 async function refreshStaleDfcManaCost(cachedCardIds: string[]) {
@@ -298,6 +303,48 @@ function parseBulkItemLine(item: BulkItemInput) {
   };
 }
 
+type BulkResolveCandidate = {
+  scryfallId: string;
+  name: string;
+  flavorName?: string | null;
+  setCode: string;
+  collectorNumber?: string | null;
+  imageUris: unknown;
+  manaCost: string | null;
+};
+
+export function filterBulkResolveCandidates(
+  cards: BulkResolveCandidate[],
+  specifiedSetCode: string | null,
+  specifiedCollectorNumber: string | null,
+  allowedSetCodes: Set<string>,
+): BulkResolveCandidate[] {
+  const filteredByAllowedSet = cards.filter(
+    (card) => allowedSetCodes.size === 0 || allowedSetCodes.has(card.setCode.toUpperCase()),
+  );
+  const inSpecifiedSet = filteredByAllowedSet.filter(
+    (card) => !specifiedSetCode || card.setCode.toUpperCase() === specifiedSetCode,
+  );
+
+  if (!specifiedCollectorNumber) {
+    return inSpecifiedSet;
+  }
+
+  const withCollector = inSpecifiedSet.filter(
+    (card) => (card.collectorNumber ?? '').toLowerCase() === specifiedCollectorNumber.toLowerCase(),
+  );
+  if (withCollector.length > 0) {
+    return withCollector;
+  }
+
+  const withStoredCollector = inSpecifiedSet.filter((card) => card.collectorNumber?.trim());
+  if (withStoredCollector.length > 0) {
+    return [];
+  }
+
+  return inSpecifiedSet;
+}
+
 export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCodes: string[]) {
   const normalizedItems = items
     .map((item) => parseBulkItemLine(item))
@@ -313,22 +360,47 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
   const lookupCards = await bulkLookupForPoolImport(lookupNames, setCodes);
   const allowedSetCodes = new Set(setCodes.map((setCode) => setCode.trim().toUpperCase()).filter(Boolean));
 
-  const candidatesByName = new Map<string, typeof lookupCards>();
-  for (const card of lookupCards) {
-    const keys = slashAliasKeysForIndexedName(card.name).map((key) => key.toLowerCase());
-    if (card.flavorName?.trim()) {
-      keys.push(card.flavorName.trim().toLowerCase());
-    }
+  type CachedLookupCard = (typeof lookupCards)[number];
 
-    for (const key of keys) {
-      const existing = candidatesByName.get(key);
-      if (existing) {
-        existing.push(card);
-      } else {
-        candidatesByName.set(key, [card]);
-      }
+  const addCandidate = (map: Map<string, CachedLookupCard[]>, key: string, card: CachedLookupCard) => {
+    const existing = map.get(key);
+    if (existing) {
+      existing.push(card);
+      return;
+    }
+    map.set(key, [card]);
+  };
+
+  const candidatesByOracleName = new Map<string, CachedLookupCard[]>();
+  const candidatesByFlavorName = new Map<string, CachedLookupCard[]>();
+  for (const card of lookupCards) {
+    for (const key of slashAliasKeysForIndexedName(card.name).map((oracleKey) => oracleKey.toLowerCase())) {
+      addCandidate(candidatesByOracleName, key, card);
+    }
+    const flavorKey = card.flavorName?.trim().toLowerCase();
+    if (flavorKey) {
+      addCandidate(candidatesByFlavorName, flavorKey, card);
     }
   }
+
+  const lookupKeysForItem = (name: string) =>
+    expandCardNameLookupVariants(name).map((variant) => variant.toLowerCase());
+
+  const candidatesForItem = (name: string) => {
+    for (const key of lookupKeysForItem(name)) {
+      const byOracle = candidatesByOracleName.get(key);
+      if (byOracle?.length) {
+        return byOracle;
+      }
+    }
+    for (const key of lookupKeysForItem(name)) {
+      const byFlavor = candidatesByFlavorName.get(key);
+      if (byFlavor?.length) {
+        return byFlavor;
+      }
+    }
+    return [];
+  };
 
   type ResolvedCardAccumulator = {
     cachedCardId: string;
@@ -347,23 +419,17 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
   const unresolved: string[] = [];
 
   for (const item of normalizedItems) {
-    const key = item.name.toLowerCase();
     if (item.specifiedSetCode && allowedSetCodes.size > 0 && !allowedSetCodes.has(item.specifiedSetCode)) {
       unresolved.push(item.inputLabel);
       continue;
     }
 
-    const filteredByAllowedSet = (candidatesByName.get(key) ?? []).filter(
-      (card) => allowedSetCodes.size === 0 || allowedSetCodes.has(card.setCode.toUpperCase()),
-    );
-    const candidates = filteredByAllowedSet
-      .filter((card) => !item.specifiedSetCode || card.setCode.toUpperCase() === item.specifiedSetCode)
-      .filter(
-        (card) =>
-          !item.specifiedCollectorNumber ||
-          (card.collectorNumber ?? '').toLowerCase() === item.specifiedCollectorNumber.toLowerCase(),
-      )
-      .sort((a, b) => a.setCode.localeCompare(b.setCode) || a.scryfallId.localeCompare(b.scryfallId));
+    const candidates = filterBulkResolveCandidates(
+      candidatesForItem(item.name),
+      item.specifiedSetCode,
+      item.specifiedCollectorNumber,
+      allowedSetCodes,
+    ).sort((a, b) => a.setCode.localeCompare(b.setCode) || a.scryfallId.localeCompare(b.scryfallId));
 
     let match = candidates[0];
     if (!item.specifiedSetCode && !item.specifiedCollectorNumber && candidates.length > 1) {
@@ -378,6 +444,20 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
         }
       } catch {
         // Fall back to deterministic local candidate ordering.
+      }
+    }
+
+    if (!match && item.specifiedSetCode) {
+      try {
+        match =
+          (await tryResolvePrintingInPoolSet(
+            item.name,
+            item.specifiedSetCode,
+            item.specifiedCollectorNumber,
+            [...allowedSetCodes],
+          )) ?? undefined;
+      } catch {
+        // Fall through to unresolved.
       }
     }
 

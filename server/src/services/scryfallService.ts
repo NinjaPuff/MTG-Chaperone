@@ -1,3 +1,4 @@
+import { expandCardNameLookupVariants } from '@mtg-league/shared';
 import { AppError } from '../middleware/errorHandler.js';
 import { resolveTypeLine } from '../lib/scryfallCardNormalize.js';
 import { prisma } from '../lib/prisma.js';
@@ -335,22 +336,36 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     ];
   }
 
+  function lookupNameVariants(lookupName: string) {
+    return expandCardNameLookupVariants(lookupName).map((variant) => variant.toLowerCase());
+  }
+
   function cardMatchesLookupName(
     card: { name: string; flavorName?: string | null },
     lookupName: string,
   ) {
-    const lower = lookupName.toLowerCase();
-    return (
-      card.name.toLowerCase() === lower ||
-      (card.flavorName?.trim().toLowerCase() ?? '') === lower
-    );
+    const variants = lookupNameVariants(lookupName);
+    const cardNames = [card.name.toLowerCase()];
+    if (card.flavorName?.trim()) {
+      cardNames.push(card.flavorName.trim().toLowerCase());
+    }
+    return variants.some((variant) => cardNames.includes(variant));
   }
 
-  function namesStillMissing<T extends { name: string; flavorName?: string | null }>(
+  function namesStillMissing<T extends { name: string; flavorName?: string | null; setCode: string }>(
     cards: T[],
     lookupNames: string[],
+    allowedSetCodes: string[] = [],
   ) {
-    return lookupNames.filter((name) => !cards.some((card) => cardMatchesLookupName(card, name)));
+    const allowed = new Set(allowedSetCodes.map((setCode) => setCode.trim().toUpperCase()).filter(Boolean));
+
+    return lookupNames.filter((name) => {
+      const matches = cards.filter((card) => cardMatchesLookupName(card, name));
+      if (allowed.size === 0) {
+        return matches.length === 0;
+      }
+      return !matches.some((card) => allowed.has(card.setCode.toUpperCase()));
+    });
   }
 
   function mergeCachedCards<T extends { scryfallId: string }>(existing: T[], additions: T[]) {
@@ -372,6 +387,53 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
         ],
       },
     });
+  }
+
+  function printingMatchesLookupName(card: ScryfallCard, lookupName: string) {
+    return lookupNameVariants(lookupName).includes(card.name.toLowerCase());
+  }
+
+  async function tryResolvePrintingInPoolSet(
+    name: string,
+    setCode: string,
+    collectorNumber: string | null,
+    allowedSetCodes: string[],
+  ) {
+    const normalizedSet = setCode.trim().toUpperCase();
+    if (!normalizedSet) {
+      return null;
+    }
+
+    const allowed = normalizeSetCodes(allowedSetCodes);
+    if (allowed.length > 0 && !allowed.includes(normalizedSet)) {
+      return null;
+    }
+
+    if (collectorNumber) {
+      try {
+        const byCollector = await fetchScryfall<ScryfallCard>(
+          `${SCRYFALL_BASE_URL}/cards/${encodeURIComponent(normalizedSet.toLowerCase())}/${encodeURIComponent(collectorNumber)}`,
+        );
+        if (printingMatchesLookupName(byCollector, name)) {
+          return upsertCard(byCollector);
+        }
+      } catch {
+        // Fall through to exact-name lookup in this set.
+      }
+    }
+
+    for (const variant of expandCardNameLookupVariants(name)) {
+      try {
+        const byName = await fetchScryfall<ScryfallCard>(
+          `${SCRYFALL_BASE_URL}/cards/named?exact=${encodeURIComponent(variant)}&set=${normalizedSet.toLowerCase()}`,
+        );
+        return upsertCard(byName);
+      } catch {
+        // Try the next DFC name variant.
+      }
+    }
+
+    return null;
   }
 
   async function tryResolveFlavorNameFromScryfall(name: string, setCodes: string[]) {
@@ -423,7 +485,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       },
     });
 
-    let missing = namesStillMissing(cached, normalizedNames);
+    let missing = namesStillMissing(cached, normalizedNames, normalizedSetCodes);
 
     if (missing.length > 0) {
       const byFlavor = await deps.prisma.cachedCard.findMany({
@@ -435,18 +497,22 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
         },
       });
       cached = mergeCachedCards(cached, byFlavor);
-      missing = namesStillMissing(cached, normalizedNames);
+      missing = namesStillMissing(cached, normalizedNames, normalizedSetCodes);
     }
 
     for (const name of missing) {
       await tryResolveFlavorNameFromScryfall(name, normalizedSetCodes);
     }
 
-    missing = namesStillMissing(await loadCachedCardsForLookupNames(normalizedNames), normalizedNames);
+    missing = namesStillMissing(
+      await loadCachedCardsForLookupNames(normalizedNames),
+      normalizedNames,
+      normalizedSetCodes,
+    );
 
     for (const name of missing) {
       try {
-        await searchCards(`!"${name}"`);
+        await searchCards(`!"${name}"`, normalizedSetCodes);
       } catch {
         // Ignore unresolved names in bulk mode.
       }
@@ -578,6 +644,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     getCardFaces,
     bulkLookupByName,
     bulkLookupForPoolImport,
+    tryResolvePrintingInPoolSet,
     bulkImportSet,
     importSetFromScryfall,
     getSetCacheStats,
@@ -591,6 +658,7 @@ export const getCard = defaultScryfallService.getCard;
 export const getCardFaces = defaultScryfallService.getCardFaces;
 export const bulkLookupByName = defaultScryfallService.bulkLookupByName;
 export const bulkLookupForPoolImport = defaultScryfallService.bulkLookupForPoolImport;
+export const tryResolvePrintingInPoolSet = defaultScryfallService.tryResolvePrintingInPoolSet;
 export const bulkImportSet = defaultScryfallService.bulkImportSet;
 export const importSetFromScryfall = defaultScryfallService.importSetFromScryfall;
 export const getSetCacheStats = defaultScryfallService.getSetCacheStats;
