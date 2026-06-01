@@ -57,4 +57,61 @@ describe('StagedOwnerCardRow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     expect(onRemove).toHaveBeenCalledTimes(1);
   });
+
+  it('renders quantity input before the card name', () => {
+    renderWithAppProviders(
+      <StagedOwnerCardRow
+        cachedCardId="card-1"
+        name="Lightning Bolt"
+        phaseLabel="Pack 1"
+        imageUri={null}
+        quantity={1}
+        applying={false}
+        onQuantityChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    const quantityInput = screen.getByRole('spinbutton');
+    const nameText = screen.getByText('Lightning Bolt · Pack 1');
+    expect(quantityInput.compareDocumentPosition(nameText) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('places remove button immediately after the card name', () => {
+    renderWithAppProviders(
+      <StagedOwnerCardRow
+        cachedCardId="card-1"
+        name="Lightning Bolt"
+        phaseLabel="Pack 1"
+        imageUri={null}
+        quantity={1}
+        applying={false}
+        onQuantityChange={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    const nameText = screen.getByText('Lightning Bolt · Pack 1');
+    const removeButton = screen.getByRole('button', { name: 'Remove' });
+    expect(nameText.compareDocumentPosition(removeButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('calls onQuantityChange when quantity is edited', () => {
+    const onQuantityChange = vi.fn();
+    renderWithAppProviders(
+      <StagedOwnerCardRow
+        cachedCardId="card-1"
+        name="Lightning Bolt"
+        phaseLabel="Pack 1"
+        imageUri={null}
+        quantity={1}
+        applying={false}
+        onQuantityChange={onQuantityChange}
+        onRemove={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '3' } });
+    expect(onQuantityChange).toHaveBeenCalledWith(3);
+  });
 });

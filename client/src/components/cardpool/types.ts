@@ -24,3 +24,12 @@ export type ViewPreferences = {
   sortKey: SortKey;
   groupMode: GroupMode;
 };
+
+export type SearchResult = {
+  scryfallId: string;
+  name: string;
+  setCode: string;
+  imageUris: unknown;
+  manaCost: string | null;
+  typeLine: string;
+};

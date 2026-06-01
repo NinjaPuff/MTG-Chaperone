@@ -5,21 +5,18 @@ import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
 import { primaryName, profileSubtitle } from '@/lib/userDisplay';
-import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
+import { CardPoolSearchPanel } from '@/components/cardpool/CardPoolSearchPanel';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
 import { ListView } from '@/components/cardpool/ListView';
-import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
 import { StacksView } from '@/components/cardpool/StacksView';
 import { StagedChangeRow } from '@/components/cardpool/StagedChangeRow';
 import { StagedOwnerCardRow } from '@/components/cardpool/StagedOwnerCardRow';
 import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
-import { SetSymbol } from '@/components/SetSymbol';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
-import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
+import type { GroupMode, PoolCard, SearchResult, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
-import { focusAndSelectInput } from '@/lib/focusSearchInputAfterStage';
 import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
 import {
   buildApplyStagedRemovalsConfirmMessage,
@@ -93,15 +90,6 @@ type PoolResponse = {
     pool: PoolDetail;
     acquisitions: PoolAcquisition[];
   };
-};
-
-type SearchResult = {
-  scryfallId: string;
-  name: string;
-  setCode: string;
-  imageUris: unknown;
-  manaCost: string | null;
-  typeLine: string;
 };
 
 type SearchResponse = {
@@ -503,7 +491,6 @@ export function CardPoolDetailPage() {
       ),
     );
     showToast({ message: `Staged: ${card.name} (+${quantity})`, variant: 'success' });
-    focusAndSelectInput(searchInputRef.current);
   };
 
   const updateStagedQuantity = (cachedCardId: string, phase: string, quantity: number) => {
@@ -1001,91 +988,18 @@ export function CardPoolDetailPage() {
       </div>
 
       {isOwner ? (
-        <>
-          <form
-            className="rounded-lg border border-border bg-card p-6 space-y-4"
-            onSubmit={(event) => event.preventDefault()}
-          >
-            <h2 className="text-lg font-semibold">Add Cards</h2>
-
-            <label className="block text-sm font-medium">
-              Phase Label
-              <select
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                value={phaseLabel}
-                onChange={(event) => setPhaseLabel(event.target.value)}
-              >
-                {phaseOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block text-sm font-medium">
-              Search Cards
-              <input
-                ref={searchInputRef}
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search by card name..."
-              />
-            </label>
-
-            {searching ? <p className="text-xs text-muted-foreground">Searching...</p> : null}
-            {!searching && searchResults.length > 0 ? (
-              <div className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-border p-2">
-                {searchResults.map((card) => (
-                  <div
-                    key={card.scryfallId}
-                    className="flex w-full items-center justify-between gap-3 rounded border border-border p-2 hover:bg-muted"
-                  >
-                    <HoverTarget
-                      scryfallId={card.scryfallId}
-                      name={card.name}
-                      imageUrl={getSmallImage(card.imageUris)}
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                        {getSmallImage(card.imageUris) ? (
-                          <img
-                            src={getSmallImage(card.imageUris) ?? undefined}
-                            alt={card.name}
-                            className="h-10 w-8 rounded border border-border object-cover"
-                          />
-                        ) : null}
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{card.name}</p>
-                          <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <SetSymbol
-                              setCode={card.setCode}
-                              size="sm"
-                              iconUri={getSet(card.setCode)?.icon_svg_uri}
-                              setName={getSet(card.setCode)?.name}
-                            />
-                            <ManaCostSymbols manaCost={card.manaCost} className="inline-flex align-middle" />
-                          </p>
-                        </div>
-                      </div>
-                    </HoverTarget>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-md border border-border px-2 py-1 text-xs font-medium hover:bg-background"
-                      onClick={() => addSearchResultToStage(card)}
-                    >
-                      Add
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <p className="text-xs text-muted-foreground">
-              Selected cards are staged below. Review staged changes, then apply when ready.
-            </p>
-          </form>
-        </>
+        <CardPoolSearchPanel
+          phaseLabel={phaseLabel}
+          phaseOptions={phaseOptions}
+          onPhaseLabelChange={setPhaseLabel}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          searchResults={searchResults}
+          searching={searching}
+          onStageCard={addSearchResultToStage}
+          inputRef={searchInputRef}
+          getSet={getSet}
+        />
       ) : null}
 
       {isOwner || isAdmin ? (
@@ -1142,25 +1056,19 @@ export function CardPoolDetailPage() {
                 />
               ))}
 
-              {stagedPoolChanges.map((change) => {
-                const actionLabel =
-                  change.action === 'add'
-                    ? `Add +${change.quantity}`
-                    : change.action === 'remove_one'
-                      ? `Remove -${change.quantity}`
-                      : 'Remove all';
-                return (
-                  <StagedChangeRow
-                    key={change.id}
-                    cachedCardId={change.cachedCardId}
-                    label={`${actionLabel} - ${change.cardName} (${change.phaseLabel})`}
-                    imageUri={change.imageUri}
-                    imageAlt={change.cardName}
-                    applying={applyingStagedChanges}
-                    onRemove={() => removeStagedPoolChange(change.id)}
-                  />
-                );
-              })}
+              {stagedPoolChanges.map((change) => (
+                <StagedChangeRow
+                  key={change.id}
+                  cachedCardId={change.cachedCardId}
+                  action={change.action}
+                  quantity={change.quantity}
+                  name={change.cardName}
+                  phaseLabel={change.phaseLabel}
+                  imageUri={change.imageUri}
+                  applying={applyingStagedChanges}
+                  onRemove={() => removeStagedPoolChange(change.id)}
+                />
+              ))}
             </div>
           )}
         </div>
