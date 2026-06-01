@@ -11,7 +11,10 @@ type InviteStateInput = {
   useCount: number;
 };
 
-export function validateInviteState(invite: InviteStateInput, now = new Date()) {
+type InviteActiveInput = Pick<InviteStateInput, 'status' | 'expiresAt'>;
+type InviteCapacityInput = Pick<InviteStateInput, 'maxUses' | 'useCount'>;
+
+export function validateInviteActive(invite: InviteActiveInput, now = new Date()) {
   if (invite.status !== 'active') {
     throw new AppError(404, 'INVALID_INVITE', 'Invite token is invalid');
   }
@@ -19,10 +22,21 @@ export function validateInviteState(invite: InviteStateInput, now = new Date()) 
   if (invite.expiresAt && invite.expiresAt < now) {
     throw new AppError(400, 'INVITE_EXPIRED', 'Invite token has expired');
   }
+}
 
+export function validateInviteCapacity(invite: InviteCapacityInput) {
   if (invite.maxUses !== null && invite.useCount >= invite.maxUses) {
     throw new AppError(400, 'INVITE_EXHAUSTED', 'Invite token has reached max uses');
   }
+}
+
+export function validateInviteState(invite: InviteStateInput, now = new Date()) {
+  validateInviteActive(invite, now);
+  validateInviteCapacity(invite);
+}
+
+export function shouldConsumeInviteUse(hasExistingMembership: boolean) {
+  return !hasExistingMembership;
 }
 
 type InviteServiceDeps = {
@@ -127,11 +141,66 @@ export function createInviteService(partialDeps?: Partial<InviteServiceDeps>) {
   }
 
   async function validateAndJoin(token: string, userId: string) {
-    const invite = await validateInviteToken(token);
+    const invite = await deps.prisma.inviteLink.findFirst({
+      where: { token },
+      include: {
+        league: {
+          select: {
+            id: true,
+            name: true,
+            slug: true,
+            description: true,
+          },
+        },
+      },
+    });
 
-    await deps.prisma.inviteLink.update({
-      where: { id: invite.id },
-      data: { useCount: { increment: 1 } },
+    if (!invite) {
+      throw new AppError(404, 'INVALID_INVITE', 'Invite token is invalid');
+    }
+
+    validateInviteActive(invite, deps.now());
+
+    const existingMembership = await deps.prisma.leagueMembership.findUnique({
+      where: {
+        userId_leagueId: {
+          userId,
+          leagueId: invite.leagueId,
+        },
+      },
+    });
+
+    if (existingMembership) {
+      return invite.league;
+    }
+
+    validateInviteCapacity(invite);
+
+    await deps.prisma.$transaction(async (tx) => {
+      const membershipInTx = await tx.leagueMembership.findUnique({
+        where: {
+          userId_leagueId: {
+            userId,
+            leagueId: invite.leagueId,
+          },
+        },
+      });
+
+      if (membershipInTx) {
+        return;
+      }
+
+      await tx.inviteLink.update({
+        where: { id: invite.id },
+        data: { useCount: { increment: 1 } },
+      });
+
+      await tx.leagueMembership.create({
+        data: {
+          userId,
+          leagueId: invite.leagueId,
+        },
+      });
     });
 
     await deps.addMember(invite.league.slug, userId);
