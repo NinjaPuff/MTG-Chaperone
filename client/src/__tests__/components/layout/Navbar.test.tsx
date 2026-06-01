@@ -4,13 +4,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   useAuth: vi.fn(),
+  useTheme: vi.fn(),
 }));
 
 vi.mock('@/context/AuthContext', () => ({
   useAuth: () => mocks.useAuth(),
 }));
 
-import { Sidebar } from '@/components/layout/Sidebar';
+vi.mock('@/hooks/useTheme', () => ({
+  useTheme: () => mocks.useTheme(),
+}));
+
+import { Navbar } from '@/components/layout/Navbar';
 
 const baseUser = {
   id: 'user-1',
@@ -20,49 +25,52 @@ const baseUser = {
   avatarUrl: null,
 };
 
-describe('Sidebar', () => {
+describe('Navbar', () => {
   beforeEach(() => {
     mocks.useAuth.mockReset();
+    mocks.useTheme.mockReturnValue({ theme: 'light', toggleTheme: vi.fn() });
   });
 
   it('hides Admin link for logged-out users', () => {
-    mocks.useAuth.mockReturnValue({ user: null, isLoading: false });
+    mocks.useAuth.mockReturnValue({ user: null, isLoading: false, logout: vi.fn() });
 
     render(
       <MemoryRouter>
-        <Sidebar collapsed={false} onToggle={() => undefined} />
+        <Navbar />
       </MemoryRouter>,
     );
 
     expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Standings' })).toBeInTheDocument();
   });
 
   it('hides Admin link for regular users', () => {
     mocks.useAuth.mockReturnValue({
       user: { ...baseUser, role: 'user' },
       isLoading: false,
+      logout: vi.fn(),
     });
 
     render(
       <MemoryRouter>
-        <Sidebar collapsed={false} onToggle={() => undefined} />
+        <Navbar />
       </MemoryRouter>,
     );
 
     expect(screen.queryByRole('link', { name: 'Admin' })).toBeNull();
-    expect(screen.getByRole('link', { name: 'Profile' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'History' })).toBeInTheDocument();
   });
 
   it('shows Admin link for admin users', () => {
     mocks.useAuth.mockReturnValue({
       user: { ...baseUser, role: 'admin' },
       isLoading: false,
+      logout: vi.fn(),
     });
 
     render(
       <MemoryRouter>
-        <Sidebar collapsed={false} onToggle={() => undefined} />
+        <Navbar />
       </MemoryRouter>,
     );
 
@@ -70,11 +78,11 @@ describe('Sidebar', () => {
   });
 
   it('hides Admin link while auth is loading', () => {
-    mocks.useAuth.mockReturnValue({ user: null, isLoading: true });
+    mocks.useAuth.mockReturnValue({ user: null, isLoading: true, logout: vi.fn() });
 
     render(
       <MemoryRouter>
-        <Sidebar collapsed={false} onToggle={() => undefined} />
+        <Navbar />
       </MemoryRouter>,
     );
 

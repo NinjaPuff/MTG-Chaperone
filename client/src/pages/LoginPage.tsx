@@ -19,6 +19,11 @@ export function LoginPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           Use one of the OAuth providers below to authenticate.
         </p>
+        {searchParams.get('error') === 'oauth_failed' && (
+          <p className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            Sign-in failed or the login link expired. Please try again.
+          </p>
+        )}
         <div className="mt-8 flex flex-col gap-3">
           <a
             href="/api/auth/discord"

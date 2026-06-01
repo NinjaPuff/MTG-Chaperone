@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
 import passport from 'passport';
 import { signToken } from '../config/jwt.js';
 import { prisma } from '../lib/prisma.js';
@@ -12,10 +12,26 @@ function isStrategyConfigured(name: 'discord' | 'google') {
   return Boolean((passport as unknown as { _strategy?: (strategy: string) => unknown })._strategy?.(name));
 }
 
+export function createOAuthCallbackMiddleware(
+  strategy: 'discord' | 'google',
+  oauthFailureRedirect: string,
+) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    passport.authenticate(strategy, { session: false }, (err: Error | null, user: Express.User | false) => {
+      if (err || !user) {
+        res.redirect(oauthFailureRedirect);
+        return;
+      }
+      req.user = user;
+      next();
+    })(req, res, next);
+  };
+}
+
 export function createAuthRouter(deps?: Pick<AppDeps, 'config' | 'prisma' | 'services'>) {
   const router = Router();
   const config = deps?.config ?? loadConfig();
-  const authMw = deps?.services.auth.requireAuth ?? requireAuth;
+  const authMw = deps?.services?.auth?.requireAuth ?? requireAuth;
   const prismaClient = deps?.prisma ?? prisma;
   const clientUrl = config.clientUrl;
   const oauthFailureRedirect = `${clientUrl}/login?error=oauth_failed`;
@@ -45,7 +61,7 @@ export function createAuthRouter(deps?: Pick<AppDeps, 'config' | 'prisma' | 'ser
         res.redirect(`${clientUrl}/login?error=discord_not_configured`);
         return;
       }
-      passport.authenticate('discord', { session: false, failureRedirect: oauthFailureRedirect })(req, res, next);
+      createOAuthCallbackMiddleware('discord', oauthFailureRedirect)(req, res, next);
     },
     (req, res) => {
       const user = req.user as Express.User | undefined;
@@ -77,7 +93,7 @@ export function createAuthRouter(deps?: Pick<AppDeps, 'config' | 'prisma' | 'ser
         res.redirect(`${clientUrl}/login?error=google_not_configured`);
         return;
       }
-      passport.authenticate('google', { session: false, failureRedirect: oauthFailureRedirect })(req, res, next);
+      createOAuthCallbackMiddleware('google', oauthFailureRedirect)(req, res, next);
     },
     (req, res) => {
       const user = req.user as Express.User | undefined;

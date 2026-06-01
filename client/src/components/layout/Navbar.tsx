@@ -1,14 +1,41 @@
 import { Link } from 'react-router-dom';
 import { Menu, X, Sun, Moon } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { useAuth } from '@/context/AuthContext';
 import { primaryName } from '@/lib/userDisplay';
 
+const mainNavItems = [
+  { to: '/standings', label: 'Standings' },
+  { to: '/schedule', label: 'Schedule' },
+  { to: '/pools', label: 'Card Pools' },
+  { to: '/decks', label: 'Decklists' },
+  { to: '/history', label: 'History' },
+];
+
+const adminNavItem = { to: '/admin', label: 'Admin' };
+
+const navLinkClass =
+  'text-muted-foreground transition-colors hover:text-foreground';
+
 export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, isLoading } = useAuth();
+
+  const navItems = useMemo(() => {
+    if (!isLoading && user?.role === 'admin') {
+      return [...mainNavItems, adminNavItem];
+    }
+    return mainNavItems;
+  }, [isLoading, user?.role]);
+
+  const mobileNavItems = useMemo(
+    () => [{ to: '/', label: 'Dashboard' }, ...navItems],
+    [navItems],
+  );
+
+  const closeMobileMenu = () => setMobileMenuOpen(false);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -20,21 +47,11 @@ export function Navbar() {
         </Link>
 
         <nav className="hidden md:flex items-center space-x-6 text-sm font-medium">
-          <Link to="/standings" className="text-muted-foreground transition-colors hover:text-foreground">
-            Standings
-          </Link>
-          <Link to="/schedule" className="text-muted-foreground transition-colors hover:text-foreground">
-            Schedule
-          </Link>
-          <Link to="/pools" className="text-muted-foreground transition-colors hover:text-foreground">
-            Card Pools
-          </Link>
-          <Link to="/decks" className="text-muted-foreground transition-colors hover:text-foreground">
-            Decklists
-          </Link>
-          <Link to="/history" className="text-muted-foreground transition-colors hover:text-foreground">
-            History
-          </Link>
+          {navItems.map((item) => (
+            <Link key={item.to} to={item.to} className={navLinkClass}>
+              {item.label}
+            </Link>
+          ))}
         </nav>
 
         <div className="flex flex-1 items-center justify-end space-x-2">
@@ -89,56 +106,31 @@ export function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-border bg-background">
           <nav className="container mx-auto px-4 py-4 space-y-3">
-            <Link
-              to="/standings"
-              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Standings
-            </Link>
-            <Link
-              to="/schedule"
-              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Schedule
-            </Link>
-            <Link
-              to="/pools"
-              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Card Pools
-            </Link>
-            <Link
-              to="/decks"
-              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Decklists
-            </Link>
-            <Link
-              to="/history"
-              className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              History
-            </Link>
+            {mobileNavItems.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`block text-sm font-medium ${navLinkClass}`}
+                onClick={closeMobileMenu}
+              >
+                {item.label}
+              </Link>
+            ))}
             {user ? (
               <>
                 <Link
                   to={`/profile/${user.slug}`}
                   className="block text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-                  onClick={() => setMobileMenuOpen(false)}
+                  onClick={closeMobileMenu}
                 >
                   {primaryName(user)}
                 </Link>
                 <button
                   type="button"
-                  className="block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                  className={`block text-sm font-medium ${navLinkClass}`}
                   onClick={() => {
                     logout();
-                    setMobileMenuOpen(false);
+                    closeMobileMenu();
                   }}
                 >
                   Sign Out
@@ -148,7 +140,7 @@ export function Navbar() {
               <Link
                 to="/login"
                 className="block text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-                onClick={() => setMobileMenuOpen(false)}
+                onClick={closeMobileMenu}
               >
                 Sign In
               </Link>
