@@ -431,7 +431,7 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
       allowedSetCodes,
     ).sort((a, b) => a.setCode.localeCompare(b.setCode) || a.scryfallId.localeCompare(b.scryfallId));
 
-    let match = candidates[0];
+    let match: BulkResolveCandidate | undefined = candidates[0];
     if (!item.specifiedSetCode && !item.specifiedCollectorNumber && candidates.length > 1) {
       try {
         const canonical = await lookupCanonicalByName(item.name, [...allowedSetCodes]);
@@ -449,13 +449,15 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
 
     if (!match && item.specifiedSetCode) {
       try {
-        match =
-          (await tryResolvePrintingInPoolSet(
-            item.name,
-            item.specifiedSetCode,
-            item.specifiedCollectorNumber,
-            [...allowedSetCodes],
-          )) ?? undefined;
+        const fetched = await tryResolvePrintingInPoolSet(
+          item.name,
+          item.specifiedSetCode,
+          item.specifiedCollectorNumber,
+          [...allowedSetCodes],
+        );
+        if (fetched) {
+          match = fetched;
+        }
       } catch {
         // Fall through to unresolved.
       }
