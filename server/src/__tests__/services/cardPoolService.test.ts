@@ -70,6 +70,19 @@ const adelineFca = {
   manaCost: '{1}{W}{W}',
 };
 
+const trystanCanonical = 'Trystan, Callous Cultivator // Trystan, Penitent Culler';
+const trystanMisexport = 'Trystan, Callous Cultivator / Trystan, Penitent Culler';
+const trystanPasteLine = 'Trystan, Callous Cultivator / Trystan, Penitent Culler (TST) 112';
+
+const trystanDfcCached = {
+  scryfallId: 'trystan-id',
+  name: trystanCanonical,
+  setCode: 'TST',
+  collectorNumber: '112',
+  imageUris: { small: 'https://example.com/trystan.jpg' },
+  manaCost: '{2}{G}',
+};
+
 describe('cardPoolService bulkResolveAcquisitionItems', () => {
   beforeEach(() => {
     prismaMock.cachedCard.findMany.mockReset();
@@ -285,6 +298,40 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
 
     expect(result.resolved).toEqual([]);
     expect(result.unresolved).toEqual(['Hero of Light (FCA)']);
+    expect(scryfallMocks.lookupCanonicalByName).not.toHaveBeenCalled();
+  });
+
+  it('resolves single-slash DFC to canonical name', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([trystanDfcCached]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: trystanPasteLine, quantity: 1 }], ['TST']);
+
+    expect(scryfallMocks.bulkLookupForPoolImport).toHaveBeenCalledWith(
+      expect.arrayContaining([trystanMisexport, trystanCanonical]),
+      ['TST'],
+    );
+    expect(result.resolved[0]?.cachedCard.name).toBe(trystanCanonical);
+    expect(result.unresolved).toEqual([]);
+    expect(scryfallMocks.lookupCanonicalByName).not.toHaveBeenCalled();
+  });
+
+  it('passes parsed DFC name without set suffix to bulk lookup', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([trystanDfcCached]);
+
+    await bulkResolveAcquisitionItems([{ name: trystanPasteLine, quantity: 1 }], ['TST']);
+
+    const lookupNames = scryfallMocks.bulkLookupForPoolImport.mock.calls[0]?.[0] as string[];
+    expect(lookupNames).toEqual(expect.arrayContaining([trystanMisexport]));
+    expect(lookupNames.every((name) => !name.includes('(TST)') && !name.endsWith('112'))).toBe(true);
+  });
+
+  it('keeps single-slash DFC unresolved when set is outside pool allowed sets', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([trystanDfcCached]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: trystanPasteLine, quantity: 1 }], ['ECL']);
+
+    expect(result.resolved).toEqual([]);
+    expect(result.unresolved).toEqual([trystanPasteLine]);
     expect(scryfallMocks.lookupCanonicalByName).not.toHaveBeenCalled();
   });
 });

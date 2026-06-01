@@ -41,6 +41,23 @@ function parseQuantityAndRemainder(line: string) {
   };
 }
 
+export function expandCardNameLookupVariants(name: string): string[] {
+  const trimmed = name.trim();
+  const variants = [trimmed];
+  if (trimmed.includes(' / ') && !trimmed.includes(' // ')) {
+    variants.push(trimmed.replace(/ \/ /g, ' // '));
+  }
+  return [...new Set(variants)];
+}
+
+export function slashAliasKeysForIndexedName(name: string): string[] {
+  const keys = [name];
+  if (name.includes(' // ')) {
+    keys.push(name.replace(/ \/\/ /g, ' / '));
+  }
+  return [...new Set(keys)];
+}
+
 export function parseDecklistLine(rawLine: string): ParsedDecklistLine {
   const normalized = stripFoilSuffix(rawLine.trim());
   const { quantity, remainder } = parseQuantityAndRemainder(normalized);

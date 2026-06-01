@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPoolDecklistExport,
+  expandCardNameLookupVariants,
   formatDecklistLine,
   parseDecklistLine,
+  slashAliasKeysForIndexedName,
 } from '@mtg-league/shared';
+
+const trystanCanonical = 'Trystan, Callous Cultivator // Trystan, Penitent Culler';
+const trystanMisexport = 'Trystan, Callous Cultivator / Trystan, Penitent Culler';
 
 describe('parseDecklistLine', () => {
   it('parses Arena full line with set and collector number', () => {
@@ -75,6 +80,81 @@ describe('parseDecklistLine', () => {
       name: 'Who // What // When // Where // Why',
       setCode: 'UNH',
       collectorNumber: '136',
+    });
+  });
+
+  it('preserves single-slash DFC misexport in parsed name', () => {
+    expect(
+      parseDecklistLine('1 Trystan, Callous Cultivator / Trystan, Penitent Culler (TST) 112'),
+    ).toEqual({
+      quantity: 1,
+      name: trystanMisexport,
+      setCode: 'TST',
+      collectorNumber: '112',
+    });
+  });
+});
+
+describe('card name slash lookup helpers', () => {
+  describe('expandCardNameLookupVariants', () => {
+    it('adds canonical // variant for spaced single-slash DFC misexport', () => {
+      expect(expandCardNameLookupVariants(trystanMisexport)).toEqual([
+        trystanMisexport,
+        trystanCanonical,
+      ]);
+    });
+
+    it('replaces every spaced single slash for multi-face misexport', () => {
+      const misexport = 'Who / What / When / Where / Why';
+      const variants = expandCardNameLookupVariants(misexport);
+      expect(variants).toHaveLength(2);
+      expect(variants[0]).toBe(misexport);
+      expect(variants[1]).toBe('Who // What // When // Where // Why');
+    });
+
+    it('returns only canonical name when already using // separator', () => {
+      expect(expandCardNameLookupVariants('Heartflame Duelist // Heartflame Slash')).toEqual([
+        'Heartflame Duelist // Heartflame Slash',
+      ]);
+    });
+
+    it('does not expand slashes without surrounding spaces', () => {
+      expect(expandCardNameLookupVariants('Summon: Choco/Mog')).toEqual(['Summon: Choco/Mog']);
+    });
+
+    it('does not expand SP//dr style names', () => {
+      expect(expandCardNameLookupVariants('SP//dr, Piloted by Peni')).toEqual([
+        'SP//dr, Piloted by Peni',
+      ]);
+    });
+
+    it('trims whitespace before expanding', () => {
+      expect(expandCardNameLookupVariants(`  ${trystanMisexport}  `)).toEqual([
+        trystanMisexport,
+        trystanCanonical,
+      ]);
+    });
+
+    it('is idempotent for canonical DFC names', () => {
+      expect(expandCardNameLookupVariants(trystanCanonical)).toEqual([trystanCanonical]);
+    });
+  });
+
+  describe('slashAliasKeysForIndexedName', () => {
+    it('includes single-slash alias for canonical DFC names', () => {
+      const keys = slashAliasKeysForIndexedName(trystanCanonical);
+      expect(keys).toContain(trystanCanonical);
+      expect(keys).toContain(trystanMisexport);
+    });
+
+    it('does not reverse-expand misexport-only names', () => {
+      expect(slashAliasKeysForIndexedName(trystanMisexport)).toEqual([trystanMisexport]);
+    });
+
+    it('does not add aliases for SP//dr style names', () => {
+      expect(slashAliasKeysForIndexedName('SP//dr, Piloted by Peni')).toEqual([
+        'SP//dr, Piloted by Peni',
+      ]);
     });
   });
 });

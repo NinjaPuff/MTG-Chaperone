@@ -1,4 +1,8 @@
-import { parseDecklistLine } from '@mtg-league/shared';
+import {
+  expandCardNameLookupVariants,
+  parseDecklistLine,
+  slashAliasKeysForIndexedName,
+} from '@mtg-league/shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { bulkLookupForPoolImport, getCard, lookupCanonicalByName } from './scryfallService.js';
@@ -303,15 +307,15 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
     throw new AppError(400, 'VALIDATION_ERROR', 'At least one item is required');
   }
 
-  const lookupCards = await bulkLookupForPoolImport(
-    normalizedItems.map((item) => item.name),
-    setCodes,
-  );
+  const lookupNames = [
+    ...new Set(normalizedItems.flatMap((item) => expandCardNameLookupVariants(item.name))),
+  ];
+  const lookupCards = await bulkLookupForPoolImport(lookupNames, setCodes);
   const allowedSetCodes = new Set(setCodes.map((setCode) => setCode.trim().toUpperCase()).filter(Boolean));
 
   const candidatesByName = new Map<string, typeof lookupCards>();
   for (const card of lookupCards) {
-    const keys = [card.name.toLowerCase()];
+    const keys = slashAliasKeysForIndexedName(card.name).map((key) => key.toLowerCase());
     if (card.flavorName?.trim()) {
       keys.push(card.flavorName.trim().toLowerCase());
     }
