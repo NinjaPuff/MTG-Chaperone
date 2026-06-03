@@ -1,3 +1,4 @@
+import { parseBulkDecklistText } from '@mtg-league/shared';
 import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest, authApiRequest, getStoredToken } from '@/lib/api';
@@ -176,25 +177,10 @@ function parseViewPreferences(rawValue: string | null): { viewMode: ViewMode; so
 }
 
 function parseBulkItems(input: string) {
-  const lines = input
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  return lines
-    .map((line) => {
-      const match = line.match(/^(\d+)?\s*(.+)$/);
-      if (!match) {
-        return null;
-      }
-      const quantity = match[1] ? Number(match[1]) : 1;
-      const name = match[2].trim();
-      if (!name || !Number.isInteger(quantity) || quantity < 1) {
-        return null;
-      }
-      return { name, quantity };
-    })
-    .filter((item): item is { name: string; quantity: number } => item !== null);
+  return parseBulkDecklistText(input).map((item) => ({
+    name: item.name,
+    quantity: item.quantity,
+  }));
 }
 
 function parseFileNameFromDisposition(disposition: string | null) {
