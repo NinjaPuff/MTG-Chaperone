@@ -101,6 +101,8 @@ describe('card name slash lookup helpers', () => {
       expect(expandCardNameLookupVariants(trystanMisexport)).toEqual([
         trystanMisexport,
         trystanCanonical,
+        'Trystan, Callous Cultivator',
+        'Trystan, Penitent Culler',
       ]);
     });
 
@@ -115,6 +117,8 @@ describe('card name slash lookup helpers', () => {
     it('returns only canonical name when already using // separator', () => {
       expect(expandCardNameLookupVariants('Heartflame Duelist // Heartflame Slash')).toEqual([
         'Heartflame Duelist // Heartflame Slash',
+        'Heartflame Duelist',
+        'Heartflame Slash',
       ]);
     });
 
@@ -132,11 +136,44 @@ describe('card name slash lookup helpers', () => {
       expect(expandCardNameLookupVariants(`  ${trystanMisexport}  `)).toEqual([
         trystanMisexport,
         trystanCanonical,
+        'Trystan, Callous Cultivator',
+        'Trystan, Penitent Culler',
       ]);
     });
 
     it('is idempotent for canonical DFC names', () => {
-      expect(expandCardNameLookupVariants(trystanCanonical)).toEqual([trystanCanonical]);
+      expect(expandCardNameLookupVariants(trystanCanonical)).toEqual([
+        trystanCanonical,
+        'Trystan, Callous Cultivator',
+        'Trystan, Penitent Culler',
+      ]);
+    });
+
+    it('splits two-part double-slash names into halves', () => {
+      expect(expandCardNameLookupVariants('Hero of Light // Adeline, Resplendent Cathar')).toEqual([
+        'Hero of Light // Adeline, Resplendent Cathar',
+        'Hero of Light',
+        'Adeline, Resplendent Cathar',
+      ]);
+    });
+
+    it('does not split names with three or more // parts', () => {
+      expect(expandCardNameLookupVariants('Who // What // When // Where // Why')).toEqual([
+        'Who // What // When // Where // Why',
+      ]);
+    });
+
+    it('does not produce empty halves when one side is blank', () => {
+      expect(expandCardNameLookupVariants(' // Something')).toEqual(['// Something']);
+    });
+
+    it('combines spaced single-slash expansion with half splitting', () => {
+      expect(expandCardNameLookupVariants('Front / Back')).toEqual([
+        'Front / Back',
+        'Front // Back',
+        'Front',
+        'Back',
+      ]);
     });
   });
 

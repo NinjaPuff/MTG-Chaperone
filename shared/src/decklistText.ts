@@ -47,6 +47,20 @@ export function expandCardNameLookupVariants(name: string): string[] {
   if (trimmed.includes(' / ') && !trimmed.includes(' // ')) {
     variants.push(trimmed.replace(/ \/ /g, ' // '));
   }
+  for (const variant of [...variants]) {
+    if (!variant.includes(' // ')) {
+      continue;
+    }
+    const parts = variant.split(' // ');
+    if (parts.length !== 2) {
+      continue;
+    }
+    const [left, right] = parts.map((part) => part.trim());
+    if (!left || !right) {
+      continue;
+    }
+    variants.push(left, right);
+  }
   return [...new Set(variants)];
 }
 

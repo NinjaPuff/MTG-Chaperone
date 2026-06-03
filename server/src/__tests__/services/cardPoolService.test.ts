@@ -88,6 +88,15 @@ const trystanDfcCached = {
   manaCost: '{2}{G}',
 };
 
+const abigalePrepared = {
+  scryfallId: 'abigale-id',
+  name: 'Abigale, Poet Laureate // Heroic Stanza',
+  setCode: 'SOS',
+  collectorNumber: '42',
+  imageUris: { small: 'https://example.com/abigale.jpg' },
+  manaCost: '{2}{U}',
+};
+
 describe('cardPoolService bulkResolveAcquisitionItems', () => {
   beforeEach(() => {
     prismaMock.cachedCard.findMany.mockReset();
@@ -434,5 +443,102 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
     expect(result.resolved).toEqual([]);
     expect(result.unresolved).toEqual([trystanPasteLine]);
     expect(scryfallMocks.lookupCanonicalByName).not.toHaveBeenCalled();
+  });
+
+  it('resolves front-face-only prepared card names', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([abigalePrepared]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Abigale, Poet Laureate', quantity: 1 }], ['SOS']);
+
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]?.cachedCard.name).toBe('Abigale, Poet Laureate // Heroic Stanza');
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('resolves back-face-only prepared card names', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([abigalePrepared]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Heroic Stanza', quantity: 1 }], ['SOS']);
+
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]?.cachedCardId).toBe('abigale-id');
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('does not resolve partial word prefixes for prepared card faces', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([abigalePrepared]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Abigale', quantity: 1 }], ['SOS']);
+
+    expect(result.resolved).toEqual([]);
+    expect(result.unresolved).toEqual(['Abigale']);
+  });
+
+  it('prefers exact oracle-name cards over face-indexed matches', async () => {
+    const standaloneFrontFace = {
+      scryfallId: 'a-standalone',
+      name: 'Abigale, Poet Laureate',
+      setCode: 'SOS',
+      imageUris: { small: 'https://example.com/standalone.jpg' },
+      manaCost: '{2}{U}',
+    };
+    const dfcFromFace = {
+      ...abigalePrepared,
+      scryfallId: 'z-dfc',
+    };
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([standaloneFrontFace, dfcFromFace]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Abigale, Poet Laureate', quantity: 1 }], ['SOS']);
+
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]?.cachedCardId).toBe('a-standalone');
+    expect(result.unresolved).toEqual([]);
+  });
+
+  it('falls back to name-only lookup when specified set code is outside the pool', async () => {
+    const abradeSos = {
+      scryfallId: 'abrade-sos',
+      name: 'Abrade',
+      setCode: 'SOS',
+      collectorNumber: '50',
+      imageUris: { small: 'https://example.com/abrade.jpg' },
+      manaCost: '{1}{R}',
+    };
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([abradeSos]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Abrade (PLST) 2XM-114', quantity: 1 }], ['SOS']);
+
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]?.cachedCardId).toBe('abrade-sos');
+    expect(result.resolved[0]?.cachedCard.setCode).toBe('SOS');
+    expect(result.unresolved).toEqual([]);
+    expect(scryfallMocks.tryResolvePrintingInPoolSet).not.toHaveBeenCalled();
+  });
+
+  it('keeps non-pool set-code lines unresolved when card is not found in allowed sets', async () => {
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Nonexistent (PLST) 1', quantity: 1 }], ['SOS']);
+
+    expect(result.resolved).toEqual([]);
+    expect(result.unresolved).toEqual(['Nonexistent (PLST) 1']);
+  });
+
+  it('ignores collector number from non-pool set-code fallback lines', async () => {
+    const abradeSos = {
+      scryfallId: 'abrade-sos',
+      name: 'Abrade',
+      setCode: 'SOS',
+      collectorNumber: '50',
+      imageUris: { small: 'https://example.com/abrade.jpg' },
+      manaCost: '{1}{R}',
+    };
+    scryfallMocks.bulkLookupForPoolImport.mockResolvedValue([abradeSos]);
+
+    const result = await bulkResolveAcquisitionItems([{ name: 'Abrade (PLST) 2XM-114', quantity: 1 }], ['SOS']);
+
+    expect(result.resolved).toHaveLength(1);
+    expect(result.resolved[0]?.cachedCardId).toBe('abrade-sos');
+    expect(result.unresolved).toEqual([]);
   });
 });

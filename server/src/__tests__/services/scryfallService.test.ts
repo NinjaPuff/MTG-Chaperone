@@ -530,7 +530,32 @@ const adelineScryfallBody = {
   mana_cost: '{1}{W}{W}',
 };
 
+function isFaceLookupOrQuery(orClauses: unknown) {
+  if (!Array.isArray(orClauses)) {
+    return false;
+  }
+  return orClauses.some((clause) => {
+    if (typeof clause !== 'object' || !clause || !('name' in clause)) {
+      return false;
+    }
+    const nameFilter = (clause as { name?: { startsWith?: unknown; endsWith?: unknown } }).name;
+    return Boolean(nameFilter?.startsWith ?? nameFilter?.endsWith);
+  });
+}
+
 describe('scryfallService bulkLookupForPoolImport', () => {
+  const abigalePrepared = {
+    scryfallId: 'abigale-id',
+    name: 'Abigale, Poet Laureate // Heroic Stanza',
+    flavorName: null,
+    setCode: 'SOS',
+    collectorNumber: '42',
+    manaCost: '{2}{U}',
+    cmc: 3,
+    typeLine: 'Creature — Human',
+    imageUris: { small: 'https://example.com/abigale.jpg' },
+  };
+
   it('persists flavorName on upsert when importing a card with flavor_name', async () => {
     const fetchMock = createFetchMock([
       {
@@ -588,6 +613,74 @@ describe('scryfallService bulkLookupForPoolImport', () => {
     expect(result).toEqual([adelineFca]);
   });
 
+  it('returns DFC card when only the front face is queried from cache', async () => {
+    const fetchMock = createFetchMock([]);
+    const findMany = vi.fn(async (args: { where?: { name?: unknown; flavorName?: unknown; OR?: unknown } }) => {
+      const orClauses = args.where && 'OR' in args.where ? args.where.OR : null;
+      if (
+        Array.isArray(orClauses) &&
+        orClauses.some((clause) => typeof clause === 'object' && clause && 'name' in clause)
+      ) {
+        return [abigalePrepared];
+      }
+      return [];
+    });
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { findMany, upsert: vi.fn() } } as never,
+    });
+
+    const result = await service.bulkLookupForPoolImport(['Abigale, Poet Laureate'], ['SOS']);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toEqual([abigalePrepared]);
+  });
+
+  it('returns DFC card when only the back face is queried from cache', async () => {
+    const fetchMock = createFetchMock([]);
+    const findMany = vi.fn(async (args: { where?: { name?: unknown; flavorName?: unknown; OR?: unknown } }) => {
+      const orClauses = args.where && 'OR' in args.where ? args.where.OR : null;
+      if (
+        Array.isArray(orClauses) &&
+        orClauses.some((clause) => typeof clause === 'object' && clause && 'name' in clause)
+      ) {
+        return [abigalePrepared];
+      }
+      return [];
+    });
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { findMany, upsert: vi.fn() } } as never,
+    });
+
+    const result = await service.bulkLookupForPoolImport(['Heroic Stanza'], ['SOS']);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toEqual([abigalePrepared]);
+  });
+
+  it('does not treat partial prefixes as DFC face matches', async () => {
+    const fetchMock = createFetchMock([
+      { ok: false, status: 404, body: {} },
+      { ok: false, status: 404, body: {} },
+    ]);
+    const findMany = vi.fn(async () => []);
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { findMany, upsert: vi.fn() } } as never,
+    });
+
+    const result = await service.bulkLookupForPoolImport(['Abigale'], ['SOS']);
+
+    expect(result).toEqual([]);
+  });
+
   it('resolves alias via named endpoint when cache is cold', async () => {
     const fetchMock = createFetchMock([
       { ok: true, status: 200, body: adelineScryfallBody },
@@ -602,7 +695,16 @@ describe('scryfallService bulkLookupForPoolImport', () => {
       if (args.where && 'flavorName' in args.where) {
         return [];
       }
-      return [adelineFca];
+      if (args.where && 'OR' in args.where) {
+        if (isFaceLookupOrQuery(args.where.OR)) {
+          return [];
+        }
+        if (upsert.mock.calls.length === 0) {
+          return [];
+        }
+        return [adelineFca];
+      }
+      return [];
     });
 
     const service = createScryfallService({
@@ -652,21 +754,28 @@ describe('scryfallService bulkLookupForPoolImport', () => {
       setCode: 'MH2',
       collectorNumber: '99',
     };
+    const finPrinting = {
+      scryfallId: 'airship-fin',
+      name: "Adventurer's Airship",
+      flavorName: null,
+      setCode: 'FIN',
+      collectorNumber: '252',
+    };
     const findMany = vi.fn(async (args: { where?: Record<string, unknown> }) => {
       if (args.where && 'name' in args.where && !('OR' in args.where)) {
         return [wrongSetOnly];
       }
+      if (args.where && 'flavorName' in args.where) {
+        return [];
+      }
       if (args.where && 'OR' in args.where) {
-        return [
-          wrongSetOnly,
-          {
-            scryfallId: 'airship-fin',
-            name: "Adventurer's Airship",
-            flavorName: null,
-            setCode: 'FIN',
-            collectorNumber: '252',
-          },
-        ];
+        if (isFaceLookupOrQuery(args.where.OR)) {
+          return [];
+        }
+        if (upsert.mock.calls.length === 0) {
+          return [wrongSetOnly];
+        }
+        return [wrongSetOnly, finPrinting];
       }
       return [];
     });
