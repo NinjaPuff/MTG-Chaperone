@@ -63,6 +63,27 @@ describe('parseDecklistLine', () => {
       setCode: 'ECL',
       collectorNumber: '112',
     });
+    expect(parseDecklistLine('1 Card (ECL) 112 F')).toEqual({
+      quantity: 1,
+      name: 'Card',
+      setCode: 'ECL',
+      collectorNumber: '112',
+    });
+  });
+
+  it('does not strip trailing F that is part of the card name', () => {
+    expect(parseDecklistLine('1 Stand Up for Yourself')).toEqual({
+      quantity: 1,
+      name: 'Stand Up for Yourself',
+      setCode: undefined,
+      collectorNumber: undefined,
+    });
+    expect(parseDecklistLine('1 Belief')).toEqual({
+      quantity: 1,
+      name: 'Belief',
+      setCode: undefined,
+      collectorNumber: undefined,
+    });
   });
 
   it('preserves fractional collector numbers', () => {

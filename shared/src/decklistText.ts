@@ -23,7 +23,7 @@ export type PoolExportEntry = {
 };
 
 const SET_CODE_PATTERN = '[A-Za-z0-9]{2,10}';
-const FOIL_SUFFIX_PATTERN = /\s*(?:\*F\*|F)\s*$/i;
+const FOIL_SUFFIX_PATTERN = /\s*(?:\*F\*|\s+F)\s*$/i;
 
 function stripFoilSuffix(line: string) {
   return line.replace(FOIL_SUFFIX_PATTERN, '').trim();
