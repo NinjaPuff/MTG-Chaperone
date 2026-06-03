@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
 import { primaryName, profileSubtitle } from '@/lib/userDisplay';
+import { copyTextToClipboard } from '@/lib/inviteLink';
 import { CardPoolSearchPanel } from '@/components/cardpool/CardPoolSearchPanel';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
@@ -526,8 +527,9 @@ export function CardPoolDetailPage() {
         },
       });
 
+      const unresolved = response.data.unresolved;
       const stagedCount = response.data.resolved.reduce((sum, entry) => sum + entry.quantity, 0);
-      setBulkUnresolved(response.data.unresolved);
+      setBulkUnresolved(unresolved);
 
       if (stagedCount > 0) {
         const additions = response.data.resolved.map((entry) => ({
@@ -542,16 +544,41 @@ export function CardPoolDetailPage() {
         setStagedCards((prev) => mergeStagedCardAdds(prev, additions, bulkPhaseLabel));
       }
 
-      setSuccess(stagedCount > 0 ? `Bulk staged ${stagedCount} cards.` : 'No cards were staged.');
-      setBulkText('');
-      setIsBulkAddOpen(false);
-      if (stagedCount > 0) {
+      if (unresolved.length > 0) {
+        if (stagedCount > 0) {
+          setSuccess(`Staged ${stagedCount} cards. ${unresolved.length} line(s) failed to import — see list below.`);
+          showToast({
+            message: `Staged ${stagedCount} cards; ${unresolved.length} failed to import`,
+            variant: 'default',
+          });
+        } else {
+          setSuccess(null);
+          setError(`${unresolved.length} line(s) could not be resolved. See the failed import list below.`);
+          showToast({ message: 'No cards were staged', variant: 'default' });
+        }
+      } else {
+        setSuccess(`Bulk staged ${stagedCount} cards.`);
         showToast({ message: `Staged ${stagedCount} cards`, variant: 'success' });
       }
+
+      setBulkText('');
+      setIsBulkAddOpen(false);
     } catch (bulkAddError) {
       setError(bulkAddError instanceof ApiError ? bulkAddError.message : 'Unable to bulk add cards');
     } finally {
       setBulkAdding(false);
+    }
+  };
+
+  const copyBulkUnresolved = async () => {
+    if (bulkUnresolved.length === 0) {
+      return;
+    }
+    try {
+      await copyTextToClipboard(bulkUnresolved.join('\n'));
+      showToast({ message: 'Copied failed lines', variant: 'success' });
+    } catch {
+      showToast({ message: 'Failed to copy failed lines' });
     }
   };
 
@@ -899,6 +926,43 @@ export function CardPoolDetailPage() {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       {success ? <p className="text-sm text-emerald-600">{success}</p> : null}
 
+      {bulkUnresolved.length > 0 ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-medium text-amber-900 dark:text-amber-100">
+                Failed to import ({bulkUnresolved.length})
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                These lines could not be matched to cards in this pool&apos;s allowed sets. Fix the names or printings,
+                then paste them again.
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => void copyBulkUnresolved()}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              >
+                Copy all
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkUnresolved([])}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+          <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto rounded-md border border-amber-500/20 bg-background/80 p-3 font-mono text-xs">
+            {bulkUnresolved.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="rounded-lg border border-border bg-card p-6 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -920,7 +984,9 @@ export function CardPoolDetailPage() {
             <button
               type="button"
               onClick={() => {
-                setBulkUnresolved([]);
+                if (bulkUnresolved.length > 0) {
+                  setBulkText(bulkUnresolved.join('\n'));
+                }
                 setIsBulkAddOpen(true);
               }}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
@@ -1296,16 +1362,6 @@ export function CardPoolDetailPage() {
                   </>
                 ) : null}
               </p>
-            ) : null}
-            {bulkUnresolved.length > 0 ? (
-              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-                <p className="font-medium">Some names could not be resolved:</p>
-                <ul className="mt-2 list-disc pl-5">
-                  {bulkUnresolved.map((name) => (
-                    <li key={name}>{name}</li>
-                  ))}
-                </ul>
-              </div>
             ) : null}
 
             <div className="flex items-center justify-end gap-2">
