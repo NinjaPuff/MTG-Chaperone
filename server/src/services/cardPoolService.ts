@@ -377,6 +377,17 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
     for (const key of slashAliasKeysForIndexedName(card.name).map((oracleKey) => oracleKey.toLowerCase())) {
       addCandidate(candidatesByOracleName, key, card);
     }
+    if (card.name.includes(' // ')) {
+      const parts = card.name.split(' // ');
+      if (parts.length === 2) {
+        for (const face of parts) {
+          const faceKey = face.trim().toLowerCase();
+          if (faceKey) {
+            addCandidate(candidatesByOracleName, faceKey, card);
+          }
+        }
+      }
+    }
     const flavorKey = card.flavorName?.trim().toLowerCase();
     if (flavorKey) {
       addCandidate(candidatesByFlavorName, flavorKey, card);
@@ -420,8 +431,8 @@ export async function bulkResolveAcquisitionItems(items: BulkItemInput[], setCod
 
   for (const item of normalizedItems) {
     if (item.specifiedSetCode && allowedSetCodes.size > 0 && !allowedSetCodes.has(item.specifiedSetCode)) {
-      unresolved.push(item.inputLabel);
-      continue;
+      item.specifiedSetCode = null;
+      item.specifiedCollectorNumber = null;
     }
 
     const candidates = filterBulkResolveCandidates(

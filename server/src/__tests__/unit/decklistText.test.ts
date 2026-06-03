@@ -3,6 +3,8 @@ import {
   buildPoolDecklistExport,
   expandCardNameLookupVariants,
   formatDecklistLine,
+  isDecklistNonCardLine,
+  parseBulkDecklistText,
   parseDecklistLine,
   slashAliasKeysForIndexedName,
 } from '@mtg-league/shared';
@@ -63,6 +65,27 @@ describe('parseDecklistLine', () => {
       setCode: 'ECL',
       collectorNumber: '112',
     });
+    expect(parseDecklistLine('1 Card (ECL) 112 F')).toEqual({
+      quantity: 1,
+      name: 'Card',
+      setCode: 'ECL',
+      collectorNumber: '112',
+    });
+  });
+
+  it('does not strip trailing F that is part of the card name', () => {
+    expect(parseDecklistLine('1 Stand Up for Yourself')).toEqual({
+      quantity: 1,
+      name: 'Stand Up for Yourself',
+      setCode: undefined,
+      collectorNumber: undefined,
+    });
+    expect(parseDecklistLine('1 Belief')).toEqual({
+      quantity: 1,
+      name: 'Belief',
+      setCode: undefined,
+      collectorNumber: undefined,
+    });
   });
 
   it('preserves fractional collector numbers', () => {
@@ -93,6 +116,161 @@ describe('parseDecklistLine', () => {
       collectorNumber: '112',
     });
   });
+
+  it('parses bracket set with collector number', () => {
+    expect(parseDecklistLine('1 Lightning Bolt [M10] 146')).toEqual({
+      quantity: 1,
+      name: 'Lightning Bolt',
+      setCode: 'M10',
+      collectorNumber: '146',
+    });
+  });
+
+  it('strips leading zeros from numeric collector numbers', () => {
+    expect(parseDecklistLine('1 Island (ECL) 0289')).toEqual({
+      quantity: 1,
+      name: 'Island',
+      setCode: 'ECL',
+      collectorNumber: '289',
+    });
+  });
+
+  it('normalizes smart apostrophes in card names', () => {
+    expect(parseDecklistLine('1 Ajani\u2019s Response (SOS) 6')).toEqual({
+      quantity: 1,
+      name: "Ajani's Response",
+      setCode: 'SOS',
+      collectorNumber: '6',
+    });
+  });
+
+  it('parses tab-separated Arena export lines', () => {
+    expect(parseDecklistLine('4 Lightning Bolt\t(M10)\t146')).toEqual({
+      quantity: 4,
+      name: 'Lightning Bolt',
+      setCode: 'M10',
+      collectorNumber: '146',
+    });
+  });
+
+  it('strips Archidekt category labels after printing metadata', () => {
+    expect(parseDecklistLine('1 Sol Ring (CMM) 162 *F* [Artifact]')).toEqual({
+      quantity: 1,
+      name: 'Sol Ring',
+      setCode: 'CMM',
+      collectorNumber: '162',
+    });
+  });
+
+  it('parses PLST collector numbers with set prefix', () => {
+    expect(parseDecklistLine('1 Abrade (PLST) 2XM-114')).toEqual({
+      quantity: 1,
+      name: 'Abrade',
+      setCode: 'PLST',
+      collectorNumber: '2XM-114',
+    });
+  });
+});
+
+describe('isDecklistNonCardLine', () => {
+  it('skips Arena and MTGO section headers', () => {
+    expect(isDecklistNonCardLine('Deck')).toBe(true);
+    expect(isDecklistNonCardLine('Sideboard')).toBe(true);
+    expect(isDecklistNonCardLine('Side Board:')).toBe(true);
+    expect(isDecklistNonCardLine('SB:')).toBe(true);
+    expect(isDecklistNonCardLine('Commander')).toBe(true);
+    expect(isDecklistNonCardLine('Companion')).toBe(true);
+  });
+
+  it('skips Archidekt category headers', () => {
+    expect(isDecklistNonCardLine('Creatures (23)')).toBe(true);
+    expect(isDecklistNonCardLine('Instants & Sorceries (12)')).toBe(true);
+  });
+
+  it('skips comments and CSV headers', () => {
+    expect(isDecklistNonCardLine('// sideboard tech')).toBe(true);
+    expect(isDecklistNonCardLine('# notes')).toBe(true);
+    expect(isDecklistNonCardLine('QuantityX,Name,Edition code,Foil')).toBe(true);
+  });
+
+  it('does not skip card lines', () => {
+    expect(isDecklistNonCardLine('4 Lightning Bolt (M10) 146')).toBe(false);
+    expect(isDecklistNonCardLine('Stand Up for Yourself')).toBe(false);
+  });
+});
+
+describe('parseBulkDecklistText platform exports', () => {
+  it('parses MTG Arena export with sections and sideboard', () => {
+    const input = `Commander
+1 Atraxa, Praetors' Voice (MKC) 127
+
+Deck
+4 Lightning Bolt (M10) 146
+2 Defiant Strike (WAR) 9
+
+Sideboard
+2 Negate (M21) 266`;
+
+    expect(parseBulkDecklistText(input)).toEqual([
+      { inputLabel: "1 Atraxa, Praetors' Voice (MKC) 127", name: "Atraxa, Praetors' Voice (MKC) 127", quantity: 1, setCode: 'MKC', collectorNumber: '127' },
+      { inputLabel: '4 Lightning Bolt (M10) 146', name: 'Lightning Bolt (M10) 146', quantity: 4, setCode: 'M10', collectorNumber: '146' },
+      { inputLabel: '2 Defiant Strike (WAR) 9', name: 'Defiant Strike (WAR) 9', quantity: 2, setCode: 'WAR', collectorNumber: '9' },
+      { inputLabel: '2 Negate (M21) 266', name: 'Negate (M21) 266', quantity: 2, setCode: 'M21', collectorNumber: '266' },
+    ]);
+  });
+
+  it('parses MTGO plain name-only export', () => {
+    const input = `4 Tarmogoyf
+3 Verdant Catacombs
+1 Stand Up for Yourself`;
+
+    expect(parseBulkDecklistText(input)).toEqual([
+      { inputLabel: '4 Tarmogoyf', name: 'Tarmogoyf', quantity: 4 },
+      { inputLabel: '3 Verdant Catacombs', name: 'Verdant Catacombs', quantity: 3 },
+      { inputLabel: '1 Stand Up for Yourself', name: 'Stand Up for Yourself', quantity: 1 },
+    ]);
+  });
+
+  it('parses Moxfield MTGO-style export with set codes', () => {
+    const input = `1 Stand Up for Yourself (SOS) 34
+1 Abrade (PLST) 2XM-114
+1 Abigale, Poet Laureate / Heroic Stanza (SOS) 170`;
+
+    const items = parseBulkDecklistText(input);
+    expect(items).toHaveLength(3);
+    expect(items[0]?.name).toBe('Stand Up for Yourself (SOS) 34');
+    expect(items[1]?.name).toBe('Abrade (PLST) 2XM-114');
+    expect(items[2]?.name).toBe('Abigale, Poet Laureate / Heroic Stanza (SOS) 170');
+  });
+
+  it('parses Delver Lens CSV export rows', () => {
+    const input = `"QuantityX","Name","Edition code","Foil"
+"1x","Knight of the Ebon Legion","M20",""
+"2x","Lightning Bolt","M10",""`;
+
+    expect(parseBulkDecklistText(input)).toEqual([
+      { inputLabel: '1 Knight of the Ebon Legion (M20)', name: 'Knight of the Ebon Legion (M20)', quantity: 1, setCode: 'M20' },
+      { inputLabel: '2 Lightning Bolt (M10)', name: 'Lightning Bolt (M10)', quantity: 2, setCode: 'M10' },
+    ]);
+  });
+
+  it('ignores About section and trailing notes from Arena exports', () => {
+    const input = `Deck
+1 Island (ECL) 289
+
+About
+Built for testing`;
+
+    expect(parseBulkDecklistText(input)).toEqual([
+      { inputLabel: '1 Island (ECL) 289', name: 'Island (ECL) 289', quantity: 1, setCode: 'ECL', collectorNumber: '289' },
+    ]);
+  });
+
+  it('parses name-only lines without explicit quantity as singletons', () => {
+    expect(parseBulkDecklistText('Lightning Bolt')).toEqual([
+      { inputLabel: '1 Lightning Bolt', name: 'Lightning Bolt', quantity: 1 },
+    ]);
+  });
 });
 
 describe('card name slash lookup helpers', () => {
@@ -101,6 +279,8 @@ describe('card name slash lookup helpers', () => {
       expect(expandCardNameLookupVariants(trystanMisexport)).toEqual([
         trystanMisexport,
         trystanCanonical,
+        'Trystan, Callous Cultivator',
+        'Trystan, Penitent Culler',
       ]);
     });
 
@@ -115,6 +295,8 @@ describe('card name slash lookup helpers', () => {
     it('returns only canonical name when already using // separator', () => {
       expect(expandCardNameLookupVariants('Heartflame Duelist // Heartflame Slash')).toEqual([
         'Heartflame Duelist // Heartflame Slash',
+        'Heartflame Duelist',
+        'Heartflame Slash',
       ]);
     });
 
@@ -132,11 +314,44 @@ describe('card name slash lookup helpers', () => {
       expect(expandCardNameLookupVariants(`  ${trystanMisexport}  `)).toEqual([
         trystanMisexport,
         trystanCanonical,
+        'Trystan, Callous Cultivator',
+        'Trystan, Penitent Culler',
       ]);
     });
 
     it('is idempotent for canonical DFC names', () => {
-      expect(expandCardNameLookupVariants(trystanCanonical)).toEqual([trystanCanonical]);
+      expect(expandCardNameLookupVariants(trystanCanonical)).toEqual([
+        trystanCanonical,
+        'Trystan, Callous Cultivator',
+        'Trystan, Penitent Culler',
+      ]);
+    });
+
+    it('splits two-part double-slash names into halves', () => {
+      expect(expandCardNameLookupVariants('Hero of Light // Adeline, Resplendent Cathar')).toEqual([
+        'Hero of Light // Adeline, Resplendent Cathar',
+        'Hero of Light',
+        'Adeline, Resplendent Cathar',
+      ]);
+    });
+
+    it('does not split names with three or more // parts', () => {
+      expect(expandCardNameLookupVariants('Who // What // When // Where // Why')).toEqual([
+        'Who // What // When // Where // Why',
+      ]);
+    });
+
+    it('does not produce empty halves when one side is blank', () => {
+      expect(expandCardNameLookupVariants(' // Something')).toEqual(['// Something']);
+    });
+
+    it('combines spaced single-slash expansion with half splitting', () => {
+      expect(expandCardNameLookupVariants('Front / Back')).toEqual([
+        'Front / Back',
+        'Front // Back',
+        'Front',
+        'Back',
+      ]);
     });
   });
 

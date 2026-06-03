@@ -716,7 +716,9 @@ export function AdminPage() {
   const createFirstSeason = async (event: FormEvent) => {
     event.preventDefault();
     if (!selectedLeagueSlug) {
-      setError('Create or select a league first, then create a season.');
+      const message = 'Save league settings on the League Settings tab before creating a season.';
+      setError(message);
+      showToast({ message, variant: 'default' });
       return;
     }
     if (!seasonCreateForm.name.trim()) {
@@ -1379,8 +1381,9 @@ export function AdminPage() {
             <form className="space-y-4" onSubmit={createFirstSeason}>
               <h3 className="text-lg font-semibold">Create First Season</h3>
               {!selectedLeagueSlug ? (
-                <p className="text-sm text-muted-foreground">
-                  Save league settings first, then create the first season.
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+                  No league exists yet. Open the <strong>League Settings</strong> tab, enter a league name, and
+                  click <strong>Save League Settings</strong> first.
                 </p>
               ) : null}
               <label className="text-sm font-medium block">
@@ -1394,7 +1397,6 @@ export function AdminPage() {
               </label>
               <button
                 type="submit"
-                disabled={!selectedLeagueSlug}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
               >
                 Create Season

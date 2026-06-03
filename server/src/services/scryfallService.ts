@@ -340,12 +340,30 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     return expandCardNameLookupVariants(lookupName).map((variant) => variant.toLowerCase());
   }
 
+  function extractFaces(name: string) {
+    if (!name.includes(' // ')) {
+      return [];
+    }
+    const parts = name.split(' // ');
+    if (parts.length !== 2) {
+      return [];
+    }
+    const [left, right] = parts.map((part) => part.trim());
+    if (!left || !right) {
+      return [];
+    }
+    return [left, right];
+  }
+
   function cardMatchesLookupName(
     card: { name: string; flavorName?: string | null },
     lookupName: string,
   ) {
     const variants = lookupNameVariants(lookupName);
     const cardNames = [card.name.toLowerCase()];
+    for (const face of extractFaces(card.name)) {
+      cardNames.push(face.toLowerCase());
+    }
     if (card.flavorName?.trim()) {
       cardNames.push(card.flavorName.trim().toLowerCase());
     }
@@ -379,14 +397,35 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
   }
 
   async function loadCachedCardsForLookupNames(names: string[]) {
-    return deps.prisma.cachedCard.findMany({
+    const normalizedNames = [...new Set(names.map((name) => name.trim()).filter(Boolean))];
+    if (normalizedNames.length === 0) {
+      return [];
+    }
+
+    const exactMatches = await deps.prisma.cachedCard.findMany({
       where: {
         OR: [
-          { name: { in: names, mode: 'insensitive' } },
-          { flavorName: { in: names, mode: 'insensitive' } },
+          { name: { in: normalizedNames, mode: 'insensitive' } },
+          { flavorName: { in: normalizedNames, mode: 'insensitive' } },
         ],
       },
     });
+
+    const faceLookupNames = normalizedNames.filter((name) => !name.includes(' // ') && !name.includes(' / '));
+    if (faceLookupNames.length === 0) {
+      return exactMatches;
+    }
+
+    const faceMatches = await deps.prisma.cachedCard.findMany({
+      where: {
+        OR: faceLookupNames.flatMap((name) => [
+          { name: { startsWith: `${name} // `, mode: 'insensitive' } },
+          { name: { endsWith: ` // ${name}`, mode: 'insensitive' } },
+        ]),
+      },
+    });
+
+    return mergeCachedCards(exactMatches, faceMatches);
   }
 
   function printingMatchesLookupName(card: ScryfallCard, lookupName: string) {
@@ -497,6 +536,12 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
         },
       });
       cached = mergeCachedCards(cached, byFlavor);
+      missing = namesStillMissing(cached, normalizedNames, normalizedSetCodes);
+    }
+
+    if (missing.length > 0) {
+      const byFace = await loadCachedCardsForLookupNames(missing);
+      cached = mergeCachedCards(cached, byFace);
       missing = namesStillMissing(cached, normalizedNames, normalizedSetCodes);
     }
 
