@@ -21,7 +21,8 @@ function renderViewToolbar(overrides: Partial<ViewToolbarProps> = {}) {
     viewMode: 'list',
     sortKey: 'name',
     groupMode: 'flat',
-    totalCards: 10,
+    visibleCardCount: 10,
+    poolCardCount: 10,
     selectedColorFilters: [...COLOR_FILTERS],
     selectedTypeFilters: [...CARD_TYPE_FILTERS],
     showBasicLands: true,
@@ -55,6 +56,26 @@ function openDisplaySettingsDropdown() {
 }
 
 describe('ViewToolbar', () => {
+  it('should_show_single_count_when_all_cards_visible', () => {
+    renderViewToolbar({ visibleCardCount: 10, poolCardCount: 10 });
+    expect(screen.getByText('10 cards')).toBeInTheDocument();
+  });
+
+  it('should_show_visible_over_pool_when_filtered', () => {
+    renderViewToolbar({ visibleCardCount: 7, poolCardCount: 10 });
+    expect(screen.getByText('7 / 10 cards')).toBeInTheDocument();
+  });
+
+  it('should_show_zero_cards_when_pool_empty', () => {
+    renderViewToolbar({ visibleCardCount: 0, poolCardCount: 0 });
+    expect(screen.getByText('0 cards')).toBeInTheDocument();
+  });
+
+  it('should_show_fraction_when_pool_nonempty_but_none_visible', () => {
+    renderViewToolbar({ visibleCardCount: 0, poolCardCount: 5 });
+    expect(screen.getByText('0 / 5 cards')).toBeInTheDocument();
+  });
+
   it('calls onToggleColorFilter when a color checkbox is clicked', () => {
     const { onToggleColorFilter } = renderViewToolbar();
     openFiltersDropdown();
@@ -153,7 +174,8 @@ describe('ViewToolbar', () => {
           viewMode="list"
           sortKey="name"
           groupMode="flat"
-          totalCards={10}
+          visibleCardCount={10}
+          poolCardCount={10}
           selectedColorFilters={selectedColorFilters}
           selectedTypeFilters={[...CARD_TYPE_FILTERS]}
           showBasicLands={true}
