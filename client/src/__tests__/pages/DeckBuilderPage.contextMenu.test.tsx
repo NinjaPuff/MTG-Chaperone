@@ -215,6 +215,7 @@ describe('DeckBuilderPage context menu', () => {
 
     expect(screen.getByText('0/40')).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: /Sideboard/i }));
     const sideboardScroll = screen.getByTestId('deck-sidebar-sideboard-scroll');
     expect(within(sideboardScroll).getByRole('button', { name: /1x Lightning Bolt/i })).toBeInTheDocument();
     expect(within(mainScroll).queryByRole('button', { name: /Lightning Bolt/i })).not.toBeInTheDocument();

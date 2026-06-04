@@ -90,7 +90,8 @@ describe('CurveView', () => {
     );
 
     const anchor = screen.getByTestId('pool-card-badge-anchor');
-    expect(anchor).toHaveClass('top-1', 'left-1');
+    expect(anchor).toHaveClass('left-1');
+    expect(anchor).toHaveStyle({ top: '4px' });
     expect(anchor).not.toHaveClass('bottom-1');
   });
 
