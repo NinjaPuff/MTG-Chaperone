@@ -123,4 +123,13 @@ describe('MiniManaCurve', () => {
     expect(screen.getByText('Creatures')).toBeInTheDocument();
     expect(screen.getByText('Non-creatures')).toBeInTheDocument();
   });
+
+  it('uses_shorter_chart_height_when_compact', () => {
+    const { container } = render(
+      <MiniManaCurve cards={[{ cmc: 2, quantity: 1, typeLine: 'Creature — Bear' }]} compact />,
+    );
+
+    const chart = container.querySelector('.overflow-hidden.rounded-md');
+    expect(chart).toHaveClass('h-14');
+  });
 });

@@ -44,8 +44,8 @@ export function DeckCardList({
   return (
     <div className={className}>
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h3>
-      {cards.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">{emptyText}</p> : null}
-      <div className="mt-2 space-y-2">
+      {cards.length === 0 ? <p className="mt-1.5 text-xs text-muted-foreground">{emptyText}</p> : null}
+      <div className="mt-1.5 space-y-1.5">
         {CARD_TYPE_ORDER.filter((group) => grouped[group]?.length).map((group) => {
           const groupCards = grouped[group];
           return (

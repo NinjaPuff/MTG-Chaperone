@@ -108,16 +108,21 @@ export function ManaCurveBucketTooltipContent({ index, bucket }: ManaCurveBucket
 type MiniManaCurveProps = {
   cards: CurveCard[];
   className?: string;
+  compact?: boolean;
 };
 
-export function MiniManaCurve({ cards, className }: MiniManaCurveProps) {
+export function MiniManaCurve({ cards, className, compact = false }: MiniManaCurveProps) {
   const buckets = buildSplitBuckets(cards);
   const maxValue = Math.max(1, ...buckets.map((bucket) => bucket.total));
 
   return (
     <TooltipProvider delayDuration={150}>
       <div className={className}>
-        <div className="grid h-20 grid-rows-[minmax(0,1fr)_auto] gap-0.5 overflow-hidden rounded-md border border-border/70 bg-background p-2">
+        <div
+          className={`grid grid-rows-[minmax(0,1fr)_auto] gap-0.5 overflow-hidden rounded-md border border-border/70 bg-background ${
+            compact ? 'h-14 p-1' : 'h-20 p-2'
+          }`}
+        >
           <div className="flex min-h-0 items-end gap-1 overflow-hidden">
             {buckets.map((bucket, index) => {
               const fillPct = barFillPercent(bucket.total, maxValue);
@@ -169,7 +174,11 @@ export function MiniManaCurve({ cards, className }: MiniManaCurveProps) {
             ))}
           </div>
         </div>
-        <div className="mt-1 flex items-center justify-center gap-3 text-[10px] text-muted-foreground">
+        <div
+          className={`flex items-center justify-center gap-3 text-muted-foreground ${
+            compact ? 'mt-0.5 gap-2 text-[9px]' : 'mt-1 text-[10px]'
+          }`}
+        >
           <span className="flex items-center gap-1">
             <span className="inline-block h-2 w-2 rounded-sm bg-primary/70" aria-hidden />
             Creatures

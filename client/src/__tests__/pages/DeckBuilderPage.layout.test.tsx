@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderWithAppProviders } from '../helpers/renderWithAppProviders';
@@ -117,19 +117,89 @@ describe('DeckBuilderPage layout', () => {
     });
 
     const workArea = screen.getByTestId('deckbuilder-work-area');
-    expect(workArea.className).toMatch(/xl:h-\[calc\(100dvh-/);
+    expect(workArea.className).toMatch(/xl:h-\[calc\(100dvh-9rem\)\]/);
     expect(workArea.className).toMatch(/xl:overflow-hidden/);
   });
 
-  it('should_apply_pool_column_overflow_on_xl', async () => {
+  it('should_use_tighter_viewport_height_on_work_area', async () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText('Lightning Bolt')).toBeInTheDocument();
+      expect(screen.getByTestId('deckbuilder-work-area')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('deckbuilder-work-area').className).toMatch(
+      /xl:h-\[calc\(100dvh-9rem\)\]/,
+    );
+  });
+
+  it('should_pin_pool_toolbar_above_scrollable_card_list', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deckbuilder-pool-toolbar')).toBeInTheDocument();
     });
 
     const poolColumn = screen.getByTestId('deckbuilder-pool-column');
-    expect(poolColumn.className).toMatch(/min-h-0/);
-    expect(poolColumn.className).toMatch(/xl:overflow-y-auto/);
+    expect(poolColumn.className).toMatch(/overflow-hidden/);
+    expect(poolColumn.className).not.toMatch(/overflow-y-auto/);
+
+    const toolbar = screen.getByTestId('deckbuilder-pool-toolbar');
+    expect(toolbar.className).not.toMatch(/sticky/);
+
+    const poolScroll = screen.getByTestId('deckbuilder-pool-scroll');
+    expect(poolScroll).toHaveClass('overflow-y-auto');
+    expect(poolScroll).toHaveClass('flex-1');
+  });
+
+  it('should_render_deck_tabs_and_build_details_in_page_header', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deckbuilder-page-header')).toBeInTheDocument();
+    });
+
+    const header = screen.getByTestId('deckbuilder-page-header');
+    expect(within(header).getByTestId('deck-tab-list')).toBeInTheDocument();
+    expect(within(header).getByRole('button', { name: 'Build' })).toBeInTheDocument();
+    expect(within(header).getByRole('button', { name: 'Details' })).toBeInTheDocument();
+  });
+
+  it('should_not_render_build_toggle_inside_sidebar', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(document.querySelector('aside')).toBeTruthy();
+    });
+
+    const sidebar = document.querySelector('aside')!;
+    expect(within(sidebar).queryByRole('button', { name: 'Build' })).not.toBeInTheDocument();
+  });
+
+  it('should_switch_to_details_with_single_build_toggle', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Details' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+
+    expect(screen.getAllByRole('button', { name: 'Build' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Curve' })).toBeInTheDocument();
+    expect(screen.queryByTestId('deckbuilder-work-area')).not.toBeInTheDocument();
+  });
+
+  it('should_return_to_build_mode_from_header_toggle', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Details' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+
+    expect(screen.getByTestId('deckbuilder-work-area')).toBeInTheDocument();
   });
 });

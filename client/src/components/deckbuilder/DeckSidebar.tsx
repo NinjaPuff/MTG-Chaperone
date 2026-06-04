@@ -1,7 +1,6 @@
 import { useMemo, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { BasicLandAdderPopup } from './BasicLandAdderPopup';
-import { DeckBuildDetailsToggle } from './DeckBuildDetailsToggle';
 import { DeckCardList, type DeckCardListItem } from './DeckCardList';
 import { MiniManaCurve } from './MiniManaCurve';
 import type { BuilderDeck, DeckBuilderCard } from './types';
@@ -12,15 +11,12 @@ type DeckSidebarProps = {
   activeDeckId: string;
   minDeckSize: number;
   disabled?: boolean;
-  onActiveDeckChange: (deckId: string) => void;
   onDeckNameChange: (deckId: string, name: string) => void;
   onCardClick: (card: DeckBuilderCard, deckId: string) => void;
   onCardContextMenu?: (event: MouseEvent, card: DeckBuilderCard, deckId: string) => void;
   onBasicLandsChange: (deckId: string, next: BuilderDeck['basicLands']) => void;
   onMainDeckDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
   onSideboardDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
-  expandedDeckMode?: boolean;
-  onExpandedDeckModeChange?: (expanded: boolean) => void;
   poolImageByCardId?: Map<string, string>;
 };
 
@@ -58,21 +54,18 @@ export function DeckSidebar({
   activeDeckId,
   minDeckSize,
   disabled = false,
-  onActiveDeckChange,
   onDeckNameChange,
   onCardClick,
   onCardContextMenu,
   onBasicLandsChange,
   onMainDeckDrop,
   onSideboardDrop,
-  expandedDeckMode,
-  onExpandedDeckModeChange,
   poolImageByCardId,
 }: DeckSidebarProps) {
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? decks[0];
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState(activeDeck?.name ?? 'Deck');
-  const [sideboardExpanded, setSideboardExpanded] = useState(true);
+  const [sideboardExpanded, setSideboardExpanded] = useState(false);
 
   const mainCards = useMemo(
     () => toListItems(activeDeck?.cards ?? [], 'main', poolImageByCardId),
@@ -84,9 +77,13 @@ export function DeckSidebar({
   );
   const mainCount = mainCards.reduce((sum, card) => sum + card.quantity, 0);
   const sideboardCount = sideboardCards.reduce((sum, card) => sum + card.quantity, 0);
-  const curveCards = (activeDeck?.cards ?? [])
-    .filter((card) => card.zone === 'main')
-    .map((card) => ({ cmc: card.cmc, quantity: card.quantity, typeLine: card.typeLine }));
+  const curveCards = useMemo(
+    () =>
+      (activeDeck?.cards ?? [])
+        .filter((card) => card.zone === 'main')
+        .map((card) => ({ cmc: card.cmc, quantity: card.quantity, typeLine: card.typeLine })),
+    [activeDeck?.cards],
+  );
 
   if (!activeDeck) {
     return (
@@ -114,29 +111,8 @@ export function DeckSidebar({
   };
 
   return (
-    <aside className="flex h-full min-h-0 flex-col rounded-lg border border-primary/30 bg-muted/40 p-3 ring-1 ring-primary/10">
-      <div className="mb-3 shrink-0 space-y-2 border-b border-border/70 pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-1">
-          {decks.map((deck) => (
-            <button
-              key={deck.id}
-              type="button"
-              className={`rounded border px-2 py-1 text-xs ${deck.id === activeDeck.id ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
-              onClick={() => onActiveDeckChange(deck.id)}
-            >
-              {deck.name}
-            </button>
-          ))}
-          </div>
-          {onExpandedDeckModeChange ? (
-            <DeckBuildDetailsToggle
-              expandedDeckMode={expandedDeckMode ?? false}
-              onChange={onExpandedDeckModeChange}
-              disabled={disabled}
-            />
-          ) : null}
-        </div>
+    <aside className="flex h-full min-h-0 flex-col rounded-lg border border-primary/30 bg-muted/40 p-2 ring-1 ring-primary/10">
+      <div className="mb-1.5 shrink-0 border-b border-border/70 pb-1.5">
         <div className="flex items-center justify-between gap-2">
           {isEditingName ? (
             <input
@@ -167,12 +143,12 @@ export function DeckSidebar({
         </div>
       </div>
 
-      <div className="shrink-0">
-        <MiniManaCurve cards={curveCards} />
+      <div className="mt-1.5 shrink-0" data-testid="deck-sidebar-mana-curve">
+        <MiniManaCurve cards={curveCards} compact />
       </div>
 
       <div
-        className="mt-3 flex min-h-0 flex-1 flex-col rounded-md border border-border/50 p-2"
+        className="mt-1.5 flex min-h-0 flex-1 flex-col rounded-md border border-border/50 p-1.5"
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => onMainDeckDrop?.(event, activeDeck.id)}
       >
@@ -210,7 +186,7 @@ export function DeckSidebar({
       </div>
 
       <div
-        className={`mt-3 shrink-0 flex-col rounded-md border border-border/70 bg-background p-2 ${sideboardExpanded ? 'flex min-h-[4.5rem] max-h-[30vh]' : 'flex'}`}
+        className={`mt-2 shrink-0 flex-col rounded-md border border-border/70 bg-background p-1.5 ${sideboardExpanded ? 'flex min-h-[4.5rem] max-h-[30vh]' : 'flex'}`}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => onSideboardDrop?.(event, activeDeck.id)}
       >
@@ -267,7 +243,7 @@ export function DeckSidebar({
         ) : null}
       </div>
 
-      <div className="mt-3 shrink-0">
+      <div className="mt-2 shrink-0">
         <BasicLandAdderPopup
           counts={activeDeck.basicLands}
           minDeckSize={minDeckSize}
@@ -279,4 +255,3 @@ export function DeckSidebar({
     </aside>
   );
 }
-

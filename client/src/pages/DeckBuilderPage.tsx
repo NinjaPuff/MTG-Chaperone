@@ -10,9 +10,11 @@ import { StacksView } from '@/components/cardpool/StacksView';
 import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { DeckAnalyticsView } from '@/components/deckbuilder/DeckAnalyticsView';
+import { DeckBuildDetailsToggle } from '@/components/deckbuilder/DeckBuildDetailsToggle';
 import { DeckBuilderContextMenu, type DeckBuilderMenuAction } from '@/components/deckbuilder/DeckBuilderContextMenu';
 import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import { DeckSidebar } from '@/components/deckbuilder/DeckSidebar';
+import { DeckTabList } from '@/components/deckbuilder/DeckTabList';
 import { DragGhost } from '@/components/deckbuilder/DragGhost';
 import { DragProvider } from '@/components/deckbuilder/DragContext';
 import { PoolCardBadge } from '@/components/deckbuilder/PoolCardBadge';
@@ -548,35 +550,50 @@ export function DeckBuilderPage() {
 
   return (
     <DragProvider>
-      <div className="flex flex-col space-y-4">
-        <div className="flex shrink-0 items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Deckbuilder</h1>
-            <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col space-y-2">
+        <div
+          className="flex shrink-0 flex-wrap items-center justify-between gap-2"
+          data-testid="deckbuilder-page-header"
+        >
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold leading-tight tracking-tight">Deckbuilder</h1>
+            <p className="text-xs leading-tight text-muted-foreground">
               {saving ? 'Saving...' : success ? success : activeRoundNumber ? `Using Round ${activeRoundNumber}` : 'Ready'}
             </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <DeckTabList
+              decks={decks}
+              activeDeckId={activeDeckId ?? ''}
+              onActiveDeckChange={setActiveDeckId}
+            />
+            <DeckBuildDetailsToggle
+              expandedDeckMode={expandedDeckMode}
+              onChange={setExpandedDeckMode}
+            />
           </div>
         </div>
 
         {error ? <p className="shrink-0 text-sm text-destructive">{error}</p> : null}
 
         {expandedDeckMode && activeDeck ? (
-          <DeckAnalyticsView
-            deck={activeDeck}
-            expandedDeckMode={expandedDeckMode}
-            onExpandedDeckModeChange={setExpandedDeckMode}
-          />
+          <DeckAnalyticsView deck={activeDeck} />
         ) : (
           <div
-            className="grid min-h-0 grid-cols-1 gap-4 xl:h-[calc(100dvh-12rem)] xl:grid-cols-[minmax(0,1fr)_360px] xl:overflow-hidden"
+            className="grid min-h-0 grid-cols-1 gap-3 xl:h-[calc(100dvh-9rem)] xl:grid-cols-[minmax(0,1fr)_360px] xl:overflow-hidden"
             data-testid="deckbuilder-work-area"
           >
             <div
-              className="min-h-0 space-y-3 rounded-lg border border-border bg-card p-4 xl:overflow-y-auto"
+              className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-3"
               data-testid="deckbuilder-pool-column"
             >
-              <ViewToolbar
-                viewMode={viewMode}
+              <div
+                className="shrink-0 border-b border-border/60 pb-2"
+                data-testid="deckbuilder-pool-toolbar"
+              >
+                <ViewToolbar
+                  className="gap-2 p-2"
+                  viewMode={viewMode}
                 sortKey={sortKey}
                 groupMode={groupMode}
                 stacksOrganizeBy={stacksOrganizeBy}
@@ -619,8 +636,13 @@ export function DeckBuilderPage() {
                     setStacksOrganizeBy(next.stacksOrganizeBy);
                   }
                 }}
-              />
+                />
+              </div>
 
+              <div
+                className="min-h-0 flex-1 overflow-y-auto pt-2"
+                data-testid="deckbuilder-pool-scroll"
+              >
               {viewMode === 'list' ? (
                   <ListView
                     cards={visiblePoolCards}
@@ -711,6 +733,7 @@ export function DeckBuilderPage() {
                     }}
                   />
                 ) : null}
+              </div>
             </div>
 
             <div className="min-h-0 h-full">
@@ -719,9 +742,6 @@ export function DeckBuilderPage() {
                 activeDeckId={activeDeckId ?? ''}
                 minDeckSize={minDeckSize}
                 poolImageByCardId={poolImageByCardId}
-                expandedDeckMode={expandedDeckMode}
-                onExpandedDeckModeChange={setExpandedDeckMode}
-                onActiveDeckChange={setActiveDeckId}
                 onDeckNameChange={(deckId, name) =>
                   setDecks((prev) => prev.map((deck) => (deck.id === deckId ? { ...deck, name } : deck)))
                 }
