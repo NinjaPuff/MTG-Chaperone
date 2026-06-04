@@ -1,5 +1,10 @@
 import type { ReactNode } from 'react';
 import type { GroupMode, SortKey, StacksOrganizeBy, ViewMode } from './types';
+import {
+  CARD_IMAGE_WIDTH_DEFAULT,
+  CARD_IMAGE_WIDTH_MAX,
+  CARD_IMAGE_WIDTH_MIN,
+} from '@/lib/cardImageWidth';
 import { cn } from '@/lib/utils';
 
 type ViewToolbarProps = {
@@ -19,6 +24,8 @@ type ViewToolbarProps = {
   onToggleShowBasicLands: (value: boolean) => void;
   onToggleShowRestrictedCards?: (value: boolean) => void;
   onResetFilters: () => void;
+  cardImageWidth: number;
+  onCardImageWidthChange: (width: number) => void;
   onChange: (
     next: Partial<{ viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode; stacksOrganizeBy: StacksOrganizeBy }>,
   ) => void;
@@ -89,6 +96,8 @@ type CombinedFilterDropdownProps = {
 type ProTweaksDropdownProps = {
   groupMode: GroupMode;
   showBasicLands: boolean;
+  cardImageWidth: number;
+  onCardImageWidthChange: (width: number) => void;
   onChangeGroupMode: (isPhase: boolean) => void;
   onToggleShowBasicLands: (value: boolean) => void;
 };
@@ -176,10 +185,13 @@ function CombinedFilterDropdown({
 function ProTweaksDropdown({
   groupMode,
   showBasicLands,
+  cardImageWidth,
+  onCardImageWidthChange,
   onChangeGroupMode,
   onToggleShowBasicLands,
 }: ProTweaksDropdownProps) {
-  const changed = groupMode === 'phase' || !showBasicLands;
+  const changed =
+    groupMode === 'phase' || !showBasicLands || cardImageWidth !== CARD_IMAGE_WIDTH_DEFAULT;
 
   return (
     <details className="relative">
@@ -218,6 +230,26 @@ function ProTweaksDropdown({
             />
             Show Basic Lands
           </label>
+          <div
+            className="flex flex-wrap items-center gap-2 pt-1"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <label htmlFor="display-settings-card-size" className="text-xs text-foreground">
+              Card Size
+            </label>
+            <input
+              id="display-settings-card-size"
+              type="range"
+              min={CARD_IMAGE_WIDTH_MIN}
+              max={CARD_IMAGE_WIDTH_MAX}
+              step={10}
+              value={cardImageWidth}
+              onChange={(event) => onCardImageWidthChange(Number(event.target.value))}
+              onClick={(event) => event.stopPropagation()}
+              className="w-32 accent-primary"
+            />
+            <span className="text-xs text-muted-foreground">{cardImageWidth}px</span>
+          </div>
         </div>
       </div>
     </details>
@@ -241,6 +273,8 @@ export function ViewToolbar({
   onToggleShowBasicLands,
   onToggleShowRestrictedCards,
   onResetFilters,
+  cardImageWidth,
+  onCardImageWidthChange,
   onChange,
 }: ViewToolbarProps) {
   const sortOptions = viewMode === 'stacks' ? [...BASE_SORT_OPTIONS, ...STACKS_SORT_OPTIONS] : BASE_SORT_OPTIONS;
@@ -308,6 +342,8 @@ export function ViewToolbar({
       <ProTweaksDropdown
         groupMode={groupMode}
         showBasicLands={showBasicLands}
+        cardImageWidth={cardImageWidth}
+        onCardImageWidthChange={onCardImageWidthChange}
         onChangeGroupMode={(isPhase) => onChange({ groupMode: isPhase ? 'phase' : 'flat' })}
         onToggleShowBasicLands={onToggleShowBasicLands}
       />

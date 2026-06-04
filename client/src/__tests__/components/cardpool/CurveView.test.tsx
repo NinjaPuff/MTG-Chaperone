@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { CardPreviewProvider } from '../../../components/cardpool/CardPreviewContext';
 import { CurveView } from '../../../components/cardpool/CurveView';
 import type { PoolCard } from '../../../components/cardpool/types';
@@ -24,13 +24,6 @@ function makeCard(overrides: Partial<PoolCard> = {}): PoolCard {
 
 describe('CurveView', () => {
   it('shows total copy count in the mana bucket label', () => {
-    const resizeObserver = vi.fn(() => ({
-      observe: vi.fn(),
-      disconnect: vi.fn(),
-      unobserve: vi.fn(),
-    }));
-    vi.stubGlobal('ResizeObserver', resizeObserver);
-
     render(
       <CardPreviewProvider>
         <CurveView
@@ -38,24 +31,16 @@ describe('CurveView', () => {
           sortKey="name"
           groupMode="flat"
           organizeBy="cmc"
+          cardWidth={180}
         />
       </CardPreviewProvider>,
     );
 
     expect(screen.getByText('(4)')).toBeInTheDocument();
     expect(screen.queryByText('(1)')).not.toBeInTheDocument();
-
-    vi.unstubAllGlobals();
   });
 
   it('shows total copy count beside organize-by group heading', () => {
-    const resizeObserver = vi.fn(() => ({
-      observe: vi.fn(),
-      disconnect: vi.fn(),
-      unobserve: vi.fn(),
-    }));
-    vi.stubGlobal('ResizeObserver', resizeObserver);
-
     render(
       <CardPreviewProvider>
         <CurveView
@@ -66,12 +51,43 @@ describe('CurveView', () => {
           sortKey="name"
           groupMode="flat"
           organizeBy="type"
+          cardWidth={180}
         />
       </CardPreviewProvider>,
     );
 
     expect(screen.getByText(/Creature \(5\)/)).toBeInTheDocument();
+  });
 
-    vi.unstubAllGlobals();
+  it('should_size_card_wrapper_to_cardWidth_prop', () => {
+    render(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[makeCard({ cmc: 1, quantity: 1 })]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="cmc"
+          cardWidth={180}
+        />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.getByTestId('curve-card-wrapper')).toHaveStyle({ width: '180px' });
+  });
+
+  it('should_scroll_horizontally_when_curve_columns_exceed_viewport', () => {
+    render(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[makeCard({ cmc: 1, quantity: 1 })]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="cmc"
+          cardWidth={280}
+        />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.getByTestId('curve-columns-scroll')).toHaveClass('overflow-x-auto');
   });
 });

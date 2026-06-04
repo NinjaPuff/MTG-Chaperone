@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { StacksView } from '@/components/cardpool/StacksView';
 import type { PoolCard } from '@/components/cardpool/types';
+import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import { getPrimaryType } from '@/lib/cardPoolSort';
 import { DeckBuildDetailsToggle } from './DeckBuildDetailsToggle';
 import type { BuilderDeck } from './types';
@@ -38,6 +39,7 @@ export function DeckAnalyticsView({
   onExpandedDeckModeChange,
 }: DeckAnalyticsViewProps) {
   const [viewMode, setViewMode] = useState<'curve' | 'stacks'>('curve');
+  const { cardImageWidth } = useCardImageWidth();
   const cards = useMemo(() => toPoolCards(deck), [deck]);
   const mainCards = cards.filter((card) => card.phaseLabel === 'Main Deck');
 
@@ -153,9 +155,9 @@ export function DeckAnalyticsView({
       </div>
 
       {viewMode === 'curve' ? (
-        <CurveView cards={cards} sortKey="cmc" groupMode="phase" organizeBy="cmc" />
+        <CurveView cards={cards} sortKey="cmc" groupMode="phase" organizeBy="cmc" cardWidth={cardImageWidth} />
       ) : (
-        <StacksView cards={cards} sortKey="type" groupMode="phase" organizeBy="type" cardWidth={200} />
+        <StacksView cards={cards} sortKey="type" groupMode="phase" organizeBy="type" cardWidth={cardImageWidth} />
       )}
     </div>
   );

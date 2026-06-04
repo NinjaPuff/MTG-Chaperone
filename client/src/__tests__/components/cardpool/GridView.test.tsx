@@ -40,6 +40,7 @@ describe('GridView', () => {
         sortKey="name"
         groupMode="flat"
         organizeBy="type"
+        cardWidth={200}
         getTouchActions={() => [{ label: 'Add to main deck', onAction: onAdd }]}
       />,
     );
@@ -51,9 +52,18 @@ describe('GridView', () => {
 
   it('renders cards without touch actions', () => {
     renderWithAppProviders(
-      <GridView cards={cards} sortKey="name" groupMode="flat" organizeBy="type" />,
+      <GridView cards={cards} sortKey="name" groupMode="flat" organizeBy="type" cardWidth={200} />,
     );
 
     expect(screen.getByRole('img', { name: 'Lightning Bolt' })).toBeInTheDocument();
+  });
+
+  it('should_apply_auto_fill_grid_template_from_cardWidth', () => {
+    const { container } = renderWithAppProviders(
+      <GridView cards={cards} sortKey="name" groupMode="flat" organizeBy="type" cardWidth={200} />,
+    );
+
+    const grid = container.querySelector('[style*="repeat(auto-fill, minmax(200px, 1fr))"]');
+    expect(grid).toBeTruthy();
   });
 });

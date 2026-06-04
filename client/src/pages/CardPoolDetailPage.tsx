@@ -17,6 +17,7 @@ import { StagedOwnerCardRow } from '@/components/cardpool/StagedOwnerCardRow';
 import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
+import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import type { GroupMode, PoolCard, SearchResult, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
 import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
@@ -157,7 +158,6 @@ function getSmallImage(imageUris: unknown): string | null {
 
 const VIEW_PREFERENCES_KEY = 'cardpool-view-prefs';
 const VISUAL_VIEW_MAX_CARDS = 180;
-const STACK_CARD_WIDTH_DEFAULT = 220;
 const STACKS_ORGANIZE_DEFAULT: StacksOrganizeBy = 'type';
 function parseViewPreferences(rawValue: string | null): { viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode } {
   if (!rawValue) {
@@ -220,7 +220,7 @@ export function CardPoolDetailPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortKey, setSortKey] = useState<SortKey>('type');
   const [groupMode, setGroupMode] = useState<GroupMode>('flat');
-  const [stackCardWidth, setStackCardWidth] = useState(STACK_CARD_WIDTH_DEFAULT);
+  const { cardImageWidth, setCardImageWidth } = useCardImageWidth();
   const [stacksOrganizeBy, setStacksOrganizeBy] = useState<StacksOrganizeBy>(STACKS_ORGANIZE_DEFAULT);
   const [selectedTypeFilters, setSelectedTypeFilters] = useState<string[]>([...CARD_TYPE_FILTERS]);
   const [selectedColorFilters, setSelectedColorFilters] = useState<string[]>([...COLOR_FILTERS]);
@@ -339,13 +339,6 @@ export function CardPoolDetailPage() {
     setViewMode(stored.viewMode);
     setSortKey(stored.sortKey);
     setGroupMode(stored.groupMode);
-    const storedStackWidth = window.localStorage.getItem('cardpool-stacks-width');
-    if (storedStackWidth) {
-      const parsed = Number(storedStackWidth);
-      if (Number.isFinite(parsed)) {
-        setStackCardWidth(Math.max(160, Math.min(280, parsed)));
-      }
-    }
     const storedStacksOrganize = window.localStorage.getItem('cardpool-stacks-organize');
     if (
       storedStacksOrganize === 'type' ||
@@ -363,10 +356,6 @@ export function CardPoolDetailPage() {
   useEffect(() => {
     window.localStorage.setItem(VIEW_PREFERENCES_KEY, JSON.stringify({ viewMode, sortKey, groupMode }));
   }, [groupMode, sortKey, viewMode]);
-
-  useEffect(() => {
-    window.localStorage.setItem('cardpool-stacks-width', String(stackCardWidth));
-  }, [stackCardWidth]);
 
   useEffect(() => {
     window.localStorage.setItem('cardpool-stacks-organize', stacksOrganizeBy);
@@ -1150,6 +1139,8 @@ export function CardPoolDetailPage() {
             setSelectedTypeFilters([...CARD_TYPE_FILTERS]);
             setSelectedColorFilters([...COLOR_FILTERS]);
           }}
+          cardImageWidth={cardImageWidth}
+          onCardImageWidthChange={setCardImageWidth}
           onChange={(next) => {
             if (next.viewMode) {
               setViewMode(next.viewMode);
@@ -1165,24 +1156,6 @@ export function CardPoolDetailPage() {
             }
           }}
         />
-        {viewMode === 'stacks' ? (
-          <div className="flex flex-wrap items-center gap-3 rounded-md border border-border/70 bg-card px-3 py-2">
-            <label htmlFor="stacks-size" className="text-xs font-medium text-muted-foreground">
-              Card Size
-            </label>
-            <input
-              id="stacks-size"
-              type="range"
-              min={160}
-              max={280}
-              step={10}
-              value={stackCardWidth}
-              onChange={(event) => setStackCardWidth(Number(event.target.value))}
-              className="w-44 accent-primary"
-            />
-            <span className="text-xs text-muted-foreground">{stackCardWidth}px</span>
-          </div>
-        ) : null}
         {viewMode === 'list' ? (
           <ListView
             cards={visibleCards}
@@ -1198,6 +1171,7 @@ export function CardPoolDetailPage() {
             sortKey={sortKey}
             groupMode={groupMode}
             organizeBy={stacksOrganizeBy}
+            cardWidth={cardImageWidth}
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
@@ -1206,7 +1180,7 @@ export function CardPoolDetailPage() {
             cards={visibleCards}
             sortKey={sortKey}
             groupMode={groupMode}
-            cardWidth={stackCardWidth}
+            cardWidth={cardImageWidth}
             organizeBy={stacksOrganizeBy}
             onCardContextMenu={handleAdminCardContextMenu}
           />
@@ -1217,6 +1191,7 @@ export function CardPoolDetailPage() {
             sortKey={sortKey}
             groupMode={groupMode}
             organizeBy={stacksOrganizeBy}
+            cardWidth={cardImageWidth}
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
