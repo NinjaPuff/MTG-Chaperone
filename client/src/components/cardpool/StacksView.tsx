@@ -103,8 +103,8 @@ function StackColumn({
               <div
                 key={`badge-${card.phaseLabel}-${card.scryfallId}`}
                 data-badge-index={index}
-                className="pointer-events-none absolute left-1 -translate-y-full pb-1"
-                style={{ top: stackBadgeTopPx(index, cards.length, peekHeight, cardHeight) }}
+                className="pointer-events-none absolute left-1 z-10"
+                style={{ top: stackBadgeTopPx(index, peekHeight) }}
               >
                 {renderBadge(card)}
               </div>

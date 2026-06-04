@@ -1,7 +1,4 @@
-export function stackVisibleFaceHeight(index: number, cardCount: number, peekHeight: number, cardHeight: number): number {
-  return index === cardCount - 1 ? cardHeight : peekHeight;
-}
-
-export function stackBadgeTopPx(index: number, cardCount: number, peekHeight: number, cardHeight: number): number {
-  return index * peekHeight + stackVisibleFaceHeight(index, cardCount, peekHeight, cardHeight);
+/** Top offset for column-level pool badges aligned to each stack slice (not bottom-left). */
+export function stackBadgeTopPx(index: number, peekHeight: number, offsetPx = 4): number {
+  return index * peekHeight + offsetPx;
 }

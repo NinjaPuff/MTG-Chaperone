@@ -25,17 +25,13 @@ function makeCard(id: string, overrides: Partial<PoolCard> = {}): PoolCard {
 }
 
 describe('stackBadgeLayout', () => {
-  it('positions middle card badge at peek slice bottom and front at full card bottom', () => {
-    const cardWidth = 200;
-    const cardHeight = Math.round((cardWidth * 680) / 488);
-    const peekHeight = Math.max(48, Math.round(cardHeight * 0.24));
+  it('positions badges at the top of each stack slice', () => {
+    const peekHeight = 48;
 
-    const middleTop = stackBadgeTopPx(1, 3, peekHeight, cardHeight);
-    const frontTop = stackBadgeTopPx(2, 3, peekHeight, cardHeight);
-
-    expect(middleTop).toBe(peekHeight + peekHeight);
-    expect(frontTop).toBe(2 * peekHeight + cardHeight);
-    expect(frontTop).toBeGreaterThan(middleTop);
+    expect(stackBadgeTopPx(0, peekHeight)).toBe(4);
+    expect(stackBadgeTopPx(1, peekHeight)).toBe(peekHeight + 4);
+    expect(stackBadgeTopPx(2, peekHeight)).toBe(2 * peekHeight + 4);
+    expect(stackBadgeTopPx(2, peekHeight)).toBeGreaterThan(stackBadgeTopPx(1, peekHeight));
   });
 });
 
@@ -64,6 +60,7 @@ describe('StacksView badges', () => {
     const badgeC = screen.getByTestId('badge-c').closest('[data-badge-index]');
     expect(badgeB).toHaveAttribute('data-badge-index', '1');
     expect(badgeC).toHaveAttribute('data-badge-index', '2');
+    expect(badgeB).not.toHaveClass('bottom-1');
   });
 
   it('shows quantity badge on card wrapper', () => {
