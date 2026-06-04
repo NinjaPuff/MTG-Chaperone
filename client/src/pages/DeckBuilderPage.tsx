@@ -280,6 +280,15 @@ export function DeckBuilderPage() {
     sortKey,
   ]);
 
+  const poolCardCount = useMemo(
+    () => poolCards.reduce((sum, card) => sum + card.quantity, 0),
+    [poolCards],
+  );
+  const visiblePoolCardCount = useMemo(
+    () => visiblePoolCards.reduce((sum, card) => sum + card.quantity, 0),
+    [visiblePoolCards],
+  );
+
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? null;
 
   const saveDeck = async (deck: BuilderDeck) => {
@@ -466,7 +475,8 @@ export function DeckBuilderPage() {
                 sortKey={sortKey}
                 groupMode={groupMode}
                 stacksOrganizeBy={stacksOrganizeBy}
-                totalCards={visiblePoolCards.reduce((sum, card) => sum + card.quantity, 0)}
+                visibleCardCount={visiblePoolCardCount}
+                poolCardCount={poolCardCount}
                 selectedColorFilters={selectedColorFilters}
                 selectedTypeFilters={selectedTypeFilters}
                 showBasicLands={showBasicLands}

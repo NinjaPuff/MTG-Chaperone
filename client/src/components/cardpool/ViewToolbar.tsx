@@ -12,7 +12,8 @@ type ViewToolbarProps = {
   sortKey: SortKey;
   groupMode: GroupMode;
   stacksOrganizeBy?: StacksOrganizeBy;
-  totalCards: number;
+  visibleCardCount: number;
+  poolCardCount: number;
   disableVisualViews?: boolean;
   selectedColorFilters: string[];
   selectedTypeFilters: string[];
@@ -256,12 +257,20 @@ function ProTweaksDropdown({
   );
 }
 
+function formatPoolCardCountLabel(visible: number, pool: number): string {
+  if (visible === pool) {
+    return `${pool} cards`;
+  }
+  return `${visible} / ${pool} cards`;
+}
+
 export function ViewToolbar({
   viewMode,
   sortKey,
   groupMode,
   stacksOrganizeBy = 'type',
-  totalCards,
+  visibleCardCount,
+  poolCardCount,
   disableVisualViews = false,
   selectedColorFilters,
   selectedTypeFilters,
@@ -359,7 +368,9 @@ export function ViewToolbar({
         </label>
       ) : null}
 
-      <span className="ml-auto text-sm text-muted-foreground">{totalCards} cards</span>
+      <span className="ml-auto text-sm text-muted-foreground">
+        {formatPoolCardCountLabel(visibleCardCount, poolCardCount)}
+      </span>
       {disableVisualViews ? (
         <span className="w-full text-xs text-amber-600">Visual modes are disabled for large pools to keep the page responsive.</span>
       ) : null}

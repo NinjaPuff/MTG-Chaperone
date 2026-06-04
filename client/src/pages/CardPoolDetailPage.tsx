@@ -1119,7 +1119,8 @@ export function CardPoolDetailPage() {
           sortKey={sortKey}
           groupMode={groupMode}
           stacksOrganizeBy={stacksOrganizeBy}
-          totalCards={visibleCardCount}
+          visibleCardCount={visibleCardCount}
+          poolCardCount={totalCards}
           disableVisualViews={disableVisualViews}
           selectedColorFilters={selectedColorFilters}
           selectedTypeFilters={selectedTypeFilters}
