@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { DeckCardList, type DeckCardListItem } from '../../../components/deckbuilder/DeckCardList';
 import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
@@ -117,5 +117,23 @@ describe('DeckCardList', () => {
 
     const row = screen.getByRole('button', { name: /1x Augur of Bolas/i });
     expect(row.className).toContain('deck-row-tint-gold');
+  });
+
+  it('should_call_onCardContextMenu_when_row_receives_contextmenu', () => {
+    const onCardContextMenu = vi.fn();
+    const card = makeListItem({ cachedCardId: 'c1', name: 'Grizzly Bears' });
+
+    renderWithAppProviders(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[card]}
+        onCardContextMenu={onCardContextMenu}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: /1x Grizzly Bears/i }));
+    expect(onCardContextMenu).toHaveBeenCalledTimes(1);
+    expect(onCardContextMenu.mock.calls[0][1]).toEqual(card);
   });
 });
