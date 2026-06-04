@@ -1,15 +1,30 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prismaMock, resetPrismaMock } from '../helpers/prismaMock.js';
 
+const pairingMocks = vi.hoisted(() => ({
+  assignRoundRobinPairings: vi.fn(),
+  generateRoundRobinSchedule: vi.fn(),
+  generateSeededSwissPairings: vi.fn(),
+  generateSwissPairings: vi.fn(),
+  regeneratePairings: vi.fn(),
+}));
+
 vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
+
+vi.mock('../../services/pairingService.js', () => pairingMocks);
 
 import { completeRound, createRound, deleteRound, startRound } from '../../services/roundService.js';
 
 describe('roundService', () => {
   beforeEach(() => {
     resetPrismaMock();
+    pairingMocks.assignRoundRobinPairings.mockReset();
+    pairingMocks.generateRoundRobinSchedule.mockReset();
+    pairingMocks.generateSeededSwissPairings.mockReset();
+    pairingMocks.generateSwissPairings.mockReset();
+    pairingMocks.regeneratePairings.mockReset();
   });
 
   it('starts a round from not_started state', async () => {
@@ -88,5 +103,73 @@ describe('roundService', () => {
       code: 'INVALID_OPERATION',
       message: 'Round robin events do not support manual round creation',
     });
+  });
+
+  it('pairs existing empty not_started round before creating a new one', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      seasonId: 's1',
+      totalRounds: 3,
+      config: { format: 'swiss' },
+      rounds: [{ roundNumber: 1 }],
+      season: { league: { memberships: [{ userId: 'u1' }, { userId: 'u2' }] } },
+    });
+    prismaMock.round.findFirst.mockResolvedValue({ id: 'r1', roundNumber: 1, status: 'not_started' });
+    pairingMocks.generateSwissPairings.mockResolvedValue([{ player1Id: 'u1', player2Id: 'u2', isBye: false }]);
+    prismaMock.match.create.mockResolvedValue({ id: 'm1' });
+    prismaMock.round.findUnique.mockResolvedValue({ id: 'r1', matches: [{ id: 'm1' }] });
+
+    const result = await createRound('e1');
+
+    expect(prismaMock.round.create).not.toHaveBeenCalled();
+    expect(prismaMock.round.findMany).not.toHaveBeenCalled();
+    expect(pairingMocks.generateSwissPairings).toHaveBeenCalledWith('r1');
+    expect(result).toEqual({ id: 'r1', matches: [{ id: 'm1' }] });
+  });
+
+  it('skips max round check when pairing an existing shell', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      seasonId: 's1',
+      totalRounds: 1,
+      config: { format: 'swiss' },
+      rounds: [{ roundNumber: 1 }],
+      season: { league: { memberships: [{ userId: 'u1' }, { userId: 'u2' }] } },
+    });
+    prismaMock.round.findFirst.mockResolvedValue({ id: 'r1', roundNumber: 1, status: 'not_started' });
+    pairingMocks.generateSwissPairings.mockResolvedValue([{ player1Id: 'u1', player2Id: 'u2', isBye: false }]);
+    prismaMock.match.create.mockResolvedValue({ id: 'm1' });
+    prismaMock.round.findUnique.mockResolvedValue({ id: 'r1', matches: [{ id: 'm1' }] });
+
+    await expect(createRound('e1')).resolves.toMatchObject({ id: 'r1' });
+    expect(prismaMock.round.findMany).not.toHaveBeenCalled();
+  });
+
+  it('creates a new round when no empty shell exists', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      seasonId: 's1',
+      totalRounds: 3,
+      config: { format: 'swiss' },
+      rounds: [{ roundNumber: 1 }],
+      season: { league: { memberships: [{ userId: 'u1' }, { userId: 'u2' }] } },
+    });
+    prismaMock.round.findFirst.mockResolvedValue(null);
+    prismaMock.round.findMany.mockResolvedValue([{ id: 'r1' }]);
+    prismaMock.round.create.mockResolvedValue({ id: 'r2', roundNumber: 2 });
+    pairingMocks.generateSwissPairings.mockResolvedValue([{ player1Id: 'u1', player2Id: 'u2', isBye: false }]);
+    prismaMock.match.create.mockResolvedValue({ id: 'm1' });
+    prismaMock.round.findUnique.mockResolvedValue({ id: 'r2', matches: [{ id: 'm1' }] });
+
+    const result = await createRound('e1');
+
+    expect(prismaMock.round.create).toHaveBeenCalledWith({
+      data: {
+        eventId: 'e1',
+        roundNumber: 2,
+        status: 'not_started',
+      },
+    });
+    expect(result).toEqual({ id: 'r2', matches: [{ id: 'm1' }] });
   });
 });

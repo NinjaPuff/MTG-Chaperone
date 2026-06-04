@@ -52,6 +52,17 @@ async function createMatchesForRound(roundId: string, pairs: Array<{ player1Id: 
   );
 }
 
+async function pairRoundByFormat(roundId: string, format: 'swiss' | 'seeded_swiss') {
+  if (format === 'swiss') {
+    const pairs = await generateSwissPairings(roundId);
+    await createMatchesForRound(roundId, pairs);
+    return;
+  }
+
+  const pairs = await generateSeededSwissPairings(roundId);
+  await createMatchesForRound(roundId, pairs);
+}
+
 async function tryAutoCompleteEvent(tx: Prisma.TransactionClient, eventId: string) {
   const event = await tx.event.findUnique({
     where: { id: eventId },
@@ -109,6 +120,26 @@ export async function createRound(eventId: string) {
     throw new AppError(409, 'INVALID_OPERATION', 'Round robin events do not support manual round creation');
   }
 
+  const emptyRoundShell = await prisma.round.findFirst({
+    where: {
+      eventId,
+      status: 'not_started',
+      matches: {
+        none: {},
+      },
+    },
+    orderBy: {
+      roundNumber: 'asc',
+    },
+  });
+  if (emptyRoundShell) {
+    await pairRoundByFormat(emptyRoundShell.id, event.config.format);
+    return prisma.round.findUnique({
+      where: { id: emptyRoundShell.id },
+      include: { matches: true },
+    });
+  }
+
   const existingRoundCount = await prisma.round.findMany({
     where: { eventId },
     select: { id: true },
@@ -125,20 +156,7 @@ export async function createRound(eventId: string) {
     },
   });
 
-  if (event.config.format === 'swiss') {
-    const pairs = await generateSwissPairings(round.id);
-    await createMatchesForRound(round.id, pairs);
-  } else if (event.config.format === 'seeded_swiss') {
-    const pairs = await generateSeededSwissPairings(round.id);
-    await createMatchesForRound(round.id, pairs);
-  } else {
-    const players = event.season.league.memberships.map((membership) => membership.userId);
-    const hasSchedule = await prisma.roundRobinSchedule.findUnique({ where: { seasonId: event.seasonId } });
-    if (!hasSchedule) {
-      await generateRoundRobinSchedule(event.seasonId, players);
-    }
-    await assignRoundRobinPairings(round.id);
-  }
+  await pairRoundByFormat(round.id, event.config.format);
 
   return prisma.round.findUnique({
     where: { id: round.id },
@@ -213,11 +231,9 @@ export async function regenerateRoundPairings(roundId: string) {
   await regeneratePairings(roundId);
 
   if (round.event.config.format === 'swiss') {
-    const pairs = await generateSwissPairings(roundId);
-    await createMatchesForRound(roundId, pairs);
+    await pairRoundByFormat(roundId, 'swiss');
   } else if (round.event.config.format === 'seeded_swiss') {
-    const pairs = await generateSeededSwissPairings(roundId);
-    await createMatchesForRound(roundId, pairs);
+    await pairRoundByFormat(roundId, 'seeded_swiss');
   } else {
     await assignRoundRobinPairings(roundId);
   }

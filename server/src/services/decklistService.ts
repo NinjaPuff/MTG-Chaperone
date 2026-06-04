@@ -54,6 +54,13 @@ type DecklistValidationResult = {
   warnings: string[];
 };
 
+type DeckbuilderRoundStatus = 'not_started' | 'in_progress' | 'completed';
+type DeckbuilderRound = {
+  id: string;
+  roundNumber: number;
+  status: DeckbuilderRoundStatus;
+};
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -309,6 +316,76 @@ async function getPoolCardsForUserSeason(userId: string, seasonId: string) {
     basicLandCardIds,
     basicLandCatalog,
   };
+}
+
+function selectDeckbuilderRound(rounds: DeckbuilderRound[]): DeckbuilderRound | null {
+  return (
+    rounds.find((round) => round.status === 'in_progress') ??
+    rounds.find((round) => round.status === 'not_started') ??
+    rounds[rounds.length - 1] ??
+    null
+  );
+}
+
+export async function ensureDeckbuilderRound(eventId: string): Promise<DeckbuilderRound> {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: {
+      status: true,
+      config: {
+        select: {
+          format: true,
+        },
+      },
+      rounds: {
+        select: {
+          id: true,
+          roundNumber: true,
+          status: true,
+        },
+        orderBy: {
+          roundNumber: 'asc',
+        },
+      },
+    },
+  });
+
+  if (!event) {
+    throw new AppError(404, 'NOT_FOUND', 'Event not found');
+  }
+  if (event.status === 'completed') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Event has completed');
+  }
+  if (event.status !== 'setup' && event.status !== 'active') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', `Event is not open for deck registration`);
+  }
+
+  const selectedRound = selectDeckbuilderRound(event.rounds as DeckbuilderRound[]);
+  if (selectedRound) {
+    return selectedRound;
+  }
+
+  if (event.config?.format === 'round_robin') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Event has no rounds yet');
+  }
+  if (event.config?.format !== 'swiss' && event.config?.format !== 'seeded_swiss') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Event has no rounds yet');
+  }
+
+  const createdRound = await prisma.round.create({
+    data: {
+      eventId,
+      roundNumber: 1,
+      status: 'not_started',
+    },
+    select: {
+      id: true,
+      roundNumber: true,
+      status: true,
+    },
+  });
+
+  return createdRound as DeckbuilderRound;
 }
 
 function parseMinChanges(parameters: unknown) {
@@ -682,27 +759,7 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
 }
 
 export async function listMyDecklistsForEvent(eventId: string, userId: string) {
-  const rounds = await prisma.round.findMany({
-    where: { eventId },
-    select: {
-      id: true,
-      roundNumber: true,
-      status: true,
-    },
-    orderBy: {
-      roundNumber: 'asc',
-    },
-  });
-
-  if (rounds.length === 0) {
-    throw new AppError(409, 'INVALID_EVENT_STATE', 'Event has no rounds yet');
-  }
-
-  const selectedRound =
-    rounds.find((round) => round.status === 'in_progress') ??
-    rounds.find((round) => round.status === 'not_started') ??
-    rounds[rounds.length - 1];
-
+  const selectedRound = await ensureDeckbuilderRound(eventId);
   return listMyDecklistsForRound(eventId, selectedRound.id, userId);
 }
 
@@ -1091,6 +1148,7 @@ export function createDecklistService() {
   return {
     getDecklistById,
     listDecklistsForSeason,
+    ensureDeckbuilderRound,
     listMyDecklistsForEvent,
     listMyDecklistsForRound,
     createDecklist,
