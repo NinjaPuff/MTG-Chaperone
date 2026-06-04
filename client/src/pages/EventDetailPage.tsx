@@ -623,7 +623,21 @@ export function EventDetailPage() {
       <div className="rounded-lg border border-border bg-card p-4 space-y-3">
         <h2 className="text-lg font-semibold">Rounds</h2>
         {rounds.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No rounds yet. An admin can create the first round.</p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              {event.status === 'completed'
+                ? 'No rounds are available for this event.'
+                : 'No rounds yet. Pairings will be generated when the admin creates the first round.'}
+            </p>
+            {event.status === 'setup' || event.status === 'active' ? (
+              <Link
+                to={`/events/${event.id}/build`}
+                className="inline-flex rounded-md border border-border px-2 py-1 text-xs hover:bg-muted"
+              >
+                Build Deck
+              </Link>
+            ) : null}
+          </div>
         ) : (
           <div className="space-y-4">
             {orderedRounds.map((round) => (
