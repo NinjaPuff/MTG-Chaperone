@@ -9,6 +9,7 @@ type GridViewProps = {
   sortKey: SortKey;
   groupMode: GroupMode;
   organizeBy: StacksOrganizeBy;
+  cardWidth: number;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
@@ -75,6 +76,7 @@ function OrganizedGridSections({
   cards,
   sortKey,
   organizeBy,
+  cardWidth,
   onCardContextMenu,
   onCardClick,
   onCardDoubleClick,
@@ -84,6 +86,7 @@ function OrganizedGridSections({
   cards: PoolCard[];
   sortKey: SortKey;
   organizeBy: StacksOrganizeBy;
+  cardWidth: number;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
@@ -99,7 +102,10 @@ function OrganizedGridSections({
           <h4 className="text-sm font-semibold text-muted-foreground">
             <GroupHeadingLabel label={label} /> ({groupedCards.reduce((sum, card) => sum + card.quantity, 0)})
           </h4>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
+          <div
+            className="grid gap-2"
+            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardWidth}px, 1fr))` }}
+          >
             {sortCards(groupedCards, sortKey).map((card) => (
               <CardCell
                 key={`${card.phaseLabel}-${card.scryfallId}`}
@@ -123,6 +129,7 @@ export function GridView({
   sortKey,
   groupMode,
   organizeBy,
+  cardWidth,
   onCardContextMenu,
   onCardClick,
   onCardDoubleClick,
@@ -139,6 +146,7 @@ export function GridView({
         cards={cards}
         sortKey={sortKey}
         organizeBy={organizeBy}
+        cardWidth={cardWidth}
         onCardContextMenu={onCardContextMenu}
         onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
@@ -159,6 +167,7 @@ export function GridView({
             cards={phaseCards}
             sortKey={sortKey}
             organizeBy={organizeBy}
+            cardWidth={cardWidth}
             onCardContextMenu={onCardContextMenu}
             onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}

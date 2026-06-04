@@ -10,6 +10,7 @@ import { StacksView } from '@/components/cardpool/StacksView';
 import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { DeckAnalyticsView } from '@/components/deckbuilder/DeckAnalyticsView';
+import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import { DeckSidebar } from '@/components/deckbuilder/DeckSidebar';
 import { DragGhost } from '@/components/deckbuilder/DragGhost';
 import { DragProvider } from '@/components/deckbuilder/DragContext';
@@ -144,7 +145,7 @@ export function DeckBuilderPage() {
   const [sortKey, setSortKey] = useState<SortKey>('type');
   const [groupMode, setGroupMode] = useState<GroupMode>('flat');
   const [stacksOrganizeBy, setStacksOrganizeBy] = useState<StacksOrganizeBy>('type');
-  const [stackCardWidth, setStackCardWidth] = useState(210);
+  const { cardImageWidth, setCardImageWidth } = useCardImageWidth();
   const [minDeckSize, setMinDeckSize] = useState(40);
   const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null);
   const saveTimeoutRef = useRef<number | null>(null);
@@ -487,6 +488,8 @@ export function DeckBuilderPage() {
                   setSelectedTypeFilters([...CARD_TYPE_FILTERS]);
                   setSelectedColorFilters([...COLOR_FILTERS]);
                 }}
+                cardImageWidth={cardImageWidth}
+                onCardImageWidthChange={setCardImageWidth}
                 onChange={(next) => {
                   if (next.viewMode) {
                     setViewMode(next.viewMode);
@@ -502,24 +505,6 @@ export function DeckBuilderPage() {
                   }
                 }}
               />
-
-              {viewMode === 'stacks' ? (
-                <div className="flex items-center gap-2">
-                  <label htmlFor="deckbuilder-stack-size" className="text-xs text-muted-foreground">
-                    Card size
-                  </label>
-                  <input
-                    id="deckbuilder-stack-size"
-                    type="range"
-                    min={160}
-                    max={280}
-                    step={10}
-                    value={stackCardWidth}
-                    onChange={(event) => setStackCardWidth(Number(event.target.value))}
-                    className="w-44 accent-primary"
-                  />
-                </div>
-              ) : null}
 
               {viewMode === 'list' ? (
                   <ListView
@@ -548,6 +533,7 @@ export function DeckBuilderPage() {
                     sortKey={sortKey}
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
+                    cardWidth={cardImageWidth}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
                     getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
@@ -569,7 +555,7 @@ export function DeckBuilderPage() {
                     sortKey={sortKey}
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
-                    cardWidth={stackCardWidth}
+                    cardWidth={cardImageWidth}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
                     getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
@@ -591,6 +577,7 @@ export function DeckBuilderPage() {
                     sortKey={sortKey}
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
+                    cardWidth={cardImageWidth}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
                     getTouchActions={poolTouchActions}
                     renderBadge={(card) => {

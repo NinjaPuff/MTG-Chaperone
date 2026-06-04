@@ -1,4 +1,4 @@
-import { type MouseEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type MouseEvent, type ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
@@ -10,6 +10,7 @@ type CurveViewProps = {
   sortKey: SortKey;
   groupMode: GroupMode;
   organizeBy: StacksOrganizeBy;
+  cardWidth: number;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
@@ -30,6 +31,7 @@ function sortCurveColumn(cards: PoolCard[]) {
 
 function CurveColumns({
   cards,
+  cardWidth,
   onCardContextMenu,
   onCardClick,
   onCardDoubleClick,
@@ -37,6 +39,7 @@ function CurveColumns({
   getTouchActions,
 }: {
   cards: PoolCard[];
+  cardWidth: number;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
@@ -44,49 +47,22 @@ function CurveColumns({
   getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
   const byCmc = groupByCmc(cards);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [cardWidth, setCardWidth] = useState(118);
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) {
-      return;
-    }
-
-    const updateWidth = (containerWidth: number) => {
-      const columns = 8;
-      const gapPx = 12; // Matches gap-3
-      const bucketPadding = 16; // Matches p-2
-      const bucketWidth = (containerWidth - gapPx * (columns - 1)) / columns;
-      const targetCardWidth = Math.floor(bucketWidth - bucketPadding);
-      setCardWidth(Math.max(88, Math.min(170, targetCardWidth)));
-    };
-
-    updateWidth(element.clientWidth);
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) {
-        return;
-      }
-      updateWidth(entry.contentRect.width);
-    });
-
-    observer.observe(element);
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
-
   const cardHeight = Math.round((cardWidth * 680) / 488);
-  const peekHeight = 30;
+  const peekHeight = Math.max(30, Math.round(cardHeight * 0.12));
+  const columnWidth = cardWidth + 16;
 
   return (
-    <div ref={containerRef} className="grid grid-cols-2 gap-3 pb-3 sm:grid-cols-4 lg:grid-cols-8">
+    <div className="overflow-x-auto pb-3" data-testid="curve-columns-scroll">
+      <div className="flex w-max min-w-full gap-3">
       {[...byCmc.entries()].map(([cmc, bucket]) => {
         const ordered = sortCurveColumn(bucket);
         const stackHeight = ordered.length > 0 ? (ordered.length - 1) * peekHeight + cardHeight + 4 : cardHeight;
         return (
-          <div key={cmc} className="min-w-0 space-y-2 rounded-md border border-border/60 bg-card/30 p-2">
+          <div
+            key={cmc}
+            className="shrink-0 space-y-2 rounded-md border border-border/60 bg-card/30 p-2"
+            style={{ width: columnWidth }}
+          >
             <div className="text-center text-sm font-semibold">
               {cmc === 7 ? '7+' : cmc}{' '}
               <span className="text-muted-foreground">({sumBucketQuantity(ordered)})</span>
@@ -94,7 +70,7 @@ function CurveColumns({
             {ordered.length === 0 ? (
               <div className="py-6 text-center text-[11px] text-muted-foreground">--</div>
             ) : (
-              <div className="mx-auto" style={{ width: cardWidth }}>
+              <div className="mx-auto" style={{ width: cardWidth }} data-testid="curve-card-wrapper">
                 <div className="relative" style={{ height: stackHeight }}>
                   {ordered.map((card, index) => {
                     const image = getImageUrl(card, 'normal') ?? getImageUrl(card, 'border_crop');
@@ -155,6 +131,7 @@ function CurveColumns({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
@@ -162,6 +139,7 @@ function CurveColumns({
 function OrganizedCurveSections({
   cards,
   organizeBy,
+  cardWidth,
   onCardContextMenu,
   onCardClick,
   onCardDoubleClick,
@@ -170,6 +148,7 @@ function OrganizedCurveSections({
 }: {
   cards: PoolCard[];
   organizeBy: StacksOrganizeBy;
+  cardWidth: number;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
@@ -180,6 +159,7 @@ function OrganizedCurveSections({
     return (
       <CurveColumns
         cards={cards}
+        cardWidth={cardWidth}
         onCardContextMenu={onCardContextMenu}
         onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
@@ -199,6 +179,7 @@ function OrganizedCurveSections({
           </h3>
           <CurveColumns
             cards={groupedCards}
+            cardWidth={cardWidth}
             onCardContextMenu={onCardContextMenu}
             onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}
@@ -216,6 +197,7 @@ export function CurveView({
   sortKey,
   groupMode,
   organizeBy,
+  cardWidth,
   onCardContextMenu,
   onCardClick,
   onCardDoubleClick,
@@ -233,6 +215,7 @@ export function CurveView({
       <OrganizedCurveSections
         cards={sortedCards}
         organizeBy={organizeBy}
+        cardWidth={cardWidth}
         onCardContextMenu={onCardContextMenu}
         onCardClick={onCardClick}
         onCardDoubleClick={onCardDoubleClick}
@@ -251,6 +234,7 @@ export function CurveView({
           <OrganizedCurveSections
             cards={phaseCards}
             organizeBy={organizeBy}
+            cardWidth={cardWidth}
             onCardContextMenu={onCardContextMenu}
             onCardClick={onCardClick}
             onCardDoubleClick={onCardDoubleClick}

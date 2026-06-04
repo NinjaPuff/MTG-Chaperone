@@ -14,6 +14,7 @@ function renderViewToolbar(overrides: Partial<ViewToolbarProps> = {}) {
     onToggleShowRestrictedCards: vi.fn(),
     onResetFilters: vi.fn(),
     onChange: vi.fn(),
+    onCardImageWidthChange: vi.fn(),
   };
 
   const baseProps: ViewToolbarProps = {
@@ -25,10 +26,12 @@ function renderViewToolbar(overrides: Partial<ViewToolbarProps> = {}) {
     selectedTypeFilters: [...CARD_TYPE_FILTERS],
     showBasicLands: true,
     showRestrictedCards: true,
+    cardImageWidth: 220,
     onToggleColorFilter: handlers.onToggleColorFilter,
     onToggleTypeFilter: handlers.onToggleTypeFilter,
     onToggleShowBasicLands: handlers.onToggleShowBasicLands,
     onResetFilters: handlers.onResetFilters,
+    onCardImageWidthChange: handlers.onCardImageWidthChange,
     onChange: handlers.onChange,
     ...overrides,
   };
@@ -118,6 +121,29 @@ describe('ViewToolbar', () => {
     expect(onToggleShowRestrictedCards).toHaveBeenCalledWith(false);
   });
 
+  it('should_render_card_size_slider_in_display_settings', () => {
+    renderViewToolbar();
+    openDisplaySettingsDropdown();
+
+    expect(screen.getByLabelText('Card Size')).toBeInTheDocument();
+  });
+
+  it('should_call_onCardImageWidthChange_when_slider_changes', () => {
+    const { onCardImageWidthChange } = renderViewToolbar();
+    openDisplaySettingsDropdown();
+
+    fireEvent.change(screen.getByLabelText('Card Size'), { target: { value: '250' } });
+
+    expect(onCardImageWidthChange).toHaveBeenCalledTimes(1);
+    expect(onCardImageWidthChange).toHaveBeenCalledWith(250);
+  });
+
+  it('should_show_asterisk_when_card_size_differs_from_default', () => {
+    renderViewToolbar({ cardImageWidth: 250 });
+
+    expect(screen.getByText('Display Settings *')).toBeInTheDocument();
+  });
+
   it('unchecks a selected color filter with real state', () => {
     function StatefulToolbar() {
       const [selectedColorFilters, setSelectedColorFilters] = useState<string[]>([...COLOR_FILTERS]);
@@ -140,6 +166,8 @@ describe('ViewToolbar', () => {
           onToggleShowBasicLands={vi.fn()}
           onResetFilters={vi.fn()}
           onChange={vi.fn()}
+          cardImageWidth={220}
+          onCardImageWidthChange={vi.fn()}
         />
       );
     }
