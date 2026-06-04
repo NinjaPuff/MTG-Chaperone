@@ -120,7 +120,11 @@ function CurveColumns({
                               x{card.quantity}
                             </span>
                           ) : null}
-                          {renderBadge ? <div className="absolute bottom-1 left-1">{renderBadge(card)}</div> : null}
+                          {renderBadge ? (
+                            <div className="absolute left-1 top-1" data-testid="pool-card-badge-anchor">
+                              {renderBadge(card)}
+                            </div>
+                          ) : null}
                         </div>
                       </HoverTarget>
                     );

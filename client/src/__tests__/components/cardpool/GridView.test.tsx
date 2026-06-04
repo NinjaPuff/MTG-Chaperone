@@ -58,6 +58,23 @@ describe('GridView', () => {
     expect(screen.getByRole('img', { name: 'Lightning Bolt' })).toBeInTheDocument();
   });
 
+  it('should_anchor_pool_badge_at_top_left_when_renderBadge_provided', () => {
+    renderWithAppProviders(
+      <GridView
+        cards={cards}
+        sortKey="name"
+        groupMode="flat"
+        organizeBy="type"
+        cardWidth={200}
+        renderBadge={() => <span>in deck 1</span>}
+      />,
+    );
+
+    const anchor = screen.getByTestId('pool-card-badge-anchor');
+    expect(anchor).toHaveClass('top-1', 'left-1');
+    expect(anchor).not.toHaveClass('bottom-1');
+  });
+
   it('should_apply_auto_fill_grid_template_from_cardWidth', () => {
     const { container } = renderWithAppProviders(
       <GridView cards={cards} sortKey="name" groupMode="flat" organizeBy="type" cardWidth={200} />,
