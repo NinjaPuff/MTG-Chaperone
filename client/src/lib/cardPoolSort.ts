@@ -5,6 +5,7 @@ type AcquisitionEntryLike = {
   cachedCard: {
     scryfallId: string;
     name: string;
+    layout?: string | null;
     manaCost: string | null;
     typeLine: string;
     rarity: string;
@@ -394,6 +395,7 @@ export function flattenEntries(acquisitions: AcquisitionLike[], groupMode: Group
       byKey.set(key, {
         scryfallId,
         name: card.name,
+        layout: card.layout ?? null,
         manaCost: card.manaCost,
         typeLine: card.typeLine,
         rarity: card.rarity,

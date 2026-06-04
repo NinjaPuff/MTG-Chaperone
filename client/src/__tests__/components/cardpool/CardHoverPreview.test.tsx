@@ -13,10 +13,16 @@ import { apiRequest } from '@/lib/api';
 const mockedApiRequest = vi.mocked(apiRequest);
 
 function PreviewController({
+  scryfallId = 'card-1',
+  name = 'Lightning Bolt',
+  layout = null,
   imageUrl,
   touchActions,
   isTouchMode,
 }: {
+  scryfallId?: string;
+  name?: string;
+  layout?: string | null;
   imageUrl: string | null;
   touchActions?: { label: string; onAction: () => void }[];
   isTouchMode?: boolean;
@@ -28,7 +34,7 @@ function PreviewController({
       type="button"
       onClick={() => {
         const rect = new DOMRect(100, 100, 80, 24);
-        showPreview('card-1', 'Lightning Bolt', imageUrl, rect, { x: 140, y: 112 }, {
+        showPreview(scryfallId, name, layout, imageUrl, rect, { x: 140, y: 112 }, {
           touchActions: touchActions ?? [],
           isTouchMode: isTouchMode ?? false,
         });
@@ -141,5 +147,132 @@ describe('CardHoverPreview', () => {
         'https://example.com/fetched.jpg',
       );
     });
+  });
+
+  it('does not fetch faces when layout is adventure', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValue({
+      data: {
+        name: 'Bonecrusher Giant // Stomp',
+        imageUris: { normal: 'https://example.com/adventure.jpg' },
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId="adventure-1"
+        name="Bonecrusher Giant // Stomp"
+        layout="adventure"
+        imageUrl={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(mockedApiRequest).toHaveBeenCalledWith('/api/cards/adventure-1');
+    });
+    expect(mockedApiRequest).not.toHaveBeenCalledWith('/api/cards/adventure-1/faces');
+  });
+
+  it('does not fetch faces when layout is prepare', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValue({
+      data: {
+        name: 'Joined Researchers // Secret Rendition',
+        imageUris: { normal: 'https://example.com/prepare.jpg' },
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId="prepare-1"
+        name="Joined Researchers // Secret Rendition"
+        layout="prepare"
+        imageUrl={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(mockedApiRequest).toHaveBeenCalledWith('/api/cards/prepare-1');
+    });
+    expect(mockedApiRequest).not.toHaveBeenCalledWith('/api/cards/prepare-1/faces');
+  });
+
+  it('fetches faces when layout is transform', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValueOnce({
+      data: {
+        faces: [
+          { name: 'Delver of Secrets', imageUris: { normal: 'https://example.com/front.jpg' } },
+          { name: 'Insectile Aberration', imageUris: { normal: 'https://example.com/back.jpg' } },
+        ],
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId="transform-1"
+        name="Delver of Secrets // Insectile Aberration"
+        layout="transform"
+        imageUrl="https://example.com/front.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(mockedApiRequest).toHaveBeenCalledWith('/api/cards/transform-1/faces');
+    });
+  });
+
+  it('fetches faces when layout is modal_dfc', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValueOnce({
+      data: {
+        faces: [
+          { name: 'Valakut Awakening', imageUris: { normal: 'https://example.com/front.jpg' } },
+          { name: 'Valakut Stoneforge', imageUris: { normal: 'https://example.com/back.jpg' } },
+        ],
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId="mdfc-1"
+        name="Valakut Awakening // Valakut Stoneforge"
+        layout="modal_dfc"
+        imageUrl="https://example.com/front.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(mockedApiRequest).toHaveBeenCalledWith('/api/cards/mdfc-1/faces');
+    });
+  });
+
+  it('does not fetch faces when layout is null and name has separator', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValue({
+      data: {
+        name: 'X // Y',
+        imageUris: { normal: 'https://example.com/single.jpg' },
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController scryfallId="unknown-1" name="X // Y" layout={null} imageUrl={null} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(mockedApiRequest).toHaveBeenCalledWith('/api/cards/unknown-1');
+    });
+    expect(mockedApiRequest).not.toHaveBeenCalledWith('/api/cards/unknown-1/faces');
   });
 });

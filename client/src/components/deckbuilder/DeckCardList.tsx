@@ -2,12 +2,14 @@ import type { MouseEvent } from 'react';
 import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
 import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
 import { sumBucketQuantity } from '@/lib/curveBucketTotal';
+import { frontFaceManaCost, frontFaceName } from '@/lib/cardLayout';
 import { getDeckRowColorClasses } from '@/lib/deckRowColors';
 import { CARD_TYPE_ORDER, getPrimaryType } from '@/lib/cardPoolSort';
 
 export type DeckCardListItem = {
   cachedCardId: string;
   name: string;
+  layout: string | null;
   manaCost: string | null;
   typeLine: string;
   quantity: number;
@@ -53,27 +55,34 @@ export function DeckCardList({
             <p className="text-[11px] font-medium text-muted-foreground">
               {group} ({sumBucketQuantity(groupCards)})
             </p>
-            {groupCards.map((card) => (
-              <button
-                key={`${card.cachedCardId}-${card.zone}`}
-                type="button"
-                className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs ${getDeckRowColorClasses(card.colorIdentity)}`}
-                onClick={() => onCardClick?.(card)}
-                onContextMenu={(event) => onCardContextMenu?.(event, card)}
-              >
-                <span className="min-w-0 truncate">
-                  {card.quantity}x{' '}
-                  <HoverTarget
-                    scryfallId={card.cachedCardId}
-                    name={card.name}
-                    imageUrl={card.imageUrl ?? null}
-                  >
-                    <span className="cursor-default">{card.name}</span>
-                  </HoverTarget>
-                </span>
-                <ManaCostSymbols manaCost={card.manaCost} className="ml-2 inline-flex shrink-0" />
-              </button>
-            ))}
+            {groupCards.map((card) => {
+              const displayName = frontFaceName(card.name, card.layout);
+              return (
+                <button
+                  key={`${card.cachedCardId}-${card.zone}`}
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs ${getDeckRowColorClasses(card.colorIdentity)}`}
+                  onClick={() => onCardClick?.(card)}
+                  onContextMenu={(event) => onCardContextMenu?.(event, card)}
+                >
+                  <span className="min-w-0 truncate">
+                    {card.quantity}x{' '}
+                    <HoverTarget
+                      scryfallId={card.cachedCardId}
+                      name={displayName}
+                      layout={card.layout}
+                      imageUrl={card.imageUrl ?? null}
+                    >
+                      <span className="cursor-default">{displayName}</span>
+                    </HoverTarget>
+                  </span>
+                  <ManaCostSymbols
+                    manaCost={frontFaceManaCost(card.manaCost, card.layout)}
+                    className="ml-2 inline-flex shrink-0"
+                  />
+                </button>
+              );
+            })}
           </div>
           );
         })}

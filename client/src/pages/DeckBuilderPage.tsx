@@ -27,6 +27,7 @@ type DecklistEntryResponse = {
   zone: 'main' | 'sideboard';
   cachedCard: {
     name: string;
+    layout: string | null;
     manaCost: string | null;
     typeLine: string;
     cmc: number;
@@ -78,6 +79,7 @@ type PoolResponse = {
         cachedCard: {
           scryfallId: string;
           name: string;
+          layout?: string | null;
           manaCost: string | null;
           typeLine: string;
           rarity: string;
@@ -110,6 +112,7 @@ function toDeckCards(entries: DecklistEntryResponse[]): DeckBuilderCard[] {
   return entries.map((entry) => ({
     cachedCardId: entry.cachedCardId,
     name: entry.cachedCard.name,
+    layout: entry.cachedCard.layout ?? null,
     manaCost: entry.cachedCard.manaCost,
     typeLine: entry.cachedCard.typeLine,
     cmc: entry.cachedCard.cmc,
@@ -395,6 +398,7 @@ export function DeckBuilderPage() {
               {
                 cachedCardId: poolCard.scryfallId,
                 name: poolCard.name,
+                layout: poolCard.layout,
                 manaCost: poolCard.manaCost,
                 typeLine: poolCard.typeLine,
                 cmc: poolCard.cmc,
@@ -766,6 +770,7 @@ export function DeckBuilderPage() {
                           {
                             cachedCardId: catalog.cachedCardId,
                             name: catalog.name,
+                            layout: null,
                             manaCost: catalog.manaCost,
                             typeLine: catalog.typeLine,
                             cmc: 0,

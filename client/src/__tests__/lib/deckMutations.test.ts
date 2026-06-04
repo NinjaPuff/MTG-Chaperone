@@ -24,6 +24,7 @@ function makeCard(overrides: Partial<DeckBuilderCard> = {}): DeckBuilderCard {
   return {
     cachedCardId: overrides.cachedCardId ?? 'card-1',
     name: overrides.name ?? 'Test Card',
+    layout: overrides.layout ?? null,
     manaCost: overrides.manaCost ?? '{2}',
     typeLine: overrides.typeLine ?? 'Creature',
     cmc: overrides.cmc ?? 2,

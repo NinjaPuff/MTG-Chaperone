@@ -4,6 +4,7 @@ export function makeSearchResult(overrides?: Partial<SearchResult>): SearchResul
   return {
     scryfallId: 'sf-1',
     name: 'Lightning Bolt',
+    layout: null,
     setCode: 'LEA',
     imageUris: { small: 'https://example.com/bolt.jpg' },
     manaCost: '{R}',

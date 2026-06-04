@@ -492,6 +492,7 @@ model CachedCard {
   rarity        String
   setCode         String
   collectorNumber String?
+  layout        String?
   imageUris     Json?
   prices        Json?
   lastFetched   DateTime @default(now())

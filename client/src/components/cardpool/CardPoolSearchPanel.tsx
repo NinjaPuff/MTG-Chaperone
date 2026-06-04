@@ -148,7 +148,12 @@ export function CardPoolSearchPanel({
                   isActive && 'bg-muted ring-2 ring-primary/40',
                 )}
               >
-                <HoverTarget scryfallId={card.scryfallId} name={card.name} imageUrl={imageUri}>
+                <HoverTarget
+                  scryfallId={card.scryfallId}
+                  name={card.name}
+                  layout={card.layout ?? null}
+                  imageUrl={imageUri}
+                >
                   <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
                     {imageUri ? (
                       <img

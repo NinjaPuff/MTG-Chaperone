@@ -38,6 +38,7 @@ function CardCell({
     <HoverTarget
       scryfallId={card.scryfallId}
       name={card.name}
+      layout={card.layout}
       imageUrl={image}
       touchActions={getTouchActions?.(card)}
       element="div"

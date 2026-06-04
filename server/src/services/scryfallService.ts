@@ -29,6 +29,7 @@ function normalizeSetCodes(setCodes: string[]) {
 type ScryfallCard = {
   id: string;
   name: string;
+  layout?: string;
   flavor_name?: string;
   mana_cost?: string;
   type_line?: string;
@@ -184,6 +185,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     where: { scryfallId: card.id },
     update: {
       name: card.name,
+      layout: card.layout ?? null,
       flavorName,
       manaCost,
       typeLine,
@@ -201,6 +203,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     create: {
       scryfallId: card.id,
       name: card.name,
+      layout: card.layout ?? null,
       flavorName,
       manaCost,
       typeLine,
@@ -324,6 +327,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     if (card.card_faces && card.card_faces.length > 1) {
       return card.card_faces.map((face) => ({
         name: face.name ?? card.name,
+        layout: card.layout ?? null,
         imageUris: face.image_uris ?? null,
       }));
     }
@@ -331,6 +335,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     return [
       {
         name: card.name,
+        layout: card.layout ?? null,
         imageUris: card.image_uris ?? null,
       },
     ];

@@ -35,7 +35,7 @@ export function StagedOwnerCardRow({
         disabled={applying}
       />
       {imageUri ? (
-        <HoverTarget scryfallId={cachedCardId} name={name} imageUrl={imageUri}>
+        <HoverTarget scryfallId={cachedCardId} name={name} layout={null} imageUrl={imageUri}>
           <img
             src={imageUri}
             alt={name}

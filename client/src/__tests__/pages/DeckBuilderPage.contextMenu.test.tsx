@@ -43,6 +43,7 @@ function poolCardEntry(quantity = 2) {
     cachedCard: {
       scryfallId: 'card-1',
       name: 'Lightning Bolt',
+      layout: null,
       manaCost: '{R}',
       typeLine: 'Instant',
       rarity: 'common',
@@ -62,6 +63,7 @@ function configureApi(options?: {
     zone: 'main' | 'sideboard';
     cachedCard: {
       name: string;
+      layout: string | null;
       manaCost: string | null;
       typeLine: string;
       cmc: number;
@@ -166,6 +168,7 @@ describe('DeckBuilderPage context menu', () => {
           zone: 'main',
           cachedCard: {
             name: 'Lightning Bolt',
+            layout: null,
             manaCost: '{R}',
             typeLine: 'Instant',
             cmc: 1,
@@ -194,6 +197,7 @@ describe('DeckBuilderPage context menu', () => {
           zone: 'main',
           cachedCard: {
             name: 'Lightning Bolt',
+            layout: null,
             manaCost: '{R}',
             typeLine: 'Instant',
             cmc: 1,

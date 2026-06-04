@@ -31,6 +31,7 @@ function toListItems(
     .map((card) => ({
       cachedCardId: card.cachedCardId,
       name: card.name,
+      layout: card.layout ?? null,
       manaCost: card.manaCost,
       typeLine: card.typeLine,
       quantity: card.quantity,
@@ -165,6 +166,7 @@ export function DeckSidebar({
                 activeDeck.cards.find((entry) => entry.cachedCardId === card.cachedCardId && entry.zone === card.zone) ?? {
                   cachedCardId: card.cachedCardId,
                   name: card.name,
+                  layout: card.layout ?? null,
                   manaCost: card.manaCost,
                   typeLine: card.typeLine,
                   cmc: 0,
@@ -222,6 +224,7 @@ export function DeckSidebar({
                   activeDeck.cards.find((entry) => entry.cachedCardId === card.cachedCardId && entry.zone === card.zone) ?? {
                     cachedCardId: card.cachedCardId,
                     name: card.name,
+                    layout: card.layout ?? null,
                     manaCost: card.manaCost,
                     typeLine: card.typeLine,
                     cmc: 0,

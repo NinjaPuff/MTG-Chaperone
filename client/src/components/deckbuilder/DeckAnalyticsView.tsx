@@ -14,6 +14,7 @@ function toPoolCards(deck: BuilderDeck): PoolCard[] {
   return deck.cards.map((card) => ({
     scryfallId: card.cachedCardId,
     name: card.name,
+    layout: card.layout,
     manaCost: card.manaCost,
     typeLine: card.typeLine,
     rarity: 'unknown',

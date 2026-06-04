@@ -85,6 +85,7 @@ function configureApi() {
                   cachedCard: {
                     scryfallId: 'card-1',
                     name: 'Lightning Bolt',
+                    layout: null,
                     manaCost: '{R}',
                     typeLine: 'Instant',
                     rarity: 'common',

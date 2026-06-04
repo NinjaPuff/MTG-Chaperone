@@ -54,6 +54,7 @@ function StackColumn({
               key={`${card.phaseLabel}-${card.scryfallId}`}
               scryfallId={card.scryfallId}
               name={card.name}
+              layout={card.layout}
               imageUrl={image}
               touchActions={getTouchActions?.(card)}
               element="div"

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/hooks/useScryfallSets', () => ({
   useScryfallSets: () => ({
@@ -20,6 +20,7 @@ function makeCard(overrides: Partial<PoolCard> = {}): PoolCard {
   return {
     scryfallId: overrides.scryfallId ?? 'card-1',
     name: overrides.name ?? 'Lightning Bolt',
+    layout: overrides.layout ?? null,
     manaCost: overrides.manaCost ?? '{R}',
     typeLine: overrides.typeLine ?? 'Instant',
     rarity: overrides.rarity ?? 'common',
@@ -74,5 +75,23 @@ describe('ListView', () => {
     fireEvent.click(screen.getByText('Lightning Bolt'));
 
     expect(onCardDoubleClick).not.toHaveBeenCalled();
+  });
+
+  it('should_show_front_face_name_only_when_card_has_prepare_layout', () => {
+    renderListView({
+      cards: [makeCard({ name: 'Joined Researchers // Secret Rendition', layout: 'prepare' })],
+    });
+
+    expect(screen.getByText('Joined Researchers')).toBeInTheDocument();
+    expect(screen.queryByText('Secret Rendition')).not.toBeInTheDocument();
+  });
+
+  it('should_show_full_name_when_card_has_transform_layout', () => {
+    const fullName = 'Delver of Secrets // Insectile Aberration';
+    renderListView({
+      cards: [makeCard({ name: fullName, layout: 'transform' })],
+    });
+
+    expect(screen.getByText(fullName)).toBeInTheDocument();
   });
 });

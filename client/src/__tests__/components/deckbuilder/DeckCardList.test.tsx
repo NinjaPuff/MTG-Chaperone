@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DeckCardList, type DeckCardListItem } from '../../../components/deckbuilder/DeckCardList';
 import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
@@ -7,6 +7,7 @@ function makeListItem(overrides: Partial<DeckCardListItem> = {}): DeckCardListIt
   return {
     cachedCardId: overrides.cachedCardId ?? 'card-1',
     name: overrides.name ?? 'Test Card',
+    layout: overrides.layout ?? null,
     manaCost: overrides.manaCost ?? '{1}',
     typeLine: overrides.typeLine ?? 'Creature',
     quantity: overrides.quantity ?? 1,
@@ -135,5 +136,102 @@ describe('DeckCardList', () => {
     fireEvent.contextMenu(screen.getByRole('button', { name: /1x Grizzly Bears/i }));
     expect(onCardContextMenu).toHaveBeenCalledTimes(1);
     expect(onCardContextMenu.mock.calls[0][1]).toEqual(card);
+  });
+
+  it('should_show_front_face_name_only_when_card_has_prepare_layout', () => {
+    renderWithAppProviders(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({
+            cachedCardId: 'p1',
+            name: 'Joined Researchers // Secret Rendition',
+            layout: 'prepare',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Joined Researchers')).toBeInTheDocument();
+    expect(screen.queryByText('Secret Rendition')).not.toBeInTheDocument();
+  });
+
+  it('should_show_front_face_name_only_when_card_has_adventure_layout', () => {
+    renderWithAppProviders(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({
+            cachedCardId: 'a1',
+            name: 'Bonecrusher Giant // Stomp',
+            layout: 'adventure',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText('Bonecrusher Giant')).toBeInTheDocument();
+    expect(screen.queryByText('Stomp')).not.toBeInTheDocument();
+  });
+
+  it('should_show_full_name_when_card_has_transform_layout', () => {
+    const fullName = 'Delver of Secrets // Insectile Aberration';
+    renderWithAppProviders(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({
+            cachedCardId: 't1',
+            name: fullName,
+            layout: 'transform',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(fullName)).toBeInTheDocument();
+  });
+
+  it('should_show_full_name_when_card_has_null_layout', () => {
+    const fullName = 'X // Y';
+    renderWithAppProviders(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({
+            cachedCardId: 'n1',
+            name: fullName,
+            layout: null,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText(fullName)).toBeInTheDocument();
+  });
+
+  it('should_show_front_face_mana_cost_only_when_card_has_prepare_layout', () => {
+    renderWithAppProviders(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({
+            cachedCardId: 'pm1',
+            name: 'Joined Researchers // Secret Rendition',
+            layout: 'prepare',
+            manaCost: '{3}{U} // {1}{U}{U}',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole('img', { name: '3' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'U' })).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: '1' })).not.toBeInTheDocument();
   });
 });

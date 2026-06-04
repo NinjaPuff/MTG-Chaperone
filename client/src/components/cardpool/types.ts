@@ -1,6 +1,7 @@
 export type PoolCard = {
   scryfallId: string;
   name: string;
+  layout: string | null;
   manaCost: string | null;
   typeLine: string;
   rarity: string;
@@ -29,6 +30,7 @@ export type SearchResult = {
   scryfallId: string;
   name: string;
   flavorName?: string | null;
+  layout?: string | null;
   setCode: string;
   imageUris: unknown;
   manaCost: string | null;

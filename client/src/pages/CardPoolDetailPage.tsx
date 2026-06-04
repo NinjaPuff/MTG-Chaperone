@@ -65,6 +65,7 @@ type PoolDetail = {
 type CachedCardSummary = {
   scryfallId: string;
   name: string;
+  layout?: string | null;
   setCode: string;
   imageUris: unknown;
   manaCost: string | null;

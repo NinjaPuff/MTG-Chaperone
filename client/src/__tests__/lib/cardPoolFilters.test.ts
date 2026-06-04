@@ -10,6 +10,7 @@ function makeCard(overrides: Partial<PoolCard> = {}): PoolCard {
   return {
     scryfallId: overrides.scryfallId ?? crypto.randomUUID(),
     name: overrides.name ?? 'Card',
+    layout: overrides.layout ?? null,
     manaCost: overrides.manaCost ?? null,
     typeLine: overrides.typeLine ?? 'Creature — Test',
     rarity: overrides.rarity ?? 'common',

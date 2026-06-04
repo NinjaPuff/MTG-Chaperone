@@ -8,6 +8,7 @@ export type TouchAction = {
 type PreviewState = {
   scryfallId: string;
   name: string;
+  layout: string | null;
   imageUrl: string | null;
   anchorRect: DOMRect;
   anchorPoint: { x: number; y: number };
@@ -25,6 +26,7 @@ type CardPreviewContextValue = {
   showPreview: (
     scryfallId: string,
     name: string,
+    layout: string | null,
     imageUrl: string | null,
     anchorRect: DOMRect,
     anchorPoint: { x: number; y: number },
@@ -82,10 +84,11 @@ export function CardPreviewProvider({ children }: CardPreviewProviderProps) {
   const value = useMemo<CardPreviewContextValue>(
     () => ({
       preview,
-      showPreview: (scryfallId, name, imageUrl, anchorRect, anchorPoint, options) =>
+      showPreview: (scryfallId, name, layout, imageUrl, anchorRect, anchorPoint, options) =>
         setPreview({
           scryfallId,
           name,
+          layout,
           imageUrl,
           anchorRect,
           anchorPoint,
@@ -115,6 +118,7 @@ export function useCardPreview() {
 type HoverTargetProps = {
   scryfallId: string;
   name: string;
+  layout: string | null;
   imageUrl: string | null;
   touchActions?: TouchAction[];
   className?: string;
@@ -125,6 +129,7 @@ type HoverTargetProps = {
 export function HoverTarget({
   scryfallId,
   name,
+  layout,
   imageUrl,
   touchActions,
   className,
@@ -155,7 +160,7 @@ export function HoverTarget({
         const mouseX = event.clientX;
         const mouseY = event.clientY;
         hoverTimerRef.current = window.setTimeout(() => {
-          showPreview(scryfallId, name, imageUrl, target.getBoundingClientRect(), { x: mouseX, y: mouseY });
+          showPreview(scryfallId, name, layout, imageUrl, target.getBoundingClientRect(), { x: mouseX, y: mouseY });
         }, 200);
       }}
       onMouseLeave={() => {
@@ -180,6 +185,7 @@ export function HoverTarget({
         showPreview(
           scryfallId,
           name,
+          layout,
           imageUrl,
           rect,
           { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },

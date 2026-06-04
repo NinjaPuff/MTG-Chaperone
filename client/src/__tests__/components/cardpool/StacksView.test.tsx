@@ -9,6 +9,7 @@ function makeCard(id: string, overrides: Partial<PoolCard> = {}): PoolCard {
   return {
     scryfallId: id,
     name: `Card ${id}`,
+    layout: overrides.layout ?? null,
     manaCost: '{1}',
     typeLine: 'Creature',
     rarity: 'common',

@@ -218,6 +218,7 @@ export interface DecklistEntry {
 export interface CachedCard {
   scryfallId: string;
   name: string;
+  layout: string | null;
   manaCost: string | null;
   typeLine: string;
   oracleText: string | null;
