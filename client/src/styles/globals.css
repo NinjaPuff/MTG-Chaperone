@@ -24,6 +24,11 @@
     --input: 240 5.9% 90%;
     --ring: 263 70% 50%;
     --radius: 0.5rem;
+    --scrollbar-track: 240 4.8% 95.9%;
+    --scrollbar-thumb: 240 3.8% 46.1%;
+    --scrollbar-thumb-hover: 263 70% 50%;
+    --scrollbar-size: 8px;
+    --scrollbar-button-size: 12px;
     --deck-row-white: 45 30% 88%;
     --deck-row-blue: 210 60% 88%;
     --deck-row-black: 270 15% 82%;
@@ -60,6 +65,10 @@
     --border: 240 3.7% 20%;
     --input: 240 3.7% 20%;
     --ring: 263 70% 58%;
+    --scrollbar-track: 240 3.7% 15.9%;
+    --scrollbar-thumb: 240 5% 64.9%;
+    --scrollbar-thumb-hover: 263 70% 58%;
+    --scrollbar-size: 8px;
     --deck-row-white: 45 20% 22%;
     --deck-row-blue: 210 35% 22%;
     --deck-row-black: 270 15% 22%;
@@ -78,6 +87,108 @@
 
   * {
     border-color: hsl(var(--border));
+  }
+
+  /* Firefox only — scrollbar-width/color disable ::-webkit-scrollbar-* in Chrome 121+ */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: hsl(var(--scrollbar-thumb)) hsl(var(--scrollbar-track));
+    }
+  }
+
+  *::-webkit-scrollbar {
+    width: var(--scrollbar-size);
+    height: var(--scrollbar-size);
+  }
+
+  *::-webkit-scrollbar-track {
+    background: hsl(var(--scrollbar-track) / 0.5);
+    border-radius: var(--radius);
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--scrollbar-thumb) / 0.65);
+    border-radius: var(--radius);
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--scrollbar-thumb-hover));
+  }
+
+  *::-webkit-scrollbar-button:single-button {
+    display: block;
+    background-color: hsl(var(--scrollbar-track) / 0.5);
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 6px;
+  }
+
+  *::-webkit-scrollbar-button:single-button:vertical:decrement,
+  *::-webkit-scrollbar-button:vertical:decrement,
+  *::-webkit-scrollbar-button:vertical:start:decrement {
+    display: block;
+    height: var(--scrollbar-button-size);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%236b7280' d='M4 1 1 7h6z'/%3E%3C/svg%3E");
+  }
+
+  *::-webkit-scrollbar-button:single-button:vertical:increment,
+  *::-webkit-scrollbar-button:vertical:increment,
+  *::-webkit-scrollbar-button:vertical:end:increment {
+    display: block;
+    height: var(--scrollbar-button-size);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%236b7280' d='M1 1h6L4 7z'/%3E%3C/svg%3E");
+  }
+
+  *::-webkit-scrollbar-button:single-button:horizontal:decrement,
+  *::-webkit-scrollbar-button:horizontal:decrement,
+  *::-webkit-scrollbar-button:horizontal:start:decrement {
+    display: block;
+    width: var(--scrollbar-button-size);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%236b7280' d='M1 4 7 1v6z'/%3E%3C/svg%3E");
+  }
+
+  *::-webkit-scrollbar-button:single-button:horizontal:increment,
+  *::-webkit-scrollbar-button:horizontal:increment,
+  *::-webkit-scrollbar-button:horizontal:end:increment {
+    display: block;
+    width: var(--scrollbar-button-size);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%236b7280' d='M1 1v6l6-3z'/%3E%3C/svg%3E");
+  }
+
+  *::-webkit-scrollbar-button:vertical:start:increment,
+  *::-webkit-scrollbar-button:vertical:end:decrement,
+  *::-webkit-scrollbar-button:horizontal:start:increment,
+  *::-webkit-scrollbar-button:horizontal:end:decrement {
+    display: none;
+    height: 0;
+    width: 0;
+  }
+
+  .dark *::-webkit-scrollbar-button:single-button:vertical:decrement,
+  .dark *::-webkit-scrollbar-button:vertical:decrement,
+  .dark *::-webkit-scrollbar-button:vertical:start:decrement {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%23a1a1aa' d='M4 1 1 7h6z'/%3E%3C/svg%3E");
+  }
+
+  .dark *::-webkit-scrollbar-button:single-button:vertical:increment,
+  .dark *::-webkit-scrollbar-button:vertical:increment,
+  .dark *::-webkit-scrollbar-button:vertical:end:increment {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%23a1a1aa' d='M1 1h6L4 7z'/%3E%3C/svg%3E");
+  }
+
+  .dark *::-webkit-scrollbar-button:single-button:horizontal:decrement,
+  .dark *::-webkit-scrollbar-button:horizontal:decrement,
+  .dark *::-webkit-scrollbar-button:horizontal:start:decrement {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%23a1a1aa' d='M1 4 7 1v6z'/%3E%3C/svg%3E");
+  }
+
+  .dark *::-webkit-scrollbar-button:single-button:horizontal:increment,
+  .dark *::-webkit-scrollbar-button:horizontal:increment,
+  .dark *::-webkit-scrollbar-button:horizontal:end:increment {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath fill='%23a1a1aa' d='M1 1v6l6-3z'/%3E%3C/svg%3E");
   }
 
   body {
