@@ -63,6 +63,49 @@ describe('StacksView badges', () => {
     expect(badgeB).not.toHaveClass('bottom-1');
   });
 
+  it('should_position_front_stack_badge_at_slice_top_plus_inset', () => {
+    const cardWidth = 200;
+    const cardHeight = Math.round((cardWidth * 680) / 488);
+    const peekHeight = Math.max(48, Math.round(cardHeight * 0.24));
+    const cards = [makeCard('a'), makeCard('b'), makeCard('c')];
+
+    render(
+      <CardPreviewProvider>
+        <StacksView
+          cards={cards}
+          sortKey="name"
+          groupMode="flat"
+          cardWidth={cardWidth}
+          organizeBy="type"
+          renderBadge={(card) => <span data-testid={`badge-${card.scryfallId}`}>in deck</span>}
+        />
+      </CardPreviewProvider>,
+    );
+
+    const frontBadge = screen.getByTestId('badge-c').closest('[data-badge-index]');
+    expect(frontBadge).toHaveStyle({ top: `${2 * peekHeight + 4}px` });
+  });
+
+  it('should_not_use_translate_y_full_on_badge_wrapper', () => {
+    render(
+      <CardPreviewProvider>
+        <StacksView
+          cards={[makeCard('a'), makeCard('b')]}
+          sortKey="name"
+          groupMode="flat"
+          cardWidth={200}
+          organizeBy="type"
+          renderBadge={(card) => <span data-testid={`badge-${card.scryfallId}`}>in deck</span>}
+        />
+      </CardPreviewProvider>,
+    );
+
+    const wrappers = document.querySelectorAll('[data-badge-index]');
+    wrappers.forEach((wrapper) => {
+      expect(wrapper).not.toHaveClass('-translate-y-full');
+    });
+  });
+
   it('shows quantity badge on card wrapper', () => {
     render(
       <CardPreviewProvider>

@@ -66,7 +66,11 @@ function CardCell({
             x{card.quantity}
           </span>
         ) : null}
-        {renderBadge ? <div className="absolute left-1 top-1 z-10">{renderBadge(card)}</div> : null}
+        {renderBadge ? (
+          <div className="absolute left-1 top-1 z-10" data-testid="pool-card-badge-anchor">
+            {renderBadge(card)}
+          </div>
+        ) : null}
       </div>
     </HoverTarget>
   );

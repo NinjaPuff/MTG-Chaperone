@@ -75,6 +75,25 @@ describe('CurveView', () => {
     expect(screen.getByTestId('curve-card-wrapper')).toHaveStyle({ width: '180px' });
   });
 
+  it('should_anchor_pool_badge_at_top_left_when_renderBadge_provided', () => {
+    render(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[makeCard({ cmc: 1, quantity: 1 })]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="cmc"
+          cardWidth={180}
+          renderBadge={() => <span>in deck 1</span>}
+        />
+      </CardPreviewProvider>,
+    );
+
+    const anchor = screen.getByTestId('pool-card-badge-anchor');
+    expect(anchor).toHaveClass('top-1', 'left-1');
+    expect(anchor).not.toHaveClass('bottom-1');
+  });
+
   it('should_scroll_horizontally_when_curve_columns_exceed_viewport', () => {
     render(
       <CardPreviewProvider>

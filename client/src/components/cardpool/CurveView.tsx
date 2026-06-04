@@ -130,6 +130,7 @@ function CurveColumns({
                         <div
                           key={`badge-${card.phaseLabel}-${card.scryfallId}`}
                           data-badge-index={index}
+                          data-testid="pool-card-badge-anchor"
                           className="pointer-events-none absolute left-1 z-10"
                           style={{ top: stackBadgeTopPx(index, peekHeight) }}
                         >
