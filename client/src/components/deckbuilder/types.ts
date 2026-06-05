@@ -3,6 +3,7 @@ import type { BasicLandSuggestion } from '@/lib/suggestBasicLands';
 export type DeckBuilderCard = {
   cachedCardId: string;
   name: string;
+  layout: string | null;
   manaCost: string | null;
   typeLine: string;
   cmc: number;

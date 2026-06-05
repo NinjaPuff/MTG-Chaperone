@@ -6,6 +6,7 @@ function makeCard(overrides: Partial<PoolCard> = {}): PoolCard {
   return {
     scryfallId: overrides.scryfallId ?? crypto.randomUUID(),
     name: overrides.name ?? 'Card',
+    layout: overrides.layout ?? null,
     manaCost: overrides.manaCost ?? null,
     typeLine: overrides.typeLine ?? 'Creature — Test',
     rarity: overrides.rarity ?? 'common',
@@ -71,6 +72,7 @@ describe('cardPoolSort helpers', () => {
             cachedCard: {
               scryfallId: 'a',
               name: 'Island',
+              layout: null,
               manaCost: null,
               typeLine: 'Basic Land — Island',
               rarity: 'common',
@@ -90,6 +92,7 @@ describe('cardPoolSort helpers', () => {
             cachedCard: {
               scryfallId: 'a',
               name: 'Island',
+              layout: null,
               manaCost: null,
               typeLine: 'Basic Land — Island',
               rarity: 'common',
@@ -119,6 +122,7 @@ describe('cardPoolSort helpers', () => {
             cachedCard: {
               scryfallId: 'a',
               name: 'Island',
+              layout: null,
               manaCost: null,
               typeLine: 'Basic Land — Island',
               rarity: 'common',
@@ -138,6 +142,7 @@ describe('cardPoolSort helpers', () => {
             cachedCard: {
               scryfallId: 'a',
               name: 'Island',
+              layout: null,
               manaCost: null,
               typeLine: 'Basic Land — Island',
               rarity: 'common',

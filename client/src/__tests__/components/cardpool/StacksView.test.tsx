@@ -9,6 +9,7 @@ function makeCard(id: string, overrides: Partial<PoolCard> = {}): PoolCard {
   return {
     scryfallId: id,
     name: `Card ${id}`,
+    layout: overrides.layout ?? null,
     manaCost: '{1}',
     typeLine: 'Creature',
     rarity: 'common',
@@ -25,18 +26,13 @@ function makeCard(id: string, overrides: Partial<PoolCard> = {}): PoolCard {
 }
 
 describe('stackBadgeLayout', () => {
-  const peekHeight = 68;
+  it('positions badges at the top of each stack slice', () => {
+    const peekHeight = 48;
 
-  it('should_return_zero_when_index_is_only_card_in_stack', () => {
-    expect(stackBadgeTopPx(0, peekHeight)).toBe(0);
-  });
-
-  it('should_return_peekHeight_when_index_is_middle_of_three_card_stack', () => {
-    expect(stackBadgeTopPx(1, peekHeight)).toBe(peekHeight);
-  });
-
-  it('should_return_double_peekHeight_when_index_is_front_of_three_card_stack', () => {
-    expect(stackBadgeTopPx(2, peekHeight)).toBe(2 * peekHeight);
+    expect(stackBadgeTopPx(0, peekHeight)).toBe(4);
+    expect(stackBadgeTopPx(1, peekHeight)).toBe(peekHeight + 4);
+    expect(stackBadgeTopPx(2, peekHeight)).toBe(2 * peekHeight + 4);
+    expect(stackBadgeTopPx(2, peekHeight)).toBeGreaterThan(stackBadgeTopPx(1, peekHeight));
   });
 });
 
@@ -65,6 +61,7 @@ describe('StacksView badges', () => {
     const badgeC = screen.getByTestId('badge-c').closest('[data-badge-index]');
     expect(badgeB).toHaveAttribute('data-badge-index', '1');
     expect(badgeC).toHaveAttribute('data-badge-index', '2');
+    expect(badgeB).not.toHaveClass('bottom-1');
   });
 
   it('should_position_front_stack_badge_at_slice_top_plus_inset', () => {

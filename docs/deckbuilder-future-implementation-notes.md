@@ -28,24 +28,9 @@ Remaining optional follow-up:
 
 ## 2) Deck Sidebar Layout + Visibility
 
-### Sticky deckbuilder sidebar sized to the viewport (not page height)
+### Sticky deckbuilder sidebar sized to the viewport (not page height) — **SHIPPED**
 
-- **Problem:** On [DeckBuilderPage.tsx](client/src/pages/DeckBuilderPage.tsx), the deck column (`min-h-[640px]` wrapper + [DeckSidebar.tsx](client/src/components/deckbuilder/DeckSidebar.tsx) `h-full`) grows with the **document** as the card pool gets taller. The sidebar stretches to match the pool column instead of the **visible screen**. Users must scroll the whole page to reach sideboard and basic lands even though the sidebar already has an internal scroll region for the main-deck list.
-- **Goal:** The right **Your Deck** panel stays **pinned in view** while the pool scrolls, and its outer height is capped to the **current viewport** (below app chrome), not the full page length.
-- **Layout model (desktop `xl+`):**
-  - Treat the deckbuilder split (`grid` pool + sidebar) as a **viewport-bounded work area**: e.g. `height: calc(100dvh - <navbar> - <page header> - <padding>)` or equivalent flex child with `min-h-0` under [AppLayout.tsx](client/src/components/layout/AppLayout.tsx) `main`.
-  - **Pool column:** `overflow-y: auto` (only the pool scrolls).
-  - **Sidebar column:** `position: sticky` with `top` offset **or** fixed height matching the work area; `align-self: start` so it does not stretch with pool content height.
-  - **Sidebar interior:** Keep header + `MiniManaCurve` fixed at top; **main deck list** scrolls inside (`overflow-y-auto`, already on the list container); **sideboard + basic lands** remain visible at the bottom of the sidebar without page scroll (flex column: `flex-1 min-h-0` on scrollable middle, shrink-0 footer blocks).
-- **Remove / replace** the sidebar wrapper’s `min-h-[640px]` once viewport height is authoritative—avoid forcing document-tall columns.
-- **Offsets to account for:** `Navbar`, deckbuilder title/save row, `container` padding (`py-6`), optional mobile bottom nav (`pb-16` on `main`). Prefer `100dvh` with fallbacks for mobile browser chrome.
-- **Mobile (`< xl`):** Stacked layout may use full-width pool first; define whether sidebar becomes a bottom sheet, tab (`Your Deck`), or still sticky below the fold—document chosen behavior; minimum bar is no accidental double-page scroll traps.
-- **Validation:**
-  - Long pool list: page/`main` does not grow solely because of pool height; pool scrolls inside its pane.
-  - Sidebar height ≈ visible work area; sideboard + basic lands reachable without scrolling past the entire pool.
-  - Resize window: sidebar reflows within new viewport height.
-  - No overlap with fixed navbar/mobile nav; sticky `top` matches measured header stack.
-- **Tests (lightweight):** Optional layout test asserting sidebar wrapper has viewport-relative height class or computed style hook; manual smoke is acceptable if DOM structure is hard to assert in jsdom.
+- Viewport-bounded work area on `DeckBuilderPage`; pool column scrolls independently; sidebar internal scroll for main/sideboard card lists.
 
 ### Group quantity totals next to deck list headings (`DeckCardList`) — **SHIPPED**
 
@@ -143,7 +128,7 @@ Further polish (optional):
 ## Validation Checklist
 
 - Filter and display checkboxes toggle on and off; pool viewer lists update immediately. **SHIPPED**
-- Deckbuilder sidebar is sticky and viewport-tall (pool scrolls independently; sideboard/basic lands stay in view without scrolling the full page).
+- Deckbuilder sidebar is sticky and viewport-tall (pool scrolls independently; sideboard/basic lands stay in view without scrolling the full page). **SHIPPED**
 - Deck list type groups (Creature, Instant, etc.) show total quantity next to the group title in main deck and sideboard. **SHIPPED**
 - Main-deck and sideboard rows use color-tinted backgrounds (mono = card color, multicolor = gold, colorless = grey). **SHIPPED**
 - Deck panel is visually distinct from pool panel. **SHIPPED (partial)**

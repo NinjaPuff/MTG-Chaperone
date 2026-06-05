@@ -15,7 +15,7 @@ export function DeckBuildDetailsToggle({
         type="button"
         aria-pressed={!expandedDeckMode}
         disabled={disabled}
-        className={`rounded border px-2 py-1 text-xs ${!expandedDeckMode ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
+        className={`rounded border px-1.5 py-0.5 text-xs ${!expandedDeckMode ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
         onClick={() => onChange(false)}
       >
         Build
@@ -24,7 +24,7 @@ export function DeckBuildDetailsToggle({
         type="button"
         aria-pressed={expandedDeckMode}
         disabled={disabled}
-        className={`rounded border px-2 py-1 text-xs ${expandedDeckMode ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
+        className={`rounded border px-1.5 py-0.5 text-xs ${expandedDeckMode ? 'border-primary bg-primary/10' : 'border-border bg-background'}`}
         onClick={() => onChange(true)}
       >
         Details

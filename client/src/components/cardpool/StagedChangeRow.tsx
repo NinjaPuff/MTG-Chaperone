@@ -51,7 +51,7 @@ export function StagedChangeRow({
     <div className="flex items-center gap-2 rounded border border-border/60 px-2 py-1.5 text-xs">
       <StagedRowQuantityPrefix mode="badge" value={badgeValue(action, quantity)} />
       {imageUri ? (
-        <HoverTarget scryfallId={cachedCardId} name={name} imageUrl={imageUri}>
+        <HoverTarget scryfallId={cachedCardId} name={name} layout={null} imageUrl={imageUri}>
           <img
             src={imageUri}
             alt={name}

@@ -4,6 +4,7 @@ import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { sumBucketQuantity } from '@/lib/curveBucketTotal';
 import { getImageUrl, getPrimaryType, groupByCmc, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { stackBadgeTopPx } from '@/lib/stackBadgeLayout';
 
 type CurveViewProps = {
   cards: PoolCard[];
@@ -85,6 +86,7 @@ function CurveColumns({
                         key={`${card.phaseLabel}-${card.scryfallId}`}
                         scryfallId={card.scryfallId}
                         name={card.name}
+                        layout={card.layout}
                         imageUrl={image}
                         touchActions={getTouchActions?.(card)}
                         element="div"
@@ -120,15 +122,23 @@ function CurveColumns({
                               x{card.quantity}
                             </span>
                           ) : null}
-                          {renderBadge ? (
-                            <div className="absolute left-1 top-1" data-testid="pool-card-badge-anchor">
-                              {renderBadge(card)}
-                            </div>
-                          ) : null}
                         </div>
                       </HoverTarget>
                     );
                   })}
+                  {renderBadge
+                    ? ordered.map((card, index) => (
+                        <div
+                          key={`badge-${card.phaseLabel}-${card.scryfallId}`}
+                          data-badge-index={index}
+                          data-testid="pool-card-badge-anchor"
+                          className="pointer-events-none absolute left-1 z-10"
+                          style={{ top: stackBadgeTopPx(index, peekHeight) }}
+                        >
+                          {renderBadge(card)}
+                        </div>
+                      ))
+                    : null}
                 </div>
               </div>
             )}

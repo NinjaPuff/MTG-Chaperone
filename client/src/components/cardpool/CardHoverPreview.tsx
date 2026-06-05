@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiRequest } from '@/lib/api';
+import { frontFaceName, isDoubleSidedLayout } from '@/lib/cardLayout';
 import { deviceHasHover, useCardPreview } from './CardPreviewContext';
 
 type CardFace = {
@@ -185,7 +186,7 @@ export function CardHoverPreview() {
   }, []);
 
   useEffect(() => {
-    if (!preview || !preview.name.includes(' // ')) {
+    if (!preview || !isDoubleSidedLayout(preview.layout)) {
       setFaces(null);
       setLoadingFaces(false);
       return;
@@ -281,12 +282,13 @@ export function CardHoverPreview() {
     if (!preview) {
       return [];
     }
+    const displayName = frontFaceName(preview.name, preview.layout);
     if (faces && faces.length > 0) {
       return faces;
     }
     return [
       {
-        name: preview.name,
+        name: displayName,
         imageUris: resolvedImageUrl ? { normal: resolvedImageUrl } : null,
       },
     ];
@@ -333,7 +335,7 @@ export function CardHoverPreview() {
 
   return createPortal(
     <TouchPreviewModal
-      cardName={preview.name}
+      cardName={frontFaceName(preview.name, preview.layout)}
       displayFaces={displayFaces}
       loadingFaces={isLoading}
       touchActions={preview.touchActions}

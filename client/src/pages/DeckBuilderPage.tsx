@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, authApiRequest } from '@/lib/api';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
@@ -10,12 +10,16 @@ import { StacksView } from '@/components/cardpool/StacksView';
 import { ViewToolbar } from '@/components/cardpool/ViewToolbar';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { DeckAnalyticsView } from '@/components/deckbuilder/DeckAnalyticsView';
+import { DeckBuildDetailsToggle } from '@/components/deckbuilder/DeckBuildDetailsToggle';
+import { DeckBuilderContextMenu, type DeckBuilderMenuAction } from '@/components/deckbuilder/DeckBuilderContextMenu';
 import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import { DeckSidebar } from '@/components/deckbuilder/DeckSidebar';
+import { DeckTabList } from '@/components/deckbuilder/DeckTabList';
 import { DragGhost } from '@/components/deckbuilder/DragGhost';
 import { DragProvider } from '@/components/deckbuilder/DragContext';
 import { PoolCardBadge } from '@/components/deckbuilder/PoolCardBadge';
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
+import { moveCardBetweenZones } from '@/lib/deckMutations';
 
 type DecklistEntryResponse = {
   cachedCardId: string;
@@ -23,6 +27,7 @@ type DecklistEntryResponse = {
   zone: 'main' | 'sideboard';
   cachedCard: {
     name: string;
+    layout: string | null;
     manaCost: string | null;
     typeLine: string;
     cmc: number;
@@ -74,6 +79,7 @@ type PoolResponse = {
         cachedCard: {
           scryfallId: string;
           name: string;
+          layout?: string | null;
           manaCost: string | null;
           typeLine: string;
           rarity: string;
@@ -88,12 +94,25 @@ type PoolResponse = {
   };
 };
 
+type DeckBuilderContextMenuState =
+  | { source: 'pool'; pageX: number; pageY: number; card: PoolCard }
+  | { source: 'deck'; pageX: number; pageY: number; card: DeckBuilderCard; deckId: string };
+
+function getPoolCardAvailableQty(
+  poolCard: PoolCard,
+  restrictedQty: number,
+  allocatedQty: number,
+): number {
+  return Math.max(0, poolCard.quantity - restrictedQty - allocatedQty);
+}
+
 const BASIC_LAND_ORDER = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Wastes'] as const;
 
 function toDeckCards(entries: DecklistEntryResponse[]): DeckBuilderCard[] {
   return entries.map((entry) => ({
     cachedCardId: entry.cachedCardId,
     name: entry.cachedCard.name,
+    layout: entry.cachedCard.layout ?? null,
     manaCost: entry.cachedCard.manaCost,
     typeLine: entry.cachedCard.typeLine,
     cmc: entry.cachedCard.cmc,
@@ -148,6 +167,7 @@ export function DeckBuilderPage() {
   const { cardImageWidth, setCardImageWidth } = useCardImageWidth();
   const [minDeckSize, setMinDeckSize] = useState(40);
   const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null);
+  const [contextMenu, setContextMenu] = useState<DeckBuilderContextMenuState | null>(null);
   const saveTimeoutRef = useRef<number | null>(null);
 
   const restrictedMap = useRef(
@@ -359,7 +379,7 @@ export function DeckBuilderPage() {
     }
     const restricted = restrictedMap.current.get(poolCard.scryfallId)?.restrictedQty ?? 0;
     const allocated = combinedAllocationByCardId.get(poolCard.scryfallId) ?? 0;
-    const available = Math.max(0, poolCard.quantity - restricted - allocated);
+    const available = getPoolCardAvailableQty(poolCard, restricted, allocated);
     if (available < 1) {
       return;
     }
@@ -378,6 +398,7 @@ export function DeckBuilderPage() {
               {
                 cachedCardId: poolCard.scryfallId,
                 name: poolCard.name,
+                layout: poolCard.layout,
                 manaCost: poolCard.manaCost,
                 typeLine: poolCard.typeLine,
                 cmc: poolCard.cmc,
@@ -439,6 +460,90 @@ export function DeckBuilderPage() {
     );
   };
 
+  const handlePoolCardContextMenu = (event: MouseEvent, card: PoolCard) => {
+    event.preventDefault();
+    setContextMenu({
+      source: 'pool',
+      pageX: event.pageX,
+      pageY: event.pageY,
+      card,
+    });
+  };
+
+  const handleDeckCardContextMenu = (event: MouseEvent, card: DeckBuilderCard, deckId: string) => {
+    event.preventDefault();
+    setContextMenu({
+      source: 'deck',
+      pageX: event.pageX,
+      pageY: event.pageY,
+      card,
+      deckId,
+    });
+  };
+
+  const contextMenuActions = useMemo((): DeckBuilderMenuAction[] => {
+    if (!contextMenu) {
+      return [];
+    }
+
+    if (contextMenu.source === 'pool') {
+      const restricted = restrictedMap.current.get(contextMenu.card.scryfallId)?.restrictedQty ?? 0;
+      const allocated = combinedAllocationByCardId.get(contextMenu.card.scryfallId) ?? 0;
+      const available = getPoolCardAvailableQty(contextMenu.card, restricted, allocated);
+      const disabled = available < 1;
+
+      return [
+        {
+          label: 'Add to main deck',
+          disabled,
+          onAction: () => {
+            addCardToActiveDeck(contextMenu.card, 'main');
+            setContextMenu(null);
+          },
+        },
+        {
+          label: 'Add to sideboard',
+          disabled,
+          onAction: () => {
+            addCardToActiveDeck(contextMenu.card, 'sideboard');
+            setContextMenu(null);
+          },
+        },
+      ];
+    }
+
+    const targetZone = contextMenu.card.zone === 'main' ? 'sideboard' : 'main';
+    const moveLabel = contextMenu.card.zone === 'main' ? 'Move to sideboard' : 'Move to main deck';
+
+    return [
+      {
+        label: moveLabel,
+        onAction: () => {
+          setDecks((prev) =>
+            moveCardBetweenZones(
+              prev,
+              contextMenu.deckId,
+              contextMenu.card.cachedCardId,
+              contextMenu.card.zone,
+              targetZone,
+            ),
+          );
+          setContextMenu(null);
+        },
+      },
+      {
+        label: 'Remove one',
+        onAction: () => {
+          removeCardFromDeck(contextMenu.card, contextMenu.deckId);
+          setContextMenu(null);
+        },
+      },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextMenu, combinedAllocationByCardId, activeDeckId, poolCards, decks]);
+
+  const contextMenuCardName = contextMenu?.source === 'pool' ? contextMenu.card.name : contextMenu?.card.name ?? '';
+
   if (loading) {
     return <p className="text-sm text-muted-foreground">Loading deckbuilder...</p>;
   }
@@ -449,29 +554,50 @@ export function DeckBuilderPage() {
 
   return (
     <DragProvider>
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Deckbuilder</h1>
-            <p className="text-sm text-muted-foreground">
+      <div className="flex flex-col space-y-2">
+        <div
+          className="flex shrink-0 flex-wrap items-center justify-between gap-2"
+          data-testid="deckbuilder-page-header"
+        >
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold leading-tight tracking-tight">Deckbuilder</h1>
+            <p className="text-xs leading-tight text-muted-foreground">
               {saving ? 'Saving...' : success ? success : activeRoundNumber ? `Using Round ${activeRoundNumber}` : 'Ready'}
             </p>
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <DeckTabList
+              decks={decks}
+              activeDeckId={activeDeckId ?? ''}
+              onActiveDeckChange={setActiveDeckId}
+            />
+            <DeckBuildDetailsToggle
+              expandedDeckMode={expandedDeckMode}
+              onChange={setExpandedDeckMode}
+            />
+          </div>
         </div>
 
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p className="shrink-0 text-sm text-destructive">{error}</p> : null}
 
         {expandedDeckMode && activeDeck ? (
-          <DeckAnalyticsView
-            deck={activeDeck}
-            expandedDeckMode={expandedDeckMode}
-            onExpandedDeckModeChange={setExpandedDeckMode}
-          />
+          <DeckAnalyticsView deck={activeDeck} />
         ) : (
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="space-y-3 rounded-lg border border-border bg-card p-4">
-              <ViewToolbar
-                viewMode={viewMode}
+          <div
+            className="grid min-h-0 grid-cols-1 gap-3 xl:h-[calc(100dvh-9rem)] xl:grid-cols-[minmax(0,1fr)_360px] xl:overflow-hidden"
+            data-testid="deckbuilder-work-area"
+          >
+            <div
+              className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-card p-3"
+              data-testid="deckbuilder-pool-column"
+            >
+              <div
+                className="shrink-0 border-b border-border/60 pb-2"
+                data-testid="deckbuilder-pool-toolbar"
+              >
+                <ViewToolbar
+                  className="gap-2 p-2"
+                  viewMode={viewMode}
                 sortKey={sortKey}
                 groupMode={groupMode}
                 stacksOrganizeBy={stacksOrganizeBy}
@@ -514,8 +640,13 @@ export function DeckBuilderPage() {
                     setStacksOrganizeBy(next.stacksOrganizeBy);
                   }
                 }}
-              />
+                />
+              </div>
 
+              <div
+                className="min-h-0 flex-1 overflow-y-auto pt-2"
+                data-testid="deckbuilder-pool-scroll"
+              >
               {viewMode === 'list' ? (
                   <ListView
                     cards={visiblePoolCards}
@@ -523,6 +654,7 @@ export function DeckBuilderPage() {
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
+                    onCardContextMenu={handlePoolCardContextMenu}
                     getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
@@ -545,6 +677,7 @@ export function DeckBuilderPage() {
                     organizeBy={stacksOrganizeBy}
                     cardWidth={cardImageWidth}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
+                    onCardContextMenu={handlePoolCardContextMenu}
                     getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
@@ -567,6 +700,7 @@ export function DeckBuilderPage() {
                     organizeBy={stacksOrganizeBy}
                     cardWidth={cardImageWidth}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
+                    onCardContextMenu={handlePoolCardContextMenu}
                     getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
@@ -589,6 +723,7 @@ export function DeckBuilderPage() {
                     organizeBy={stacksOrganizeBy}
                     cardWidth={cardImageWidth}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
+                    onCardContextMenu={handlePoolCardContextMenu}
                     getTouchActions={poolTouchActions}
                     renderBadge={(card) => {
                       const data = cardOverlayData.get(card.scryfallId);
@@ -602,21 +737,20 @@ export function DeckBuilderPage() {
                     }}
                   />
                 ) : null}
+              </div>
             </div>
 
-            <div className="min-h-[640px]">
+            <div className="min-h-0 h-full">
               <DeckSidebar
                 decks={decks}
                 activeDeckId={activeDeckId ?? ''}
                 minDeckSize={minDeckSize}
                 poolImageByCardId={poolImageByCardId}
-                expandedDeckMode={expandedDeckMode}
-                onExpandedDeckModeChange={setExpandedDeckMode}
-                onActiveDeckChange={setActiveDeckId}
                 onDeckNameChange={(deckId, name) =>
                   setDecks((prev) => prev.map((deck) => (deck.id === deckId ? { ...deck, name } : deck)))
                 }
                 onCardClick={removeCardFromDeck}
+                onCardContextMenu={handleDeckCardContextMenu}
                 onBasicLandsChange={(deckId, next) => {
                   setDecks((prev) =>
                     prev.map((deck) => {
@@ -636,6 +770,7 @@ export function DeckBuilderPage() {
                           {
                             cachedCardId: catalog.cachedCardId,
                             name: catalog.name,
+                            layout: null,
                             manaCost: catalog.manaCost,
                             typeLine: catalog.typeLine,
                             cmc: 0,
@@ -658,6 +793,15 @@ export function DeckBuilderPage() {
           </div>
         )}
       </div>
+      {contextMenu ? (
+        <DeckBuilderContextMenu
+          cardName={contextMenuCardName}
+          pageX={contextMenu.pageX}
+          pageY={contextMenu.pageY}
+          actions={contextMenuActions}
+          onDismiss={() => setContextMenu(null)}
+        />
+      ) : null}
       <DragGhost />
     </DragProvider>
   );

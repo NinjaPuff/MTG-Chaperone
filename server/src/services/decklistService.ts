@@ -578,6 +578,7 @@ const seasonDecklistInclude = {
         select: {
           scryfallId: true,
           name: true,
+          layout: true,
           manaCost: true,
           typeLine: true,
           cmc: true,
@@ -663,6 +664,7 @@ export async function listDecklistsForSeason(userId: string, seasonId: string) {
             select: {
               scryfallId: true,
               name: true,
+              layout: true,
               manaCost: true,
               typeLine: true,
               cmc: true,

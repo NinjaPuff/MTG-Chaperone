@@ -8,6 +8,7 @@ function makeCard(overrides: Partial<PoolCard> = {}): PoolCard {
   return {
     scryfallId: overrides.scryfallId ?? 'card-1',
     name: overrides.name ?? 'Bolt',
+    layout: overrides.layout ?? null,
     manaCost: overrides.manaCost ?? '{R}',
     typeLine: overrides.typeLine ?? 'Instant',
     rarity: overrides.rarity ?? 'common',
@@ -90,7 +91,8 @@ describe('CurveView', () => {
     );
 
     const anchor = screen.getByTestId('pool-card-badge-anchor');
-    expect(anchor).toHaveClass('top-1', 'left-1');
+    expect(anchor).toHaveClass('left-1');
+    expect(anchor).toHaveStyle({ top: '4px' });
     expect(anchor).not.toHaveClass('bottom-1');
   });
 
@@ -108,5 +110,28 @@ describe('CurveView', () => {
     );
 
     expect(screen.getByTestId('curve-columns-scroll')).toHaveClass('overflow-x-auto');
+  });
+
+  it('renders column-level badges in curve stacks instead of bottom-left card badges', () => {
+    render(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[
+            makeCard({ scryfallId: 'a', cmc: 1 }),
+            makeCard({ scryfallId: 'b', cmc: 1 }),
+          ]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="cmc"
+          cardWidth={180}
+          renderBadge={(card) => <span data-testid={`badge-${card.scryfallId}`}>in deck</span>}
+        />
+      </CardPreviewProvider>,
+    );
+
+    const badge = screen.getByTestId('badge-b').closest('[data-badge-index]');
+    expect(badge).toHaveAttribute('data-badge-index', '1');
+    expect(badge).toHaveClass('left-1');
+    expect(badge).not.toHaveClass('bottom-1');
   });
 });

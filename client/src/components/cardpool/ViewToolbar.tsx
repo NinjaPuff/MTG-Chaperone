@@ -27,6 +27,7 @@ type ViewToolbarProps = {
   onResetFilters: () => void;
   cardImageWidth: number;
   onCardImageWidthChange: (width: number) => void;
+  className?: string;
   onChange: (
     next: Partial<{ viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode; stacksOrganizeBy: StacksOrganizeBy }>,
   ) => void;
@@ -285,11 +286,17 @@ export function ViewToolbar({
   cardImageWidth,
   onCardImageWidthChange,
   onChange,
+  className,
 }: ViewToolbarProps) {
   const sortOptions = viewMode === 'stacks' ? [...BASE_SORT_OPTIONS, ...STACKS_SORT_OPTIONS] : BASE_SORT_OPTIONS;
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3">
+    <div
+      className={cn(
+        'flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card p-3',
+        className,
+      )}
+    >
       <div className="flex items-center gap-1">
         {VIEW_OPTIONS.map((view) => {
           const isDisabled = disableVisualViews && view.id !== 'list';

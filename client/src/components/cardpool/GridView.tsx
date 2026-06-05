@@ -38,6 +38,7 @@ function CardCell({
     <HoverTarget
       scryfallId={card.scryfallId}
       name={card.name}
+      layout={card.layout}
       imageUrl={image}
       touchActions={getTouchActions?.(card)}
       element="div"
@@ -67,7 +68,7 @@ function CardCell({
           </span>
         ) : null}
         {renderBadge ? (
-          <div className="absolute left-1 top-1" data-testid="pool-card-badge-anchor">
+          <div className="absolute left-1 top-1 z-10" data-testid="pool-card-badge-anchor">
             {renderBadge(card)}
           </div>
         ) : null}

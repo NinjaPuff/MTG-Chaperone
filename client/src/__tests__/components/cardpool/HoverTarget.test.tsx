@@ -31,6 +31,7 @@ function renderHoverTarget(options?: {
         <HoverTarget
           scryfallId="card-1"
           name="Lightning Bolt"
+          layout={null}
           imageUrl="https://example.com/bolt.jpg"
           touchActions={options?.touchActions}
         >

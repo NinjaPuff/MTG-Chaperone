@@ -4,19 +4,17 @@ import { StacksView } from '@/components/cardpool/StacksView';
 import type { PoolCard } from '@/components/cardpool/types';
 import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import { getPrimaryType } from '@/lib/cardPoolSort';
-import { DeckBuildDetailsToggle } from './DeckBuildDetailsToggle';
 import type { BuilderDeck } from './types';
 
 type DeckAnalyticsViewProps = {
   deck: BuilderDeck;
-  expandedDeckMode?: boolean;
-  onExpandedDeckModeChange?: (expanded: boolean) => void;
 };
 
 function toPoolCards(deck: BuilderDeck): PoolCard[] {
   return deck.cards.map((card) => ({
     scryfallId: card.cachedCardId,
     name: card.name,
+    layout: card.layout,
     manaCost: card.manaCost,
     typeLine: card.typeLine,
     rarity: 'unknown',
@@ -33,11 +31,7 @@ function toPoolCards(deck: BuilderDeck): PoolCard[] {
   }));
 }
 
-export function DeckAnalyticsView({
-  deck,
-  expandedDeckMode,
-  onExpandedDeckModeChange,
-}: DeckAnalyticsViewProps) {
+export function DeckAnalyticsView({ deck }: DeckAnalyticsViewProps) {
   const [viewMode, setViewMode] = useState<'curve' | 'stacks'>('curve');
   const { cardImageWidth } = useCardImageWidth();
   const cards = useMemo(() => toPoolCards(deck), [deck]);
@@ -82,15 +76,6 @@ export function DeckAnalyticsView({
 
   return (
     <div className="space-y-4 rounded-lg border border-primary/30 bg-muted/20 p-4 ring-1 ring-primary/10">
-      {onExpandedDeckModeChange ? (
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-semibold">{deck.name} — Details</p>
-          <DeckBuildDetailsToggle
-            expandedDeckMode={expandedDeckMode ?? true}
-            onChange={onExpandedDeckModeChange}
-          />
-        </div>
-      ) : null}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-md border border-border bg-card p-3">
           <p className="text-xs text-muted-foreground">Main Deck</p>

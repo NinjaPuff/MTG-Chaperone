@@ -54,6 +54,7 @@ function StackColumn({
               key={`${card.phaseLabel}-${card.scryfallId}`}
               scryfallId={card.scryfallId}
               name={card.name}
+              layout={card.layout}
               imageUrl={image}
               touchActions={getTouchActions?.(card)}
               element="div"
@@ -104,7 +105,7 @@ function StackColumn({
                 key={`badge-${card.phaseLabel}-${card.scryfallId}`}
                 data-badge-index={index}
                 className="pointer-events-none absolute left-1 z-10"
-                style={{ top: stackBadgeTopPx(index, peekHeight) + 4 }}
+                style={{ top: stackBadgeTopPx(index, peekHeight) }}
               >
                 {renderBadge(card)}
               </div>

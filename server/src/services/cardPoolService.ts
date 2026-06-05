@@ -196,6 +196,7 @@ export async function listAcquisitions(poolId: string) {
             select: {
               scryfallId: true,
               name: true,
+              layout: true,
               setCode: true,
               collectorNumber: true,
               imageUris: true,
@@ -271,6 +272,7 @@ export async function createAcquisition(poolId: string, phaseLabel: string, card
             select: {
               scryfallId: true,
               name: true,
+              layout: true,
               setCode: true,
               imageUris: true,
               manaCost: true,

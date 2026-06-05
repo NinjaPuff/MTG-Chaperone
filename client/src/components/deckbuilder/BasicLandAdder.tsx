@@ -8,10 +8,18 @@ type BasicLandAdderProps = {
   minDeckSize: number;
   deckCards: SuggestBasicLandCard[];
   disabled?: boolean;
+  showHeader?: boolean;
   onChange: (next: BasicLandSuggestion) => void;
 };
 
-export function BasicLandAdder({ counts, minDeckSize, deckCards, disabled = false, onChange }: BasicLandAdderProps) {
+export function BasicLandAdder({
+  counts,
+  minDeckSize,
+  deckCards,
+  disabled = false,
+  showHeader = true,
+  onChange,
+}: BasicLandAdderProps) {
   const { confirm } = useConfirm();
 
   const updateCount = (land: keyof BasicLandSuggestion, delta: number) => {
@@ -40,18 +48,31 @@ export function BasicLandAdder({ counts, minDeckSize, deckCards, disabled = fals
   };
 
   return (
-    <div className="space-y-2 rounded-md border border-border/70 bg-card p-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Basic Lands</h3>
-        <button
-          type="button"
-          className="rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
-          onClick={() => void applySuggestion()}
-          disabled={disabled}
-        >
-          Suggest Lands
-        </button>
-      </div>
+    <div className={showHeader ? 'space-y-2 rounded-md border border-border/70 bg-card p-3' : 'space-y-2'}>
+      {showHeader ? (
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Basic Lands</h3>
+          <button
+            type="button"
+            className="rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
+            onClick={() => void applySuggestion()}
+            disabled={disabled}
+          >
+            Suggest Lands
+          </button>
+        </div>
+      ) : (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
+            onClick={() => void applySuggestion()}
+            disabled={disabled}
+          >
+            Suggest Lands
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2">
         {LAND_ORDER.map((land) => (
           <div key={land} className="flex items-center justify-between rounded border border-border/50 px-2 py-1">

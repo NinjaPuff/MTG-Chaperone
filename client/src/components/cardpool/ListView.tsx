@@ -5,6 +5,7 @@ import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { ManaCostSymbols } from './ManaCostSymbols';
 import { SetSymbol } from '@/components/SetSymbol';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
+import { frontFaceManaCost, frontFaceName } from '@/lib/cardLayout';
 import { getImageUrl, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
 
 type ListViewProps = {
@@ -53,38 +54,42 @@ function OrganizeSections({
               <GroupHeadingLabel label={label} /> ({groupedCards.reduce((sum, card) => sum + card.quantity, 0)})
             </h4>
             <div className="space-y-1 rounded-md border border-border p-2">
-              {sorted.map((card) => (
-                <div
-                  key={`${card.phaseLabel}-${card.scryfallId}`}
-                  className={`flex items-center gap-2 py-0.5 text-sm${onCardClick ? ' cursor-pointer' : ''}`}
-                  onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
-                  onClick={onCardClick ? () => onCardClick(card) : undefined}
-                  onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
-                >
-                  <span className="w-8 text-right font-mono text-muted-foreground">{card.quantity}x</span>
-                  <HoverTarget
-                    scryfallId={card.scryfallId}
-                    name={card.name}
-                    imageUrl={getImageUrl(card, 'normal')}
-                    touchActions={getTouchActions?.(card)}
+              {sorted.map((card) => {
+                const displayName = frontFaceName(card.name, card.layout);
+                return (
+                  <div
+                    key={`${card.phaseLabel}-${card.scryfallId}`}
+                    className={`flex items-center gap-2 py-0.5 text-sm${onCardClick ? ' cursor-pointer' : ''}`}
+                    onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
+                    onClick={onCardClick ? () => onCardClick(card) : undefined}
+                    onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
                   >
-                    <span className="cursor-default truncate">{card.name}</span>
-                  </HoverTarget>
-                  <ManaCostSymbols
-                    manaCost={card.manaCost}
-                    fallbackCmc={card.cmc}
-                    fallbackColors={card.colorIdentity}
-                    className="ml-auto whitespace-nowrap"
-                  />
-                  {renderBadge ? <span className="ml-1 shrink-0">{renderBadge(card)}</span> : null}
-                  <SetSymbol
-                    setCode={card.setCode}
-                    size="sm"
-                    iconUri={getSet(card.setCode)?.icon_svg_uri}
-                    setName={getSet(card.setCode)?.name}
-                  />
-                </div>
-              ))}
+                    <span className="w-8 text-right font-mono text-muted-foreground">{card.quantity}x</span>
+                    <HoverTarget
+                      scryfallId={card.scryfallId}
+                      name={displayName}
+                      layout={card.layout}
+                      imageUrl={getImageUrl(card, 'normal')}
+                      touchActions={getTouchActions?.(card)}
+                    >
+                      <span className="cursor-default truncate">{displayName}</span>
+                    </HoverTarget>
+                    <ManaCostSymbols
+                      manaCost={frontFaceManaCost(card.manaCost, card.layout)}
+                      fallbackCmc={card.cmc}
+                      fallbackColors={card.colorIdentity}
+                      className="ml-auto whitespace-nowrap"
+                    />
+                    {renderBadge ? <span className="ml-1 shrink-0">{renderBadge(card)}</span> : null}
+                    <SetSymbol
+                      setCode={card.setCode}
+                      size="sm"
+                      iconUri={getSet(card.setCode)?.icon_svg_uri}
+                      setName={getSet(card.setCode)?.name}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
         );

@@ -34,6 +34,7 @@ describe('scryfallService mana-cost normalization', () => {
             {
               id: 'trystan-id',
               name: 'Trystan, Callous Cultivator // Trystan, Penitent Culler',
+              layout: 'transform',
               mana_cost: null,
               type_line: 'Legendary Creature — Human',
               colors: [],
@@ -72,8 +73,93 @@ describe('scryfallService mana-cost normalization', () => {
     const call = upsert.mock.calls[0][0];
     expect(call.update.manaCost).toBe('{2}{G}');
     expect(call.create.manaCost).toBe('{2}{G}');
+    expect(call.update.layout).toBe('transform');
+    expect(call.create.layout).toBe('transform');
     expect(call.update.collectorNumber).toBe('112');
     expect(call.create.collectorNumber).toBe('112');
+  });
+
+  it('stores null layout when Scryfall card has no layout field', async () => {
+    const fetchMock = createFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [
+            {
+              id: 'bolt-id',
+              name: 'Lightning Bolt',
+              type_line: 'Instant',
+              rarity: 'common',
+              set: 'TST',
+            },
+          ],
+        },
+      },
+    ]);
+
+    const upsert = vi.fn(async (args: any) => ({ scryfallId: args.where.scryfallId, layout: args.update.layout }));
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: async () => {},
+      prisma: {
+        cachedCard: {
+          upsert,
+          findMany: vi.fn(async () => []),
+          findUnique: vi.fn(async () => null),
+        },
+      } as any,
+    });
+
+    await service.searchCards('Lightning Bolt');
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const call = upsert.mock.calls[0][0];
+    expect(call.update.layout).toBeNull();
+    expect(call.create.layout).toBeNull();
+  });
+
+  it('stores prepare layout when upserting prepare cards', async () => {
+    const fetchMock = createFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [
+            {
+              id: 'joined-researchers-id',
+              name: 'Joined Researchers // Secret Rendition',
+              layout: 'prepare',
+              type_line: 'Creature — Human Wizard',
+              rarity: 'rare',
+              set: 'SOS',
+            },
+          ],
+        },
+      },
+    ]);
+
+    const upsert = vi.fn(async (args: any) => ({ scryfallId: args.where.scryfallId, layout: args.update.layout }));
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: async () => {},
+      prisma: {
+        cachedCard: {
+          upsert,
+          findMany: vi.fn(async () => []),
+          findUnique: vi.fn(async () => null),
+        },
+      } as any,
+    });
+
+    await service.searchCards('Joined Researchers');
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const call = upsert.mock.calls[0][0];
+    expect(call.update.layout).toBe('prepare');
+    expect(call.create.layout).toBe('prepare');
   });
 
   it('refreshes stale cached DFC rows during bulk name lookup', async () => {

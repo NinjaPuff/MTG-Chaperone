@@ -12,16 +12,18 @@ export function AppLayout() {
     <ToastProvider>
       <ConfirmProvider>
         <CardPreviewProvider>
-          <div className="min-h-screen flex flex-col bg-background text-foreground">
+          <div className="flex min-h-screen flex-col bg-background text-foreground">
             <Navbar />
-            <main className="flex-1 overflow-auto">
+            <main className="flex-1">
               <ErrorBoundary>
                 <div className="container mx-auto px-4 py-6">
                   <Outlet />
+                  <div className="mt-8">
+                    <Footer />
+                  </div>
                 </div>
               </ErrorBoundary>
             </main>
-            <Footer />
           </div>
           <CardHoverPreview />
         </CardPreviewProvider>
