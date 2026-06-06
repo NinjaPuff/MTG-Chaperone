@@ -15,6 +15,11 @@ import {
   BoosterProductCacheControls,
   type SetCacheStat,
 } from '@/components/admin/BoosterProductCacheControls';
+import {
+  StaleCacheReferencesDialog,
+  type ResolveStaleAction,
+  type StaleReference,
+} from '@/components/admin/StaleCacheReferencesDialog';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { primaryName, profileSubtitle } from '@/lib/userDisplay';
 
@@ -133,6 +138,23 @@ type ApiListResponse<T> = { data: T[] };
 type ApiItemResponse<T> = { data: T };
 type ApiSeriesResponse<T> = { data: T[] };
 
+type ClearAndImportResult = SetCacheStat & {
+  imported: number;
+  deleted: number;
+  deletedCards: Array<{ scryfallId: string; name: string; setCode: string }>;
+  error?: string;
+};
+
+type ClearAndImportResponse = {
+  data: {
+    results: ClearAndImportResult[];
+    totalImported: number;
+    totalDeleted: number;
+    deletedCards: Array<{ scryfallId: string; name: string; setCode: string }>;
+    staleReferences: StaleReference[];
+  };
+};
+
 const defaultPointConfig: PointConfig = {
   matchWinPoints: 3,
   matchDrawPoints: 1,
@@ -221,6 +243,14 @@ export function AdminPage() {
   const [cacheStatsBySetCode, setCacheStatsBySetCode] = useState<Record<string, SetCacheStat>>({});
   const [importingSetCode, setImportingSetCode] = useState<string | null>(null);
   const [importingProductId, setImportingProductId] = useState<string | null>(null);
+  const [clearingSetCode, setClearingSetCode] = useState<string | null>(null);
+  const [clearingProductId, setClearingProductId] = useState<string | null>(null);
+  const [clearingAllSets, setClearingAllSets] = useState(false);
+  const [staleDialogDeletedCards, setStaleDialogDeletedCards] = useState<
+    Array<{ scryfallId: string; name: string; setCode: string }>
+  >([]);
+  const [staleDialogReferences, setStaleDialogReferences] = useState<StaleReference[]>([]);
+  const [resolvingStaleReferences, setResolvingStaleReferences] = useState(false);
   const [scryfallSets, setScryfallSets] = useState<ScryfallSet[]>([]);
   const [selectedLeagueSlug, setSelectedLeagueSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -489,6 +519,148 @@ export function AdminPage() {
       showToast({ message, variant: 'default' });
     } finally {
       setImportingProductId(null);
+    }
+  };
+
+  const applyClearAndImportResponse = (response: ClearAndImportResponse['data']) => {
+    mergeCacheStats(response.results);
+    setStaleDialogDeletedCards(response.deletedCards);
+    setStaleDialogReferences(response.staleReferences);
+    const failedSets = response.results.filter((result) => Boolean(result.error));
+    showToast({
+      message:
+        failedSets.length > 0
+          ? `Cleared ${response.totalDeleted}, imported ${response.totalImported}; ${failedSets.length} set(s) failed to import`
+          : response.staleReferences.length > 0
+            ? `Cleared ${response.totalDeleted}, imported ${response.totalImported}; ${response.staleReferences.length} stale card(s) need review`
+            : `Cleared ${response.totalDeleted}, imported ${response.totalImported}`,
+      variant: failedSets.length > 0 ? 'default' : 'success',
+    });
+  };
+
+  const clearAndImportSetToCache = async (setCode: string) => {
+    const confirmed = await confirm({
+      title: `Clear & re-import ${setCode}`,
+      message:
+        'This clears unreferenced cached cards for this set, re-imports paper printings, then highlights any cards still in pools or decklists.',
+      confirmLabel: 'Clear & re-import',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setClearingSetCode(setCode);
+    setError(null);
+    try {
+      const response = await authApiRequest<ClearAndImportResponse>('/api/admin/card-cache/clear-and-import-set', {
+        method: 'POST',
+        body: { setCode },
+      });
+      applyClearAndImportResponse(response.data);
+    } catch (clearError) {
+      const message = clearError instanceof ApiError ? clearError.message : 'Unable to clear and re-import set';
+      setError(message);
+      showToast({ message, variant: 'default' });
+    } finally {
+      setClearingSetCode(null);
+    }
+  };
+
+  const clearAndImportBoosterProductToCache = async (productId: string) => {
+    const product = boosterProducts.find((entry) => entry.id === productId);
+    const confirmed = await confirm({
+      title: 'Clear & re-import all sets',
+      message: `Clear unreferenced cache rows and re-import all sets for "${product?.name ?? 'this booster product'}"?`,
+      confirmLabel: 'Clear & re-import',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setClearingProductId(productId);
+    setError(null);
+    try {
+      const response = await authApiRequest<ClearAndImportResponse>(
+        `/api/admin/card-cache/clear-and-import-booster-product/${productId}`,
+        { method: 'POST' },
+      );
+      applyClearAndImportResponse(response.data);
+    } catch (clearError) {
+      const message =
+        clearError instanceof ApiError ? clearError.message : 'Unable to clear and re-import booster product sets';
+      setError(message);
+      showToast({ message, variant: 'default' });
+    } finally {
+      setClearingProductId(null);
+    }
+  };
+
+  const clearAndImportAllBoosterSets = async () => {
+    const confirmed = await confirm({
+      title: 'Clear & re-import all sets',
+      message:
+        'Clear unreferenced cache rows and re-import every set currently configured across booster products. In-use pool/decklist cards will be shown for review.',
+      confirmLabel: 'Clear & re-import all',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+
+    setClearingAllSets(true);
+    setError(null);
+    try {
+      const response = await authApiRequest<ClearAndImportResponse>('/api/admin/card-cache/clear-and-import-sets', {
+        method: 'POST',
+        body: { setCodes: allBoosterSetCodes },
+      });
+      applyClearAndImportResponse(response.data);
+    } catch (clearError) {
+      const message = clearError instanceof ApiError ? clearError.message : 'Unable to clear and re-import all sets';
+      setError(message);
+      showToast({ message, variant: 'default' });
+    } finally {
+      setClearingAllSets(false);
+    }
+  };
+
+  const resolveStaleDialogActions = async (actions: ResolveStaleAction[]) => {
+    if (actions.length === 0) {
+      return;
+    }
+
+    setResolvingStaleReferences(true);
+    setError(null);
+    try {
+      const response = await authApiRequest<{ data: { resolved: number; errors: Array<{ message: string }> } }>(
+        '/api/admin/card-cache/resolve-stale-references',
+        {
+          method: 'POST',
+          body: { actions },
+        },
+      );
+      const { resolved, errors } = response.data;
+      showToast({
+        message:
+          errors.length > 0
+            ? `Resolved ${resolved} stale entries; ${errors.length} action(s) failed`
+            : `Resolved ${resolved} stale entries`,
+        variant: errors.length > 0 ? 'default' : 'success',
+      });
+
+      await loadCacheStats(allBoosterSetCodes);
+      if (errors.length === 0) {
+        setStaleDialogReferences([]);
+        setStaleDialogDeletedCards([]);
+      }
+    } catch (resolveError) {
+      const message = resolveError instanceof ApiError ? resolveError.message : 'Unable to resolve stale references';
+      setError(message);
+      showToast({ message, variant: 'default' });
+    } finally {
+      setResolvingStaleReferences(false);
     }
   };
 
@@ -1955,13 +2127,24 @@ export function AdminPage() {
         <Tabs.Content value="booster-products" className="space-y-4 rounded-lg border border-border bg-card p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Booster Products</h3>
-            <button
-              type="button"
-              onClick={() => setIsBoosterFormOpen((prev) => !prev)}
-              className="rounded-md border border-border px-3 py-1 text-sm"
-            >
-              {isBoosterFormOpen ? 'Cancel' : 'Add Booster'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                data-testid="clear-reimport-all-sets"
+                onClick={clearAndImportAllBoosterSets}
+                disabled={allBoosterSetCodes.length === 0 || clearingAllSets}
+                className="rounded-md border border-border px-3 py-1 text-sm disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {clearingAllSets ? 'Clearing & re-importing all sets…' : 'Clear & re-import all sets'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsBoosterFormOpen((prev) => !prev)}
+                className="rounded-md border border-border px-3 py-1 text-sm"
+              >
+                {isBoosterFormOpen ? 'Cancel' : 'Add Booster'}
+              </button>
+            </div>
           </div>
 
           {isBoosterFormOpen ? (
@@ -2085,8 +2268,13 @@ export function AdminPage() {
                   cacheStats={cacheStatsBySetCode}
                   importingSetCode={importingSetCode}
                   importingProductId={importingProductId}
+                  clearingSetCode={clearingSetCode}
+                  clearingProductId={clearingProductId}
+                  clearingAllSets={clearingAllSets}
                   onImportSet={importSetToCache}
                   onImportProduct={importBoosterProductToCache}
+                  onClearAndImportSet={clearAndImportSetToCache}
+                  onClearAndImportProduct={clearAndImportBoosterProductToCache}
                   getSet={getSet}
                 />
 
@@ -2255,6 +2443,18 @@ export function AdminPage() {
           </div>
         </Tabs.Content>
       </Tabs.Root>
+      {staleDialogReferences.length > 0 ? (
+        <StaleCacheReferencesDialog
+          deletedCards={staleDialogDeletedCards}
+          staleReferences={staleDialogReferences}
+          resolving={resolvingStaleReferences}
+          onResolve={resolveStaleDialogActions}
+          onDismiss={() => {
+            setStaleDialogDeletedCards([]);
+            setStaleDialogReferences([]);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

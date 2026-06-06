@@ -18,12 +18,14 @@ type DeckSidebarProps = {
   onMainDeckDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
   onSideboardDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
   poolImageByCardId?: Map<string, string>;
+  saveBlockedCardIdsByDeckId?: Record<string, string[]>;
 };
 
 function toListItems(
   cards: DeckBuilderCard[],
   zone: 'main' | 'sideboard',
   poolImageByCardId?: Map<string, string>,
+  saveBlockedCardIds?: Set<string>,
 ): DeckCardListItem[] {
   return cards
     .filter((card) => card.zone === zone)
@@ -38,6 +40,7 @@ function toListItems(
       zone,
       colorIdentity: card.colorIdentity,
       imageUrl: poolImageByCardId?.get(card.cachedCardId) ?? null,
+      hasSaveIssue: saveBlockedCardIds?.has(card.cachedCardId) ?? false,
     }));
 }
 
@@ -62,19 +65,24 @@ export function DeckSidebar({
   onMainDeckDrop,
   onSideboardDrop,
   poolImageByCardId,
+  saveBlockedCardIdsByDeckId = {},
 }: DeckSidebarProps) {
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? decks[0];
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState(activeDeck?.name ?? 'Deck');
   const [sideboardExpanded, setSideboardExpanded] = useState(false);
 
+  const activeDeckSaveBlockedCardIds = useMemo(
+    () => new Set(saveBlockedCardIdsByDeckId[activeDeck?.id ?? ''] ?? []),
+    [activeDeck?.id, saveBlockedCardIdsByDeckId],
+  );
   const mainCards = useMemo(
-    () => toListItems(activeDeck?.cards ?? [], 'main', poolImageByCardId),
-    [activeDeck?.cards, poolImageByCardId],
+    () => toListItems(activeDeck?.cards ?? [], 'main', poolImageByCardId, activeDeckSaveBlockedCardIds),
+    [activeDeck?.cards, poolImageByCardId, activeDeckSaveBlockedCardIds],
   );
   const sideboardCards = useMemo(
-    () => toListItems(activeDeck?.cards ?? [], 'sideboard', poolImageByCardId),
-    [activeDeck?.cards, poolImageByCardId],
+    () => toListItems(activeDeck?.cards ?? [], 'sideboard', poolImageByCardId, activeDeckSaveBlockedCardIds),
+    [activeDeck?.cards, poolImageByCardId, activeDeckSaveBlockedCardIds],
   );
   const mainCount = mainCards.reduce((sum, card) => sum + card.quantity, 0);
   const sideboardCount = sideboardCards.reduce((sum, card) => sum + card.quantity, 0);

@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   bulkLookupByName: vi.fn(),
   lookupCanonicalByName: vi.fn(),
   bulkImportSet: vi.fn(),
+  importSetFromScryfall: vi.fn(),
+  resolveCanonicalSetCode: vi.fn(async (setCode: string) => setCode.trim().toUpperCase()),
 }));
 
 vi.mock('../../config/passport.js', () => ({
@@ -48,6 +50,8 @@ vi.mock('../../services/scryfallService.js', () => ({
   bulkLookupByName: mocks.bulkLookupByName,
   lookupCanonicalByName: mocks.lookupCanonicalByName,
   bulkImportSet: mocks.bulkImportSet,
+  importSetFromScryfall: mocks.importSetFromScryfall,
+  resolveCanonicalSetCode: mocks.resolveCanonicalSetCode,
 }));
 
 import app from '../../index.js';
@@ -60,6 +64,9 @@ describe('cards routes', () => {
     mocks.bulkLookupByName.mockReset();
     mocks.lookupCanonicalByName.mockReset();
     mocks.bulkImportSet.mockReset();
+    mocks.importSetFromScryfall.mockReset();
+    mocks.resolveCanonicalSetCode.mockReset();
+    mocks.resolveCanonicalSetCode.mockResolvedValue('DMU');
   });
 
   it('returns card faces for a valid card id', async () => {

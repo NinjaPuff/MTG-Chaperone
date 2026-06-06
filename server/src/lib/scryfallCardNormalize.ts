@@ -1,3 +1,12 @@
+export function isPaperPrinting(card: { digital?: boolean; games?: string[] }): boolean {
+  if (card.digital) {
+    return false;
+  }
+
+  const games = card.games ?? ['paper'];
+  return games.includes('paper');
+}
+
 export function resolveTypeLine(card: {
   type_line?: string;
   card_faces?: Array<{ type_line?: string }>;

@@ -94,6 +94,15 @@ type PoolResponse = {
   };
 };
 
+type DeckValidationResponse = {
+  data: {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+    invalidCardIds?: string[];
+  };
+};
+
 type DeckBuilderContextMenuState =
   | { source: 'pool'; pageX: number; pageY: number; card: PoolCard }
   | { source: 'deck'; pageX: number; pageY: number; card: DeckBuilderCard; deckId: string };
@@ -156,6 +165,7 @@ export function DeckBuilderPage() {
   const [activeDeckId, setActiveDeckId] = useState<string | null>(null);
   const [expandedDeckMode, setExpandedDeckMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveBlockedCardIdsByDeckId, setSaveBlockedCardIdsByDeckId] = useState<Record<string, string[]>>({});
   const [showRestrictedCards, setShowRestrictedCards] = useState(true);
   const [selectedTypeFilters, setSelectedTypeFilters] = useState<string[]>([...CARD_TYPE_FILTERS]);
   const [selectedColorFilters, setSelectedColorFilters] = useState<string[]>([...COLOR_FILTERS]);
@@ -191,6 +201,40 @@ export function DeckBuilderPage() {
       }
     >(),
   );
+
+  const extractInvalidCardIds = (validation: DeckValidationResponse['data']) => {
+    if (!Array.isArray(validation.invalidCardIds)) {
+      return [];
+    }
+    return validation.invalidCardIds.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  };
+
+  const refreshAllDeckValidations = async (deckIds: string[]) => {
+    const uniqueDeckIds = [...new Set(deckIds.filter(Boolean))];
+    if (uniqueDeckIds.length === 0) {
+      setSaveBlockedCardIdsByDeckId({});
+      return;
+    }
+
+    const entries = await Promise.all(
+      uniqueDeckIds.map(async (deckId) => {
+        try {
+          const validation = await authApiRequest<DeckValidationResponse>(`/api/decklists/${deckId}/validate`);
+          return [deckId, extractInvalidCardIds(validation.data)] as const;
+        } catch {
+          return [deckId, []] as const;
+        }
+      }),
+    );
+
+    const next: Record<string, string[]> = {};
+    for (const [deckId, invalidCardIds] of entries) {
+      if (invalidCardIds.length > 0) {
+        next[deckId] = invalidCardIds;
+      }
+    }
+    setSaveBlockedCardIdsByDeckId(next);
+  };
 
   const loadData = async () => {
     if (!eventId) {
@@ -231,6 +275,7 @@ export function DeckBuilderPage() {
         ]),
       );
       basicLandCatalogRef.current = new Map(deckResponse.data.basicLands.map((entry) => [entry.name, entry]));
+      await refreshAllDeckValidations(mappedDecks.map((deck) => deck.id));
     } catch (loadError) {
       setError(loadError instanceof ApiError ? loadError.message : 'Unable to load deckbuilder');
     } finally {
@@ -354,13 +399,44 @@ export function DeckBuilderPage() {
     saveTimeoutRef.current = window.setTimeout(async () => {
       setSaving(true);
       try {
-        for (const deck of decks) {
-          await saveDeck(deck);
+        const activeDeckFirst = activeDeckId
+          ? [
+              ...decks.filter((deck) => deck.id === activeDeckId),
+              ...decks.filter((deck) => deck.id !== activeDeckId),
+            ]
+          : decks;
+
+        for (const deck of activeDeckFirst) {
+          try {
+            await saveDeck(deck);
+            setSaveBlockedCardIdsByDeckId((prev) => {
+              if (!(deck.id in prev)) {
+                return prev;
+              }
+              const next = { ...prev };
+              delete next[deck.id];
+              return next;
+            });
+          } catch (saveError) {
+            if (
+              saveError instanceof ApiError &&
+              saveError.code === 'VALIDATION_ERROR' &&
+              typeof saveError.fields?.cachedCardId === 'string'
+            ) {
+              const blockedCardId = saveError.fields.cachedCardId;
+              setSaveBlockedCardIdsByDeckId((prev) => ({
+                ...prev,
+                [deck.id]: [blockedCardId],
+              }));
+            }
+            throw saveError;
+          }
         }
         setSuccess('Saved');
       } catch (saveError) {
         setError(saveError instanceof ApiError ? saveError.message : 'Save failed');
       } finally {
+        await refreshAllDeckValidations(decks.map((deck) => deck.id));
         setSaving(false);
       }
     }, 1200);
@@ -372,6 +448,35 @@ export function DeckBuilderPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decks, loading]);
+
+  useEffect(() => {
+    setSaveBlockedCardIdsByDeckId((prev) => {
+      let changed = false;
+      const deckById = new Map(decks.map((deck) => [deck.id, deck]));
+      const next: Record<string, string[]> = {};
+
+      for (const [deckId, blockedIds] of Object.entries(prev)) {
+        const deck = deckById.get(deckId);
+        if (!deck) {
+          changed = true;
+          continue;
+        }
+        const presentIds = new Set(deck.cards.map((card) => card.cachedCardId));
+        const filtered = blockedIds.filter((id) => presentIds.has(id));
+        if (filtered.length > 0) {
+          next[deckId] = filtered;
+        }
+        if (filtered.length !== blockedIds.length) {
+          changed = true;
+        }
+      }
+
+      if (!changed && Object.keys(next).length === Object.keys(prev).length) {
+        return prev;
+      }
+      return next;
+    });
+  }, [decks]);
 
   const addCardToActiveDeck = (poolCard: PoolCard, zone: 'main' | 'sideboard' = 'main') => {
     if (!activeDeckId) {
@@ -746,6 +851,7 @@ export function DeckBuilderPage() {
                 activeDeckId={activeDeckId ?? ''}
                 minDeckSize={minDeckSize}
                 poolImageByCardId={poolImageByCardId}
+                saveBlockedCardIdsByDeckId={saveBlockedCardIdsByDeckId}
                 onDeckNameChange={(deckId, name) =>
                   setDecks((prev) => prev.map((deck) => (deck.id === deckId ? { ...deck, name } : deck)))
                 }

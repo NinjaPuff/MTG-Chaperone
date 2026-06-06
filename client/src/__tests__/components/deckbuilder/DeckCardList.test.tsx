@@ -120,6 +120,26 @@ describe('DeckCardList', () => {
     expect(row.className).toContain('deck-row-tint-gold');
   });
 
+  it('shows warning icon when card has save issue', () => {
+    renderWithAppProviders(
+      <DeckCardList
+        title="Main Deck"
+        emptyText="Empty"
+        cards={[
+          makeListItem({
+            cachedCardId: 'warn-1',
+            name: 'Problem Card',
+            typeLine: 'Creature',
+            quantity: 1,
+            hasSaveIssue: true,
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByTitle('Save blocked by this card')).toBeInTheDocument();
+  });
+
   it('should_call_onCardContextMenu_when_row_receives_contextmenu', () => {
     const onCardContextMenu = vi.fn();
     const card = makeListItem({ cachedCardId: 'c1', name: 'Grizzly Bears' });

@@ -9,6 +9,13 @@ import {
   getSetCacheStats,
   importSetFromScryfall,
 } from '../services/scryfallService.js';
+import {
+  clearAndImportSet,
+  resolveStaleReferences,
+  type ClearAndImportSetResult,
+  type DeletedCachedCard,
+  type StaleReference,
+} from '../services/cardCacheService.js';
 
 const router = Router();
 
@@ -20,6 +27,43 @@ const importSetSchema = z.object({
 
 const importSetsSchema = z.object({
   setCodes: z.array(z.string().trim().min(2)).min(1),
+});
+
+const clearAndImportSetSchema = z.object({
+  setCode: z.string().trim().min(2),
+});
+
+const clearAndImportSetsSchema = z.object({
+  setCodes: z.array(z.string().trim().min(2)).min(1),
+});
+
+const resolveStaleActionSchema = z.union([
+  z.object({
+    target: z.literal('pool'),
+    entryId: z.string().trim().min(1),
+    action: z.literal('replace'),
+    replacementScryfallId: z.string().trim().min(1),
+  }),
+  z.object({
+    target: z.literal('pool'),
+    entryId: z.string().trim().min(1),
+    action: z.literal('remove'),
+  }),
+  z.object({
+    target: z.literal('decklist'),
+    entryId: z.string().trim().min(1),
+    action: z.literal('replace'),
+    replacementScryfallId: z.string().trim().min(1),
+  }),
+  z.object({
+    target: z.literal('decklist'),
+    entryId: z.string().trim().min(1),
+    action: z.literal('remove'),
+  }),
+]);
+
+const resolveStaleReferencesSchema = z.object({
+  actions: z.array(resolveStaleActionSchema).min(1),
 });
 
 async function buildImportResponse(
@@ -42,6 +86,43 @@ async function buildImportResponse(
   return {
     results,
     totalImported: importResults.reduce((sum, result) => sum + result.imported, 0),
+  };
+}
+
+async function buildClearAndImportResponse(clearAndImportResults: ClearAndImportSetResult[]) {
+  const stats = await getSetCacheStats(clearAndImportResults.map((result) => result.setCode));
+  const statsBySetCode = new Map(stats.map((entry) => [entry.setCode, entry]));
+
+  const results = clearAndImportResults.map((result) => {
+    const stat = statsBySetCode.get(result.setCode);
+    return {
+      setCode: result.setCode,
+      imported: result.imported,
+      deleted: result.deleted,
+      deletedCards: result.deletedCards,
+      cachedCount: stat?.cachedCount ?? 0,
+      lastFetched: stat?.lastFetched ?? null,
+      ...(result.error ? { error: result.error } : {}),
+    };
+  });
+
+  const deletedCards = new Map<string, DeletedCachedCard>();
+  const staleReferences = new Map<string, StaleReference>();
+  for (const result of clearAndImportResults) {
+    for (const card of result.deletedCards) {
+      deletedCards.set(card.scryfallId, card);
+    }
+    for (const reference of result.staleReferences) {
+      staleReferences.set(reference.scryfallId, reference);
+    }
+  }
+
+  return {
+    results,
+    totalImported: clearAndImportResults.reduce((sum, result) => sum + result.imported, 0),
+    totalDeleted: clearAndImportResults.reduce((sum, result) => sum + result.deleted, 0),
+    deletedCards: [...deletedCards.values()],
+    staleReferences: [...staleReferences.values()],
   };
 }
 
@@ -115,6 +196,70 @@ router.post('/card-cache/import-booster-product/:id', async (req, res, next) => 
     next(error);
   }
 });
+
+router.post('/card-cache/clear-and-import-set', validateBody(clearAndImportSetSchema), async (req, res, next) => {
+  try {
+    const result = await clearAndImportSet(req.body.setCode);
+    const data = await buildClearAndImportResponse([result]);
+    res.json({ data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/card-cache/clear-and-import-sets', validateBody(clearAndImportSetsSchema), async (req, res, next) => {
+  try {
+    const setCodes = [...new Set(req.body.setCodes.map((code: string) => code.trim().toUpperCase()).filter(Boolean))];
+    const clearAndImportResults: ClearAndImportSetResult[] = [];
+    for (const setCode of setCodes) {
+      clearAndImportResults.push(await clearAndImportSet(setCode));
+    }
+    const data = await buildClearAndImportResponse(clearAndImportResults);
+    res.json({ data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/card-cache/clear-and-import-booster-product/:id', async (req, res, next) => {
+  try {
+    const product = await getBoosterProduct(req.params.id);
+    const setCodes = [
+      ...new Set(
+        product.setCodes
+          .map((entry) => entry.setCode.trim().toUpperCase())
+          .filter(Boolean),
+      ),
+    ];
+
+    if (setCodes.length === 0) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Booster product has no set codes configured');
+    }
+
+    const clearAndImportResults: ClearAndImportSetResult[] = [];
+    for (const setCode of setCodes) {
+      clearAndImportResults.push(await clearAndImportSet(setCode));
+    }
+
+    const data = await buildClearAndImportResponse(clearAndImportResults);
+    res.json({ data });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post(
+  '/card-cache/resolve-stale-references',
+  validateBody(resolveStaleReferencesSchema),
+  async (req, res, next) => {
+    try {
+      const data = await resolveStaleReferences(req.body.actions);
+      res.json({ data });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 router.post('/matches/batch-report', (_req, res) => {
   res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Batch report matches not yet implemented' } });

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeMinimumChangesShortfall,
   computeRestrictedCopies,
+  filterNewOrWorsenedAllocationViolations,
   validateCombinedAllocation,
 } from '../../services/decklistService.js';
 
@@ -69,6 +70,25 @@ describe('decklistService pure logic', () => {
         allowed: 2,
         allocated: 3,
       },
+    ]);
+  });
+
+  it('flags only newly introduced or worsened allocation violations', () => {
+    const worsened = filterNewOrWorsenedAllocationViolations({
+      previousViolations: [
+        { cachedCardId: 'card-a', allowed: 0, allocated: 2 },
+        { cachedCardId: 'card-b', allowed: 1, allocated: 2 },
+      ],
+      nextViolations: [
+        { cachedCardId: 'card-a', allowed: 0, allocated: 1 },
+        { cachedCardId: 'card-b', allowed: 1, allocated: 3 },
+        { cachedCardId: 'card-c', allowed: 0, allocated: 1 },
+      ],
+    });
+
+    expect(worsened).toEqual([
+      { cachedCardId: 'card-b', allowed: 1, allocated: 3 },
+      { cachedCardId: 'card-c', allowed: 0, allocated: 1 },
     ]);
   });
 });

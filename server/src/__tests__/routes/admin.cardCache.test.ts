@@ -14,6 +14,11 @@ const boosterMocks = vi.hoisted(() => ({
   getBoosterProduct: vi.fn(),
 }));
 
+const cardCacheMocks = vi.hoisted(() => ({
+  clearAndImportSet: vi.fn(),
+  resolveStaleReferences: vi.fn(),
+}));
+
 vi.mock('../../config/passport.js', () => ({
   configurePassport: vi.fn(),
 }));
@@ -61,6 +66,11 @@ vi.mock('../../services/boosterProductService.js', () => ({
   updateBoosterProduct: vi.fn(),
 }));
 
+vi.mock('../../services/cardCacheService.js', () => ({
+  clearAndImportSet: cardCacheMocks.clearAndImportSet,
+  resolveStaleReferences: cardCacheMocks.resolveStaleReferences,
+}));
+
 import app from '../../index.js';
 
 describe('admin card cache routes', () => {
@@ -69,6 +79,8 @@ describe('admin card cache routes', () => {
     scryfallMocks.importSetFromScryfall.mockReset();
     scryfallMocks.bulkImportSet.mockReset();
     boosterMocks.getBoosterProduct.mockReset();
+    cardCacheMocks.clearAndImportSet.mockReset();
+    cardCacheMocks.resolveStaleReferences.mockReset();
   });
 
   it('returns cache stats for admins', async () => {
@@ -110,7 +122,11 @@ describe('admin card cache routes', () => {
   });
 
   it('imports a single set for admins', async () => {
-    scryfallMocks.importSetFromScryfall.mockResolvedValue({ setCode: 'DMU', imported: 5 });
+    scryfallMocks.importSetFromScryfall.mockResolvedValue({
+      setCode: 'DMU',
+      imported: 5,
+      importedScryfallIds: ['dmu-1', 'dmu-2', 'dmu-3', 'dmu-4', 'dmu-5'],
+    });
     scryfallMocks.getSetCacheStats.mockResolvedValue([
       { setCode: 'DMU', cachedCount: 412, lastFetched: '2026-05-31T12:00:00.000Z' },
     ]);
@@ -202,8 +218,16 @@ describe('admin card cache routes', () => {
       setCodes: [{ setCode: 'DMU' }, { setCode: 'MUL' }],
     });
     scryfallMocks.importSetFromScryfall
-      .mockResolvedValueOnce({ setCode: 'DMU', imported: 400 })
-      .mockResolvedValueOnce({ setCode: 'MUL', imported: 10 });
+      .mockResolvedValueOnce({
+        setCode: 'DMU',
+        imported: 400,
+        importedScryfallIds: ['dmu-a'],
+      })
+      .mockResolvedValueOnce({
+        setCode: 'MUL',
+        imported: 10,
+        importedScryfallIds: ['mul-a'],
+      });
     scryfallMocks.getSetCacheStats.mockResolvedValue([
       { setCode: 'DMU', cachedCount: 400, lastFetched: '2026-05-31T12:00:00.000Z' },
       { setCode: 'MUL', cachedCount: 10, lastFetched: '2026-05-31T12:00:00.000Z' },
@@ -228,7 +252,7 @@ describe('admin card cache routes', () => {
     });
     scryfallMocks.importSetFromScryfall
       .mockRejectedValueOnce(new AppError(502, 'SCRYFALL_ERROR', 'Scryfall request failed: 502'))
-      .mockResolvedValueOnce({ setCode: 'PZA', imported: 20 });
+      .mockResolvedValueOnce({ setCode: 'PZA', imported: 20, importedScryfallIds: ['pza-1'] });
     scryfallMocks.getSetCacheStats.mockResolvedValue([
       { setCode: 'TMT', cachedCount: 2, lastFetched: '2026-05-31T12:00:00.000Z' },
       { setCode: 'PZA', cachedCount: 20, lastFetched: '2026-05-31T12:00:00.000Z' },
@@ -285,5 +309,154 @@ describe('admin card cache routes', () => {
 
     expect(response.status).toBe(502);
     expect(response.body.error.code).toBe('SCRYFALL_ERROR');
+  });
+
+  it('clear-and-import-set calls clearAndImportSet and returns stale references', async () => {
+    cardCacheMocks.clearAndImportSet.mockResolvedValue({
+      setCode: 'SNC',
+      canonicalSetCode: 'SNC',
+      deleted: 10,
+      deletedCards: [{ scryfallId: 'digital-1', name: 'A-Some Card', setCode: 'SNC' }],
+      imported: 469,
+      importedScryfallIds: ['paper-1'],
+      staleReferences: [
+        {
+          scryfallId: 'digital-1',
+          name: 'A-Some Card',
+          setCode: 'SNC',
+          suggestedReplacement: { scryfallId: 'paper-1', name: 'Some Card', collectorNumber: '1' },
+          poolUsages: [],
+          decklistUsages: [],
+        },
+      ],
+    });
+    scryfallMocks.getSetCacheStats.mockResolvedValue([
+      { setCode: 'SNC', cachedCount: 469, lastFetched: '2026-05-31T12:00:00.000Z' },
+    ]);
+
+    const response = await request(app)
+      .post('/api/admin/card-cache/clear-and-import-set')
+      .set('x-test-role', 'admin')
+      .send({ setCode: 'SNC' });
+
+    expect(response.status).toBe(200);
+    expect(cardCacheMocks.clearAndImportSet).toHaveBeenCalledWith('SNC');
+    expect(response.body.data.totalDeleted).toBe(10);
+    expect(response.body.data.totalImported).toBe(469);
+    expect(response.body.data.staleReferences).toHaveLength(1);
+  });
+
+  it('clear-and-import-sets dedupes codes and aggregates deleted cards', async () => {
+    cardCacheMocks.clearAndImportSet
+      .mockResolvedValueOnce({
+        setCode: 'SNC',
+        canonicalSetCode: 'SNC',
+        deleted: 2,
+        deletedCards: [{ scryfallId: 'digital-snc', name: 'A Card', setCode: 'SNC' }],
+        imported: 469,
+        importedScryfallIds: ['snc-1'],
+        staleReferences: [],
+      })
+      .mockResolvedValueOnce({
+        setCode: 'DMU',
+        canonicalSetCode: 'DMU',
+        deleted: 1,
+        deletedCards: [{ scryfallId: 'digital-dmu', name: 'A Card', setCode: 'DMU' }],
+        imported: 400,
+        importedScryfallIds: ['dmu-1'],
+        staleReferences: [],
+      });
+    scryfallMocks.getSetCacheStats.mockResolvedValue([
+      { setCode: 'SNC', cachedCount: 469, lastFetched: '2026-05-31T12:00:00.000Z' },
+      { setCode: 'DMU', cachedCount: 400, lastFetched: '2026-05-31T12:00:00.000Z' },
+    ]);
+
+    const response = await request(app)
+      .post('/api/admin/card-cache/clear-and-import-sets')
+      .set('x-test-role', 'admin')
+      .send({ setCodes: ['SNC', 'DMU', 'snc'] });
+
+    expect(response.status).toBe(200);
+    expect(cardCacheMocks.clearAndImportSet).toHaveBeenCalledTimes(2);
+    expect(cardCacheMocks.clearAndImportSet).toHaveBeenNthCalledWith(1, 'SNC');
+    expect(cardCacheMocks.clearAndImportSet).toHaveBeenNthCalledWith(2, 'DMU');
+    expect(response.body.data.totalDeleted).toBe(3);
+    expect(response.body.data.deletedCards).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ scryfallId: 'digital-snc', setCode: 'SNC' }),
+        expect.objectContaining({ scryfallId: 'digital-dmu', setCode: 'DMU' }),
+      ]),
+    );
+  });
+
+  it('clear-and-import-booster-product runs each configured set', async () => {
+    boosterMocks.getBoosterProduct.mockResolvedValue({
+      id: 'prod-1',
+      setCodes: [{ setCode: 'SNC' }, { setCode: 'DMU' }],
+    });
+    cardCacheMocks.clearAndImportSet
+      .mockResolvedValueOnce({
+        setCode: 'SNC',
+        canonicalSetCode: 'SNC',
+        deleted: 2,
+        deletedCards: [],
+        imported: 469,
+        importedScryfallIds: ['snc-1'],
+        staleReferences: [],
+      })
+      .mockResolvedValueOnce({
+        setCode: 'DMU',
+        canonicalSetCode: 'DMU',
+        deleted: 1,
+        deletedCards: [],
+        imported: 400,
+        importedScryfallIds: ['dmu-1'],
+        staleReferences: [],
+      });
+    scryfallMocks.getSetCacheStats.mockResolvedValue([
+      { setCode: 'SNC', cachedCount: 469, lastFetched: '2026-05-31T12:00:00.000Z' },
+      { setCode: 'DMU', cachedCount: 400, lastFetched: '2026-05-31T12:00:00.000Z' },
+    ]);
+
+    const response = await request(app)
+      .post('/api/admin/card-cache/clear-and-import-booster-product/prod-1')
+      .set('x-test-role', 'admin');
+
+    expect(response.status).toBe(200);
+    expect(cardCacheMocks.clearAndImportSet).toHaveBeenCalledWith('SNC');
+    expect(cardCacheMocks.clearAndImportSet).toHaveBeenCalledWith('DMU');
+    expect(response.body.data.totalImported).toBe(869);
+  });
+
+  it('resolve-stale-references validates body and is admin-only', async () => {
+    cardCacheMocks.resolveStaleReferences.mockResolvedValue({ resolved: 2, errors: [] });
+
+    const ok = await request(app)
+      .post('/api/admin/card-cache/resolve-stale-references')
+      .set('x-test-role', 'admin')
+      .send({
+        actions: [
+          { target: 'pool', entryId: 'pool-entry-1', action: 'replace', replacementScryfallId: 'paper-1' },
+          { target: 'decklist', entryId: 'deck-entry-1', action: 'remove' },
+        ],
+      });
+
+    expect(ok.status).toBe(200);
+    expect(cardCacheMocks.resolveStaleReferences).toHaveBeenCalledTimes(1);
+    expect(ok.body.data).toEqual({ resolved: 2, errors: [] });
+
+    const forbidden = await request(app)
+      .post('/api/admin/card-cache/resolve-stale-references')
+      .set('x-test-role', 'user')
+      .send({ actions: [] });
+
+    expect(forbidden.status).toBe(403);
+
+    const invalid = await request(app)
+      .post('/api/admin/card-cache/resolve-stale-references')
+      .set('x-test-role', 'admin')
+      .send({ actions: [{ target: 'pool', entryId: 'pool-entry-1', action: 'replace' }] });
+
+    expect(invalid.status).toBe(400);
   });
 });

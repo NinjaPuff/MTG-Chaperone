@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTypeLine } from '../../lib/scryfallCardNormalize.js';
+import { isPaperPrinting, resolveTypeLine } from '../../lib/scryfallCardNormalize.js';
+
+describe('isPaperPrinting', () => {
+  it('returns false for digital-only cards', () => {
+    expect(isPaperPrinting({ digital: true, games: ['arena'] })).toBe(false);
+  });
+
+  it('returns false for arena-only cards not flagged digital', () => {
+    expect(isPaperPrinting({ digital: false, games: ['arena'] })).toBe(false);
+  });
+
+  it('returns true for paper and arena printings', () => {
+    expect(isPaperPrinting({ digital: false, games: ['paper', 'arena', 'mtgo'] })).toBe(true);
+  });
+
+  it('returns true when fields are missing (legacy fixtures)', () => {
+    expect(isPaperPrinting({})).toBe(true);
+  });
+
+  it('returns true when games is missing but digital is false', () => {
+    expect(isPaperPrinting({ digital: false })).toBe(true);
+  });
+});
 
 describe('resolveTypeLine', () => {
   it('uses top-level type_line when present', () => {

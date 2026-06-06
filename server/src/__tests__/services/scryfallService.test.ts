@@ -244,6 +244,32 @@ function makeCard(id: string, set: string) {
   };
 }
 
+const paperBriarHydra = {
+  id: 'paper-briar-id',
+  name: 'Briar Hydra',
+  set: 'dmu',
+  digital: false,
+  games: ['paper', 'arena', 'mtgo'],
+  type_line: 'Creature — Hydra',
+  rarity: 'rare',
+};
+
+const digitalBriarHydra = {
+  id: 'digital-briar-id',
+  name: 'A-Briar Hydra',
+  set: 'dmu',
+  digital: true,
+  games: ['arena'],
+  promo_types: ['rebalanced', 'alchemy'],
+  type_line: 'Creature — Hydra',
+  rarity: 'rare',
+};
+
+function decodeSearchQuery(url: string): string {
+  const match = url.match(/[?&]q=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
 function setResolveResponse(code: string): MockResponse {
   return { ok: true, status: 200, body: { code: code.toLowerCase() } };
 }
@@ -344,7 +370,12 @@ describe('scryfallService card cache import', () => {
 
     const result = await service.importSetFromScryfall('DMU');
 
-    expect(result).toEqual({ setCode: 'DMU', imported: 3, canonicalSetCode: 'DMU' });
+    expect(result).toEqual({
+      setCode: 'DMU',
+      imported: 3,
+      canonicalSetCode: 'DMU',
+      importedScryfallIds: ['a', 'b', 'c'],
+    });
     expect(upsert).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1][0]).toContain('set%3Admu');
     expect(fetchMock.mock.calls[1][0]).toContain('include_extras=true');
@@ -381,7 +412,12 @@ describe('scryfallService card cache import', () => {
 
     const result = await service.importSetFromScryfall('dmu');
 
-    expect(result).toEqual({ setCode: 'DMU', imported: 3, canonicalSetCode: 'DMU' });
+    expect(result).toEqual({
+      setCode: 'DMU',
+      imported: 3,
+      canonicalSetCode: 'DMU',
+      importedScryfallIds: ['a', 'b', 'c'],
+    });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[2][0]).toBe('https://api.scryfall.com/cards/search?page=2');
   });
@@ -408,7 +444,12 @@ describe('scryfallService card cache import', () => {
 
     const result = await service.importSetFromScryfall('TMNT');
 
-    expect(result).toEqual({ setCode: 'TMNT', imported: 2, canonicalSetCode: 'TMT' });
+    expect(result).toEqual({
+      setCode: 'TMNT',
+      imported: 2,
+      canonicalSetCode: 'TMT',
+      importedScryfallIds: ['a', 'b'],
+    });
     expect(fetchMock.mock.calls[0][0]).toContain('/sets/tmnt');
     expect(fetchMock.mock.calls[1][0]).toContain('set%3Atmt');
   });
@@ -448,10 +489,71 @@ describe('scryfallService card cache import', () => {
 
     const result = await service.importSetFromScryfall('ECL');
 
-    expect(result).toEqual({ setCode: 'ECL', imported: 1, canonicalSetCode: 'ECL' });
+    expect(result).toEqual({
+      setCode: 'ECL',
+      imported: 1,
+      canonicalSetCode: 'ECL',
+      importedScryfallIds: ['ecl-blood-crypt-reversible'],
+    });
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(upsert.mock.calls[0][0].create.typeLine).toBe('Land — Swamp Mountain');
     expect(upsert.mock.calls[0][0].update.typeLine).toBe('Land — Swamp Mountain');
+  });
+
+  it('importSetFromScryfall retries transient Scryfall failures and then succeeds', async () => {
+    const fetchMock = createFetchMock([
+      setResolveResponse('SNC'),
+      { ok: false, status: 502, body: {} },
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [makeCard('snc-1', 'snc')],
+          has_more: false,
+        },
+      },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert } } as any,
+    });
+
+    const result = await service.importSetFromScryfall('SNC');
+
+    expect(result).toEqual({
+      setCode: 'SNC',
+      imported: 1,
+      canonicalSetCode: 'SNC',
+      importedScryfallIds: ['snc-1'],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('importSetFromScryfall retries 429 responses before failing', async () => {
+    const fetchMock = createFetchMock([
+      setResolveResponse('SNC'),
+      { ok: false, status: 429, body: {} },
+      { ok: false, status: 429, body: {} },
+      { ok: false, status: 429, body: {} },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert } } as any,
+    });
+
+    await expect(service.importSetFromScryfall('SNC')).rejects.toMatchObject({
+      code: 'SCRYFALL_ERROR',
+      statusCode: 429,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(upsert).not.toHaveBeenCalled();
   });
 
   it('importSetFromScryfall throws when Scryfall returns an error', async () => {
@@ -896,5 +998,243 @@ describe('scryfallService bulkLookupForPoolImport', () => {
 
     expect(String(fetchMock.mock.calls[0][0])).toContain('set=ecl');
     expect(String(fetchMock.mock.calls[1][0])).toContain('set=fca');
+  });
+
+  it('does not persist digital cards on cache miss via searchCards fallback', async () => {
+    const fetchMock = createFetchMock([
+      { ok: false, status: 404, body: {} },
+      {
+        ok: true,
+        status: 200,
+        body: { data: [digitalBriarHydra] },
+      },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+    const findMany = vi.fn(async () => []);
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { findMany, upsert } } as never,
+    });
+
+    const result = await service.bulkLookupForPoolImport(['A-Briar Hydra'], ['DMU']);
+
+    expect(upsert).not.toHaveBeenCalled();
+    expect(result).toEqual([]);
+    const searchCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('/cards/search'));
+    expect(searchCall).toBeDefined();
+    expect(decodeSearchQuery(String(searchCall![0]))).toContain('-is:digital');
+  });
+});
+
+describe('scryfallService paper-only filtering', () => {
+  it('searchCards appends -is:digital to set-scoped queries', async () => {
+    const fetchMock = createFetchMock([
+      { ok: true, status: 200, body: { data: [] } },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: {
+        cachedCard: { upsert, findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
+      } as never,
+    });
+
+    await service.searchCards('Briar', ['DMU']);
+
+    const query = decodeSearchQuery(String(fetchMock.mock.calls[0][0]));
+    expect(query).toContain('-is:digital');
+    expect(query).toContain('set:dmu');
+  });
+
+  it('searchCards appends -is:digital to unscoped queries', async () => {
+    const fetchMock = createFetchMock([
+      { ok: true, status: 200, body: { data: [] } },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: {
+        cachedCard: { upsert, findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
+      } as never,
+    });
+
+    await service.searchCards('Bolt');
+
+    expect(decodeSearchQuery(String(fetchMock.mock.calls[0][0]))).toContain('-is:digital');
+  });
+
+  it('searchCards upserts only paper printings when Scryfall returns mixed results', async () => {
+    const fetchMock = createFetchMock([
+      { ok: true, status: 200, body: { data: [paperBriarHydra, digitalBriarHydra] } },
+    ]);
+    const upsert = vi.fn(async (args: { where: { scryfallId: string } }) => ({
+      scryfallId: args.where.scryfallId,
+    }));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: {
+        cachedCard: { upsert, findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
+      } as never,
+    });
+
+    const results = await service.searchCards('Briar', ['DMU']);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0][0].where.scryfallId).toBe('paper-briar-id');
+    expect(results).toHaveLength(1);
+    expect(results[0]?.scryfallId).toBe('paper-briar-id');
+  });
+
+  it('searchCards returns empty when all results are digital', async () => {
+    const fetchMock = createFetchMock([
+      { ok: true, status: 200, body: { data: [digitalBriarHydra] } },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: {
+        cachedCard: { upsert, findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
+      } as never,
+    });
+
+    const results = await service.searchCards('A-Briar', ['DMU']);
+
+    expect(upsert).not.toHaveBeenCalled();
+    expect(results).toEqual([]);
+  });
+
+  it('lookupCanonicalByName returns null and skips upsert for digital-only results', async () => {
+    const fetchMock = createFetchMock([
+      { ok: true, status: 200, body: { data: [digitalBriarHydra] } },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: {
+        cachedCard: { upsert, findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
+      } as never,
+    });
+
+    const result = await service.lookupCanonicalByName('A-Briar Hydra', ['DMU']);
+
+    expect(result).toBeNull();
+    expect(upsert).not.toHaveBeenCalled();
+    expect(decodeSearchQuery(String(fetchMock.mock.calls[0][0]))).toContain('-is:digital');
+  });
+
+  it('lookupCanonicalByName returns null when Scryfall search returns 404 (no results)', async () => {
+    const fetchMock = createFetchMock([
+      { ok: false, status: 404, body: { object: 'error', code: 'not_found', details: 'No cards found' } },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: {
+        cachedCard: { upsert, findMany: vi.fn(async () => []), findUnique: vi.fn(async () => null) },
+      } as never,
+    });
+
+    const result = await service.lookupCanonicalByName('A-Buy Your Silence', ['SNC']);
+
+    expect(result).toBeNull();
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('importSetFromScryfall uses -is:digital in search URL and skips digital cards on page', async () => {
+    const fetchMock = createFetchMock([
+      setResolveResponse('DMU'),
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [paperBriarHydra, digitalBriarHydra],
+          has_more: false,
+        },
+      },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert } } as never,
+    });
+
+    const result = await service.importSetFromScryfall('DMU');
+
+    expect(result.imported).toBe(1);
+    expect(result.importedScryfallIds).toEqual(['paper-briar-id']);
+    expect(upsert).toHaveBeenCalledTimes(1);
+    const importUrl = String(fetchMock.mock.calls[1][0]);
+    expect(decodeSearchQuery(importUrl)).toContain('-is:digital');
+    expect(importUrl).toContain('include_extras=true');
+  });
+
+  it('importSetFromScryfall does not upsert when page is all digital', async () => {
+    const fetchMock = createFetchMock([
+      setResolveResponse('DMU'),
+      {
+        ok: true,
+        status: 200,
+        body: { data: [digitalBriarHydra], has_more: false },
+      },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert } } as never,
+    });
+
+    const result = await service.importSetFromScryfall('DMU');
+
+    expect(result.imported).toBe(0);
+    expect(result.importedScryfallIds).toEqual([]);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('bulkImportSet excludes digital cards from counts and upserts', async () => {
+    const fetchMock = createFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [{ type: 'default_cards', download_uri: 'https://bulk.example/cards.json' }],
+        },
+      },
+      {
+        ok: true,
+        status: 200,
+        body: [paperBriarHydra, digitalBriarHydra],
+      },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert } } as never,
+    });
+
+    const result = await service.bulkImportSet(['DMU']);
+
+    expect(result.totalImported).toBe(1);
+    expect(result.results).toEqual([{ setCode: 'DMU', imported: 1 }]);
+    expect(upsert).toHaveBeenCalledTimes(1);
   });
 });

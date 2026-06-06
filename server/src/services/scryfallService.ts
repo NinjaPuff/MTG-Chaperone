@@ -1,6 +1,6 @@
 import { expandCardNameLookupVariants } from '@mtg-league/shared';
 import { AppError } from '../middleware/errorHandler.js';
-import { resolveTypeLine } from '../lib/scryfallCardNormalize.js';
+import { isPaperPrinting, resolveTypeLine } from '../lib/scryfallCardNormalize.js';
 import { prisma } from '../lib/prisma.js';
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
@@ -9,6 +9,8 @@ const SCRYFALL_BASE_URL = 'https://api.scryfall.com';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const RATE_LIMIT_MS = 120;
 const UPSERT_BATCH_SIZE = 50;
+const SCRYFALL_RETRY_ATTEMPTS = 3;
+const SCRYFALL_RETRY_BASE_MS = 250;
 
 function normalizeSetCodes(setCodes: string[]) {
   const seen = new Set<string>();
@@ -48,6 +50,8 @@ type ScryfallCard = {
     image_uris?: Record<string, string>;
   }>;
   prices?: Record<string, string | null>;
+  digital?: boolean;
+  games?: string[];
 };
 
 type ScryfallPagedSearchResponse = {
@@ -117,21 +121,49 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 
   async function fetchScryfall<T>(url: string): Promise<T> {
     return withRateLimit(async () => {
-      const response = await deps.fetch(url, {
-        headers: {
-          'User-Agent': 'MtgChaperone/0.1',
-        },
-      });
-      if (!response.ok) {
-        throw new AppError(response.status, 'SCRYFALL_ERROR', `Scryfall request failed: ${response.status}`);
+      let attempt = 0;
+      while (attempt < SCRYFALL_RETRY_ATTEMPTS) {
+        try {
+          const response = await deps.fetch(url, {
+            headers: {
+              'User-Agent': 'MtgChaperone/0.1',
+            },
+          });
+          if (response.ok) {
+            return (await response.json()) as T;
+          }
+
+          throw new AppError(response.status, 'SCRYFALL_ERROR', `Scryfall request failed: ${response.status}`);
+        } catch (error) {
+          if (error instanceof AppError) {
+            const retryableStatus = error.statusCode === 429 || error.statusCode >= 500;
+            if (!retryableStatus || attempt === SCRYFALL_RETRY_ATTEMPTS - 1) {
+              throw error;
+            }
+          } else if (attempt === SCRYFALL_RETRY_ATTEMPTS - 1) {
+            throw new AppError(503, 'SCRYFALL_ERROR', 'Scryfall request failed: network error');
+          }
+        }
+
+        attempt += 1;
+        await deps.sleep(SCRYFALL_RETRY_BASE_MS * attempt);
       }
-      return (await response.json()) as T;
+
+      throw new AppError(503, 'SCRYFALL_ERROR', 'Scryfall request failed: network error');
     });
   }
 
   function buildSetClause(setCodes: string[]) {
     const normalizedSets = setCodes.map((setCode) => setCode.trim().toLowerCase()).filter(Boolean);
     return normalizedSets.length ? ` (${normalizedSets.map((setCode) => `set:${setCode}`).join(' OR ')})` : '';
+  }
+
+  function appendPaperOnlyFilter(query: string) {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      return '-is:digital';
+    }
+    return `${trimmed} -is:digital`;
   }
 
   async function resolveCanonicalSetCode(setCode: string) {
@@ -154,7 +186,9 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
   }
 
   function buildSetImportSearchUrl(canonicalSetCode: string) {
-    const query = encodeURIComponent(`set:${canonicalSetCode.toLowerCase()}`);
+    const query = encodeURIComponent(
+      appendPaperOnlyFilter(`set:${canonicalSetCode.toLowerCase()}`),
+    );
     return `${SCRYFALL_BASE_URL}/cards/search?q=${query}&unique=prints&include_extras=true&include_variations=true`;
   }
 
@@ -178,6 +212,10 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
   }
 
   async function upsertCard(card: ScryfallCard) {
+    if (!isPaperPrinting(card)) {
+      return null;
+    }
+
     const manaCost = resolveManaCost(card);
     const typeLine = resolveTypeLine(card);
     const flavorName = resolveFlavorName(card);
@@ -260,34 +298,37 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     const canonicalSetCode = await resolveCanonicalSetCode(setCode);
 
     let imported = 0;
+    const importedScryfallIds: string[] = [];
     let nextUrl: string | null = buildSetImportSearchUrl(canonicalSetCode);
 
     while (nextUrl) {
       const response: ScryfallPagedSearchResponse = await fetchScryfall<ScryfallPagedSearchResponse>(nextUrl);
 
-      const cards = response.data ?? [];
+      const cards = (response.data ?? []).filter(isPaperPrinting);
       if (cards.length > 0) {
         await upsertCardsInBatches(cards);
         imported += cards.length;
+        importedScryfallIds.push(...cards.map((card) => card.id));
       }
 
       nextUrl = response.has_more && response.next_page ? response.next_page : null;
     }
 
-    return { setCode: requestedCode, imported, canonicalSetCode };
+    return { setCode: requestedCode, imported, canonicalSetCode, importedScryfallIds };
   }
 
   async function searchCards(query: string, setCodes: string[] = []) {
     const setClause = buildSetClause(setCodes);
-    const scryfallQuery = `${query}${setClause}`.trim();
+    const scryfallQuery = appendPaperOnlyFilter(`${query}${setClause}`);
     const encodedQuery = encodeURIComponent(scryfallQuery);
 
     const response = await fetchScryfall<{ data: ScryfallCard[] }>(
       `${SCRYFALL_BASE_URL}/cards/search?q=${encodedQuery}&order=name&unique=prints`,
     );
 
-    const cards = await Promise.all(response.data.map((card) => upsertCard(card)));
-    return cards;
+    const paperCards = response.data.filter(isPaperPrinting);
+    const upserted = await Promise.all(paperCards.map((card) => upsertCard(card)));
+    return upserted.filter((card) => card !== null);
   }
 
   async function lookupCanonicalByName(name: string, setCodes: string[] = []) {
@@ -297,13 +338,22 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     }
 
     const setClause = buildSetClause(setCodes);
-    const scryfallQuery = `!"${trimmedName}"${setClause}`.trim();
+    const scryfallQuery = appendPaperOnlyFilter(`!"${trimmedName}"${setClause}`);
     const encodedQuery = encodeURIComponent(scryfallQuery);
-    const response = await fetchScryfall<{ data: ScryfallCard[] }>(
-      `${SCRYFALL_BASE_URL}/cards/search?q=${encodedQuery}&order=name&unique=cards`,
-    );
 
-    const canonical = response.data[0];
+    let response: { data: ScryfallCard[] };
+    try {
+      response = await fetchScryfall<{ data: ScryfallCard[] }>(
+        `${SCRYFALL_BASE_URL}/cards/search?q=${encodedQuery}&order=name&unique=cards`,
+      );
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 404) {
+        return null;
+      }
+      throw error;
+    }
+
+    const canonical = response.data.find(isPaperPrinting);
     if (!canonical) {
       return null;
     }
@@ -666,7 +716,9 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 
     const cards = await fetchScryfall<ScryfallCard[]>(defaultCards.download_uri);
     const normalizedLower = new Set(normalized.map((code) => code.toLowerCase()));
-    const filtered = cards.filter((card) => normalizedLower.has(card.set.toLowerCase()));
+    const filtered = cards
+      .filter((card) => normalizedLower.has(card.set.toLowerCase()))
+      .filter(isPaperPrinting);
 
     const importedBySet = new Map<string, number>(normalized.map((code) => [code, 0]));
     for (const card of filtered) {
@@ -688,6 +740,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
   }
 
   return {
+    resolveCanonicalSetCode,
     searchCards,
     lookupCanonicalByName,
     getCard,
@@ -703,6 +756,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 
 const defaultScryfallService = createScryfallService();
 export const searchCards = defaultScryfallService.searchCards;
+export const resolveCanonicalSetCode = defaultScryfallService.resolveCanonicalSetCode;
 export const lookupCanonicalByName = defaultScryfallService.lookupCanonicalByName;
 export const getCard = defaultScryfallService.getCard;
 export const getCardFaces = defaultScryfallService.getCardFaces;

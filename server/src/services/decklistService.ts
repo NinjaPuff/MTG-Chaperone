@@ -29,6 +29,12 @@ type CombinedAllocationViolation = {
   allocated: number;
 };
 
+type ViolationCardMeta = {
+  name: string;
+  setCode: string;
+  collectorNumber: string | null;
+};
+
 type MinimumChangesInput = {
   minChanges: number;
   previousCardIds: Set<string>;
@@ -48,10 +54,16 @@ type ValidateCombinedAllocationInput = {
   basicLandCardIds: Set<string>;
 };
 
+type FilterWorsenedAllocationInput = {
+  previousViolations: CombinedAllocationViolation[];
+  nextViolations: CombinedAllocationViolation[];
+};
+
 type DecklistValidationResult = {
   isValid: boolean;
   errors: string[];
   warnings: string[];
+  invalidCardIds: string[];
 };
 
 type DeckbuilderRoundStatus = 'not_started' | 'in_progress' | 'completed';
@@ -75,6 +87,23 @@ function aggregateEntries(entries: Array<{ cachedCardId: string; quantity: numbe
     map.set(entry.cachedCardId, (map.get(entry.cachedCardId) ?? 0) + entry.quantity);
   }
   return map;
+}
+
+function formatViolationCardLabel(cachedCardId: string, card: ViolationCardMeta | undefined) {
+  if (!card) {
+    return cachedCardId;
+  }
+
+  const setPart = card.collectorNumber ? `${card.setCode} ${card.collectorNumber}` : card.setCode;
+  return `${card.name} (${setPart})`;
+}
+
+function formatAllocationViolationMessage(
+  violation: CombinedAllocationViolation,
+  card: ViolationCardMeta | undefined,
+) {
+  const label = formatViolationCardLabel(violation.cachedCardId, card);
+  return `Too many copies allocated for ${label}: ${violation.allocated} allocated, ${violation.allowed} allowed`;
 }
 
 function normalizeEntryInputs(entries: DeckEntryInput[]) {
@@ -194,6 +223,20 @@ export function validateCombinedAllocation({
     }
   }
   return violations;
+}
+
+export function filterNewOrWorsenedAllocationViolations({
+  previousViolations,
+  nextViolations,
+}: FilterWorsenedAllocationInput) {
+  const previousByCardId = new Map(previousViolations.map((violation) => [violation.cachedCardId, violation]));
+  return nextViolations.filter((violation) => {
+    const previous = previousByCardId.get(violation.cachedCardId);
+    if (!previous) {
+      return true;
+    }
+    return violation.allocated > previous.allocated;
+  });
 }
 
 async function getEventRoundContext(eventId: string, roundId: string) {
@@ -935,20 +978,46 @@ export async function updateDecklist(
   const combined = aggregateEntries(
     siblingDecklists.flatMap((item) => item.entries).concat(effectiveEntries.map((entry) => ({ cachedCardId: entry.cachedCardId, quantity: entry.quantity }))),
   );
+  const previousCombined = aggregateEntries(
+    siblingDecklists
+      .flatMap((item) => item.entries)
+      .concat(decklist.entries.map((entry) => ({ cachedCardId: entry.cachedCardId, quantity: entry.quantity }))),
+  );
 
-  const violations = validateCombinedAllocation({
+  const nextViolations = validateCombinedAllocation({
     poolQuantityByCardId,
     restrictedQuantityByCardId: restrictedQtyMap,
     combinedDeckAllocationByCardId: combined,
     basicLandCardIds,
   });
+  const previousViolations = validateCombinedAllocation({
+    poolQuantityByCardId,
+    restrictedQuantityByCardId: restrictedQtyMap,
+    combinedDeckAllocationByCardId: previousCombined,
+    basicLandCardIds,
+  });
+  const worseningViolations = filterNewOrWorsenedAllocationViolations({
+    previousViolations,
+    nextViolations,
+  });
 
-  if (violations.length > 0) {
-    const violation = violations[0];
+  if (worseningViolations.length > 0) {
+    const violation = worseningViolations[0];
+    const card = await prisma.cachedCard.findUnique({
+      where: { scryfallId: violation.cachedCardId },
+      select: {
+        name: true,
+        setCode: true,
+        collectorNumber: true,
+      },
+    });
     throw new AppError(
       400,
       'VALIDATION_ERROR',
-      `Card allocation exceeds available copies for ${violation.cachedCardId}: ${violation.allocated}/${violation.allowed}`,
+      formatAllocationViolationMessage(violation, card),
+      {
+        cachedCardId: violation.cachedCardId,
+      },
     );
   }
 
@@ -1053,8 +1122,21 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
     basicLandCardIds,
   });
 
-  const errors = violations.map(
-    (violation) => `Card allocation exceeds available copies for ${violation.cachedCardId}: ${violation.allocated}/${violation.allowed}`,
+  const violationCardIds = [...new Set(violations.map((violation) => violation.cachedCardId))];
+  const violationCards = violationCardIds.length
+    ? await prisma.cachedCard.findMany({
+        where: { scryfallId: { in: violationCardIds } },
+        select: {
+          scryfallId: true,
+          name: true,
+          setCode: true,
+          collectorNumber: true,
+        },
+      })
+    : [];
+  const violationCardById = new Map(violationCards.map((card) => [card.scryfallId, card]));
+  const errors = violations.map((violation) =>
+    formatAllocationViolationMessage(violation, violationCardById.get(violation.cachedCardId)),
   );
   const warnings: string[] = [];
 
@@ -1105,6 +1187,7 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
     isValid: errors.length === 0,
     errors,
     warnings,
+    invalidCardIds: [...new Set(violations.map((violation) => violation.cachedCardId))],
   };
 }
 

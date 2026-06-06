@@ -1,4 +1,5 @@
 import type { MouseEvent } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
 import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
 import { sumBucketQuantity } from '@/lib/curveBucketTotal';
@@ -16,6 +17,7 @@ export type DeckCardListItem = {
   zone: 'main' | 'sideboard';
   colorIdentity: string[];
   imageUrl?: string | null;
+  hasSaveIssue?: boolean;
 };
 
 type DeckCardListProps = {
@@ -75,6 +77,13 @@ export function DeckCardList({
                     >
                       <span className="cursor-default">{displayName}</span>
                     </HoverTarget>
+                    {card.hasSaveIssue ? (
+                      <AlertTriangle
+                        className="ml-1 inline h-3.5 w-3.5 align-text-bottom text-destructive"
+                        aria-hidden="true"
+                        title="Save blocked by this card"
+                      />
+                    ) : null}
                   </span>
                   <ManaCostSymbols
                     manaCost={frontFaceManaCost(card.manaCost, card.layout)}
