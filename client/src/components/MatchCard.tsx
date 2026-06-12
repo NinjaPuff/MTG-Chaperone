@@ -139,12 +139,13 @@ function PlayerNameWithSets({
   );
 }
 
-function OutcomeWatermark({ isDraw }: { isDraw: boolean }) {
-  const overlay = isDraw ? 'bg-amber-500/10' : 'bg-emerald-500/10';
+function OutcomeWatermark({ variant }: { variant: 'winner' | 'draw' | 'disputed' }) {
+  const overlay =
+    variant === 'draw' ? 'bg-amber-500/10' : variant === 'disputed' ? 'bg-red-500/10' : 'bg-emerald-500/10';
 
   return (
     <div className={`absolute inset-0 pointer-events-none flex items-center justify-center ${overlay}`}>
-      {isDraw ? (
+      {variant === 'draw' ? (
         <svg
           className="h-[58%] w-[58%] opacity-[0.18] text-amber-500"
           viewBox="0 0 24 24"
@@ -158,6 +159,21 @@ function OutcomeWatermark({ isDraw }: { isDraw: boolean }) {
           <circle cx="12" cy="12" r="7.8" />
           <line x1="8.5" y1="10.3" x2="15.5" y2="10.3" />
           <line x1="8.5" y1="13.7" x2="15.5" y2="13.7" />
+        </svg>
+      ) : variant === 'disputed' ? (
+        <svg
+          className="h-[58%] w-[58%] opacity-[0.18] text-red-500"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
       ) : (
         <svg className="h-[58%] w-[58%] opacity-[0.16] text-emerald-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -212,39 +228,74 @@ export function MatchCard({
 
   const p2Record = eventRecords.get(match.player2.id) ?? { wins: 0, losses: 0, draws: 0 };
   const p2Points = seasonPoints.get(match.player2.id) ?? 0;
-  const p1IsReportedWinner = matchOutcome === 'player1';
-  const p2IsReportedWinner = matchOutcome === 'player2';
-  const isReportedDraw = matchOutcome === 'draw';
+  const isDisputed = match.status === 'disputed';
+  const p1IsReportedWinner = !isDisputed && matchOutcome === 'player1';
+  const p2IsReportedWinner = !isDisputed && matchOutcome === 'player2';
+  const isReportedDraw = !isDisputed && matchOutcome === 'draw';
+
+  const playerPanelClass = (isWinner: boolean, isDraw: boolean) => {
+    if (isDisputed) {
+      return 'border-red-500 bg-red-500/10 shadow-sm';
+    }
+    if (isWinner) {
+      return 'border-emerald-500 bg-emerald-500/10 shadow-sm';
+    }
+    if (isDraw) {
+      return 'border-amber-500 bg-amber-500/10 shadow-sm';
+    }
+    return 'border-border';
+  };
+
+  const panelWatermark = (isWinner: boolean, isDraw: boolean) => {
+    if (isDisputed) {
+      return <OutcomeWatermark variant="disputed" />;
+    }
+    if (isWinner || isDraw) {
+      return <OutcomeWatermark variant={isDraw ? 'draw' : 'winner'} />;
+    }
+    return null;
+  };
+
+  const statusBadge = (isWinner: boolean, isDraw: boolean) => {
+    if (isDisputed) {
+      return (
+        <span className="rounded-full border border-red-600 bg-red-600/15 px-2 py-0.5 text-[10px] font-semibold text-red-700 dark:text-red-300">
+          Disputed
+        </span>
+      );
+    }
+    if (isWinner) {
+      return (
+        <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+          Winner
+        </span>
+      );
+    }
+    if (isDraw) {
+      return (
+        <span className="rounded-full border border-amber-600 bg-amber-600/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+          Draw
+        </span>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="rounded-lg border-2 border-border bg-card p-3 text-sm">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-stretch">
         <div className="flex-1 grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
           <div
-            className={`relative overflow-hidden rounded-lg border p-3 ${
-              p1IsReportedWinner
-                ? 'border-emerald-500 bg-emerald-500/10 shadow-sm'
-                : isReportedDraw
-                  ? 'border-amber-500 bg-amber-500/10 shadow-sm'
-                  : 'border-border'
-            }`}
+            className={`relative overflow-hidden rounded-lg border p-3 ${playerPanelClass(p1IsReportedWinner, isReportedDraw)}`}
           >
-            {(p1IsReportedWinner || isReportedDraw) ? <OutcomeWatermark isDraw={isReportedDraw} /> : null}
+            {panelWatermark(p1IsReportedWinner, isReportedDraw)}
             <div className="relative z-10">
               <div className="flex items-center gap-3">
                 <Avatar user={match.player1} sizeClass="h-14 w-14" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <p className="font-semibold truncate">{primaryName(match.player1)}</p>
-                    {p1IsReportedWinner ? (
-                      <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                        Winner
-                      </span>
-                    ) : isReportedDraw ? (
-                      <span className="rounded-full border border-amber-600 bg-amber-600/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-                        Draw
-                      </span>
-                    ) : null}
+                    {statusBadge(p1IsReportedWinner, isReportedDraw)}
                     {poolSetsByUserId ? (
                       <PlayerPoolSetSymbols
                         userId={match.player1.id}
@@ -260,7 +311,11 @@ export function MatchCard({
                 </div>
               </div>
               <div className="mt-3">
-                <StatsBox record={p1Record} points={p1Points} translucent={p1IsReportedWinner || isReportedDraw} />
+                <StatsBox
+                  record={p1Record}
+                  points={p1Points}
+                  translucent={isDisputed || p1IsReportedWinner || isReportedDraw}
+                />
               </div>
             </div>
           </div>
@@ -272,28 +327,14 @@ export function MatchCard({
           </div>
 
           <div
-            className={`relative overflow-hidden rounded-lg border p-3 ${
-              p2IsReportedWinner
-                ? 'border-emerald-500 bg-emerald-500/10 shadow-sm'
-                : isReportedDraw
-                  ? 'border-amber-500 bg-amber-500/10 shadow-sm'
-                  : 'border-border'
-            }`}
+            className={`relative overflow-hidden rounded-lg border p-3 ${playerPanelClass(p2IsReportedWinner, isReportedDraw)}`}
           >
-            {(p2IsReportedWinner || isReportedDraw) ? <OutcomeWatermark isDraw={isReportedDraw} /> : null}
+            {panelWatermark(p2IsReportedWinner, isReportedDraw)}
             <div className="relative z-10">
               <div className="flex items-center justify-end gap-3">
                 <div className="text-right min-w-0">
                   <div className="flex items-center justify-end gap-2">
-                    {p2IsReportedWinner ? (
-                      <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                        Winner
-                      </span>
-                    ) : isReportedDraw ? (
-                      <span className="rounded-full border border-amber-600 bg-amber-600/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
-                        Draw
-                      </span>
-                    ) : null}
+                    {statusBadge(p2IsReportedWinner, isReportedDraw)}
                     <p className="font-semibold truncate">{primaryName(match.player2)}</p>
                     {poolSetsByUserId ? (
                       <PlayerPoolSetSymbols
@@ -311,7 +352,12 @@ export function MatchCard({
                 <Avatar user={match.player2} sizeClass="h-14 w-14" />
               </div>
               <div className="mt-3">
-                <StatsBox record={p2Record} points={p2Points} align="right" translucent={p2IsReportedWinner || isReportedDraw} />
+                <StatsBox
+                  record={p2Record}
+                  points={p2Points}
+                  align="right"
+                  translucent={isDisputed || p2IsReportedWinner || isReportedDraw}
+                />
               </div>
             </div>
           </div>

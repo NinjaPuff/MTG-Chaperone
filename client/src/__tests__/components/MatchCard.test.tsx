@@ -91,22 +91,22 @@ describe('MatchCard', () => {
     expect(screen.getByText('alice_d')).toBeInTheDocument();
   });
 
-  it('shows discord subtitle when handle matches display name', () => {
+  it('shows disputed styling on both player panels', () => {
     render(
       <MatchCard
         match={{
           ...baseMatch,
-          player1: {
-            ...baseMatch.player1,
-            displayName: 'Alice',
-            discordHandle: 'alice',
-          },
+          status: 'disputed',
+          gameResults: [
+            { winnerId: 'user-1', isDraw: false },
+            { winnerId: 'user-1', isDraw: false },
+          ],
         }}
         eventRecords={new Map()}
         seasonPoints={new Map()}
       />,
     );
 
-    expect(screen.getByText('alice')).toBeInTheDocument();
+    expect(screen.getAllByText('Disputed')).toHaveLength(2);
   });
 });

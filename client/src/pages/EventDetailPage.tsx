@@ -8,6 +8,7 @@ import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
 import { computeEventRecords } from '@/lib/eventRecords';
+import { confirmDisputeMatch } from '@/lib/matchDisputeConfirm';
 import { primaryName } from '@/lib/userDisplay';
 import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
 
@@ -377,6 +378,9 @@ export function EventDetailPage() {
   };
 
   const confirmOrDisputeMatch = async (matchId: string, action: 'confirm' | 'dispute') => {
+    if (action === 'dispute' && !(await confirmDisputeMatch(confirm))) {
+      return;
+    }
     await mutate(`Match ${action}ed.`, async () => {
       await authApiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
     });
