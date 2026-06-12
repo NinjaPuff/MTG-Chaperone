@@ -80,8 +80,7 @@ export function DeckCardList({
                     {card.hasSaveIssue ? (
                       <AlertTriangle
                         className="ml-1 inline h-3.5 w-3.5 align-text-bottom text-destructive"
-                        title="Card violates current round constraints"
-                        aria-label="Card issue"
+                        aria-label="Card violates current round constraints"
                       />
                     ) : null}
                   </span>

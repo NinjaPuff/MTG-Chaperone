@@ -195,7 +195,7 @@ export function DashboardPage() {
   const currentEvent = activeEvent ?? latestEvent;
   const viewingActiveSeason = selectedSeasonId === activeSeasonId;
   const eventRecords = useMemo(() => computeEventRecords(rounds), [rounds]);
-  const userActiveMatches = useMemo(() => getUserActiveMatches(rounds, user?.id), [rounds, user?.id]);
+  const userActiveMatches = useMemo(() => getUserActiveMatches<Match, Round>(rounds, user?.id), [rounds, user?.id]);
   const showActiveMatchesSection = Boolean(user && viewingActiveSeason && activeEvent && userActiveMatches.length > 0);
   const selectedMatch = useMemo(
     () => rounds.flatMap((round) => round.matches).find((match) => match.id === selectedMatchId) ?? null,

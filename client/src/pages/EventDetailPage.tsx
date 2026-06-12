@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
@@ -426,7 +426,7 @@ export function EventDetailPage() {
   };
 
   const confirmResetEvent = async () => {
-    if (!eventId || !['active', 'completed'].includes(event.status)) {
+    if (!eventId || !event || !['active', 'completed'].includes(event.status)) {
       return;
     }
     const confirmed = await confirm({
