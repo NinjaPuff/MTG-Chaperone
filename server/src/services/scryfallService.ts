@@ -9,8 +9,9 @@ const SCRYFALL_BASE_URL = 'https://api.scryfall.com';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const RATE_LIMIT_MS = 120;
 const UPSERT_BATCH_SIZE = 50;
-const SCRYFALL_RETRY_ATTEMPTS = 3;
-const SCRYFALL_RETRY_BASE_MS = 250;
+const SCRYFALL_RETRY_ATTEMPTS = 4;
+const SCRYFALL_RETRY_BASE_MS = 500;
+const SCRYFALL_429_BASE_MS = 2000;
 
 function normalizeSetCodes(setCodes: string[]) {
   const seen = new Set<string>();
@@ -140,13 +141,16 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
             if (!retryableStatus || attempt === SCRYFALL_RETRY_ATTEMPTS - 1) {
               throw error;
             }
+            const baseMs = error.statusCode === 429 ? SCRYFALL_429_BASE_MS : SCRYFALL_RETRY_BASE_MS;
+            attempt += 1;
+            await deps.sleep(baseMs * attempt);
           } else if (attempt === SCRYFALL_RETRY_ATTEMPTS - 1) {
             throw new AppError(503, 'SCRYFALL_ERROR', 'Scryfall request failed: network error');
+          } else {
+            attempt += 1;
+            await deps.sleep(SCRYFALL_RETRY_BASE_MS * attempt);
           }
         }
-
-        attempt += 1;
-        await deps.sleep(SCRYFALL_RETRY_BASE_MS * attempt);
       }
 
       throw new AppError(503, 'SCRYFALL_ERROR', 'Scryfall request failed: network error');
@@ -300,21 +304,27 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     let imported = 0;
     const importedScryfallIds: string[] = [];
     let nextUrl: string | null = buildSetImportSearchUrl(canonicalSetCode);
+    let error: string | undefined;
 
     while (nextUrl) {
-      const response: ScryfallPagedSearchResponse = await fetchScryfall<ScryfallPagedSearchResponse>(nextUrl);
+      try {
+        const response: ScryfallPagedSearchResponse = await fetchScryfall<ScryfallPagedSearchResponse>(nextUrl);
 
-      const cards = (response.data ?? []).filter(isPaperPrinting);
-      if (cards.length > 0) {
-        await upsertCardsInBatches(cards);
-        imported += cards.length;
-        importedScryfallIds.push(...cards.map((card) => card.id));
+        const cards = (response.data ?? []).filter(isPaperPrinting);
+        if (cards.length > 0) {
+          await upsertCardsInBatches(cards);
+          imported += cards.length;
+          importedScryfallIds.push(...cards.map((card) => card.id));
+        }
+
+        nextUrl = response.has_more && response.next_page ? response.next_page : null;
+      } catch (err) {
+        error = err instanceof AppError ? err.message : 'Import failed mid-pagination';
+        break;
       }
-
-      nextUrl = response.has_more && response.next_page ? response.next_page : null;
     }
 
-    return { setCode: requestedCode, imported, canonicalSetCode, importedScryfallIds };
+    return { setCode: requestedCode, imported, canonicalSetCode, importedScryfallIds, error };
   }
 
   async function searchCards(query: string, setCodes: string[] = []) {

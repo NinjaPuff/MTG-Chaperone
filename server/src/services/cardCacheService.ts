@@ -171,11 +171,11 @@ export function createCardCacheService(partialDeps?: Partial<CardCacheDeps>) {
     const imported = new Set(importedScryfallIds);
 
     const poolWhere = {
-      cachedCard: { setCode: { equals: canonicalSetCode, mode: 'insensitive' } },
+      cachedCard: { setCode: { equals: canonicalSetCode, mode: 'insensitive' as const } },
       ...(imported.size > 0 ? { cachedCardId: { notIn: [...imported] } } : {}),
     };
     const deckWhere = {
-      cachedCard: { setCode: { equals: canonicalSetCode, mode: 'insensitive' } },
+      cachedCard: { setCode: { equals: canonicalSetCode, mode: 'insensitive' as const } },
       ...(imported.size > 0 ? { cachedCardId: { notIn: [...imported] } } : {}),
     };
 
@@ -306,26 +306,15 @@ export function createCardCacheService(partialDeps?: Partial<CardCacheDeps>) {
   async function clearAndImportSet(setCode: string): Promise<ClearAndImportSetResult> {
     const cleared = await clearSetCache(setCode);
 
-    try {
-      const imported = await deps.importSetFromScryfall(cleared.setCode);
-      const staleReferences = await findStaleReferences(cleared.setCode, imported.importedScryfallIds);
-      return {
-        ...cleared,
-        imported: imported.imported,
-        importedScryfallIds: imported.importedScryfallIds,
-        staleReferences,
-      };
-    } catch (error) {
-      const message = error instanceof AppError ? error.message : 'Import failed';
-      const staleReferences = await findStaleReferences(cleared.setCode, []);
-      return {
-        ...cleared,
-        imported: 0,
-        importedScryfallIds: [],
-        staleReferences,
-        error: message,
-      };
-    }
+    const imported = await deps.importSetFromScryfall(cleared.setCode);
+    const staleReferences = await findStaleReferences(cleared.setCode, imported.importedScryfallIds);
+    return {
+      ...cleared,
+      imported: imported.imported,
+      importedScryfallIds: imported.importedScryfallIds,
+      staleReferences,
+      error: imported.error,
+    };
   }
 
   async function resolveStaleReferences(actions: ResolveStaleAction[]): Promise<ResolveStaleReferencesResult> {

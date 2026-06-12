@@ -1014,7 +1014,7 @@ export async function updateDecklist(
     throw new AppError(
       400,
       'VALIDATION_ERROR',
-      formatAllocationViolationMessage(violation, card),
+      formatAllocationViolationMessage(violation, card ?? undefined),
       {
         cachedCardId: violation.cachedCardId,
       },

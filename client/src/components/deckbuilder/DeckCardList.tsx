@@ -81,7 +81,6 @@ export function DeckCardList({
                       <AlertTriangle
                         className="ml-1 inline h-3.5 w-3.5 align-text-bottom text-destructive"
                         aria-hidden="true"
-                        title="Save blocked by this card"
                       />
                     ) : null}
                   </span>

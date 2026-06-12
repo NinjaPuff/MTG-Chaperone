@@ -209,7 +209,7 @@ router.post('/card-cache/clear-and-import-set', validateBody(clearAndImportSetSc
 
 router.post('/card-cache/clear-and-import-sets', validateBody(clearAndImportSetsSchema), async (req, res, next) => {
   try {
-    const setCodes = [...new Set(req.body.setCodes.map((code: string) => code.trim().toUpperCase()).filter(Boolean))];
+    const setCodes = [...new Set<string>(req.body.setCodes.map((code: string) => code.trim().toUpperCase()).filter(Boolean))];
     const clearAndImportResults: ClearAndImportSetResult[] = [];
     for (const setCode of setCodes) {
       clearAndImportResults.push(await clearAndImportSet(setCode));

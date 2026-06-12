@@ -375,6 +375,7 @@ describe('scryfallService card cache import', () => {
       imported: 3,
       canonicalSetCode: 'DMU',
       importedScryfallIds: ['a', 'b', 'c'],
+      error: undefined,
     });
     expect(upsert).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1][0]).toContain('set%3Admu');
@@ -417,6 +418,7 @@ describe('scryfallService card cache import', () => {
       imported: 3,
       canonicalSetCode: 'DMU',
       importedScryfallIds: ['a', 'b', 'c'],
+      error: undefined,
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[2][0]).toBe('https://api.scryfall.com/cards/search?page=2');
@@ -449,6 +451,7 @@ describe('scryfallService card cache import', () => {
       imported: 2,
       canonicalSetCode: 'TMT',
       importedScryfallIds: ['a', 'b'],
+      error: undefined,
     });
     expect(fetchMock.mock.calls[0][0]).toContain('/sets/tmnt');
     expect(fetchMock.mock.calls[1][0]).toContain('set%3Atmt');
@@ -494,6 +497,7 @@ describe('scryfallService card cache import', () => {
       imported: 1,
       canonicalSetCode: 'ECL',
       importedScryfallIds: ['ecl-blood-crypt-reversible'],
+      error: undefined,
     });
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(upsert.mock.calls[0][0].create.typeLine).toBe('Land — Swamp Mountain');
@@ -528,14 +532,16 @@ describe('scryfallService card cache import', () => {
       imported: 1,
       canonicalSetCode: 'SNC',
       importedScryfallIds: ['snc-1'],
+      error: undefined,
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(upsert).toHaveBeenCalledTimes(1);
   });
 
-  it('importSetFromScryfall retries 429 responses before failing', async () => {
+  it('importSetFromScryfall retries 429 responses and returns error with partial results', async () => {
     const fetchMock = createFetchMock([
       setResolveResponse('SNC'),
+      { ok: false, status: 429, body: {} },
       { ok: false, status: 429, body: {} },
       { ok: false, status: 429, body: {} },
       { ok: false, status: 429, body: {} },
@@ -548,17 +554,30 @@ describe('scryfallService card cache import', () => {
       prisma: { cachedCard: { upsert } } as any,
     });
 
-    await expect(service.importSetFromScryfall('SNC')).rejects.toMatchObject({
-      code: 'SCRYFALL_ERROR',
-      statusCode: 429,
-    });
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    const result = await service.importSetFromScryfall('SNC');
+
+    expect(result.imported).toBe(0);
+    expect(result.importedScryfallIds).toEqual([]);
+    expect(result.error).toBe('Scryfall request failed: 429');
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(upsert).not.toHaveBeenCalled();
   });
 
-  it('importSetFromScryfall throws when Scryfall returns an error', async () => {
+  it('importSetFromScryfall returns error with partial results on mid-pagination failure', async () => {
     const fetchMock = createFetchMock([
       setResolveResponse('DMU'),
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [makeCard('dmu-1', 'dmu')],
+          has_more: true,
+          next_page: 'https://api.scryfall.com/cards/search?page=2',
+        },
+      },
+      { ok: false, status: 502, body: {} },
+      { ok: false, status: 502, body: {} },
+      { ok: false, status: 502, body: {} },
       { ok: false, status: 502, body: {} },
     ]);
     const upsert = vi.fn(async () => ({}));
@@ -569,10 +588,12 @@ describe('scryfallService card cache import', () => {
       prisma: { cachedCard: { upsert } } as any,
     });
 
-    await expect(service.importSetFromScryfall('DMU')).rejects.toMatchObject({
-      code: 'SCRYFALL_ERROR',
-    });
-    expect(upsert).not.toHaveBeenCalled();
+    const result = await service.importSetFromScryfall('DMU');
+
+    expect(result.imported).toBe(1);
+    expect(result.importedScryfallIds).toEqual(['dmu-1']);
+    expect(result.error).toBe('Scryfall request failed: 502');
+    expect(upsert).toHaveBeenCalledTimes(1);
   });
 
   it('bulkImportSet returns per-set counts and totalImported', async () => {

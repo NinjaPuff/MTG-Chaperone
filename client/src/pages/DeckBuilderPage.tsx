@@ -222,7 +222,7 @@ export function DeckBuilderPage() {
           const validation = await authApiRequest<DeckValidationResponse>(`/api/decklists/${deckId}/validate`);
           return [deckId, extractInvalidCardIds(validation.data)] as const;
         } catch {
-          return [deckId, []] as const;
+          return [deckId, [] as string[]] as const;
         }
       }),
     );

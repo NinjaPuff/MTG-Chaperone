@@ -117,6 +117,35 @@ describe('cardCacheService', () => {
     expect(result.importedScryfallIds).toEqual(['paper-1', 'paper-2', 'paper-3']);
   });
 
+  it('clearAndImportSet preserves partial importedScryfallIds on mid-import error', async () => {
+    const { prisma } = createPrismaMock();
+    prisma.cachedCard.findMany.mockResolvedValue([]);
+    prisma.cachedCard.deleteMany.mockResolvedValue({ count: 0 });
+    prisma.cardPoolEntry.findMany.mockResolvedValue([]);
+    prisma.decklistEntry.findMany.mockResolvedValue([]);
+    const importSetFromScryfall = vi.fn(async () => ({
+      setCode: 'SNC',
+      imported: 100,
+      canonicalSetCode: 'SNC',
+      importedScryfallIds: ['paper-1', 'paper-2'],
+      error: 'Scryfall request failed: 429',
+    }));
+    const resolveCanonicalSetCode = vi.fn(async () => 'SNC');
+
+    const service = createCardCacheService({
+      prisma: prisma as never,
+      importSetFromScryfall,
+      resolveCanonicalSetCode,
+    });
+
+    const result = await service.clearAndImportSet('SNC');
+
+    expect(result.imported).toBe(100);
+    expect(result.importedScryfallIds).toEqual(['paper-1', 'paper-2']);
+    expect(result.error).toBe('Scryfall request failed: 429');
+    expect(prisma.cardPoolEntry.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it('suggestPaperReplacement strips A- prefix to find paper version of alchemy cards', async () => {
     const { prisma } = createPrismaMock();
     const lookupCanonicalByName = vi.fn()

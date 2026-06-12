@@ -137,7 +137,8 @@ describe('DeckCardList', () => {
       />,
     );
 
-    expect(screen.getByTitle('Save blocked by this card')).toBeInTheDocument();
+    const icon = document.querySelector('.lucide-triangle-alert');
+    expect(icon).toBeInTheDocument();
   });
 
   it('should_call_onCardContextMenu_when_row_receives_contextmenu', () => {
