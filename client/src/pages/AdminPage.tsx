@@ -256,6 +256,13 @@ export function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isEventFormOpen, setIsEventFormOpen] = useState(false);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [editEventForm, setEditEventForm] = useState({
+    name: '',
+    pointMultiplier: 1,
+    standingsOverride: false,
+    config: defaultEventConfig,
+  });
   const [isBoosterFormOpen, setIsBoosterFormOpen] = useState(false);
   const [editingBoosterId, setEditingBoosterId] = useState<string | null>(null);
   const [editBoosterForm, setEditBoosterForm] = useState({
@@ -961,6 +968,45 @@ export function AdminPage() {
       setSuccess('Event created.');
     } catch (createError) {
       setError(createError instanceof ApiError ? createError.message : 'Unable to create event');
+    }
+  };
+
+  const startEditEvent = (item: Event) => {
+    setEditingEventId(item.id);
+    setEditEventForm({
+      name: item.name,
+      pointMultiplier: item.pointMultiplier,
+      standingsOverride: item.standingsOverride,
+      config: item.config ?? defaultEventConfig,
+    });
+  };
+
+  const cancelEditEvent = () => {
+    setEditingEventId(null);
+  };
+
+  const saveEditEvent = async (submitEvent: FormEvent) => {
+    submitEvent.preventDefault();
+    if (!activeSeason || !editingEventId) {
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    try {
+      await authApiRequest(`/api/events/${editingEventId}`, {
+        method: 'PATCH',
+        body: {
+          name: editEventForm.name.trim(),
+          pointMultiplier: editEventForm.pointMultiplier,
+          standingsOverride: editEventForm.standingsOverride,
+          config: editEventForm.config,
+        },
+      });
+      setEditingEventId(null);
+      await loadEvents(activeSeason.id);
+      setSuccess('Event settings saved.');
+    } catch (saveError) {
+      setError(saveError instanceof ApiError ? saveError.message : 'Unable to save event settings');
     }
   };
 
@@ -2049,6 +2095,7 @@ export function AdminPage() {
                 <div className="mt-4 space-y-3">
                   {events.map((item) => {
                     const hasPendingRounds = (item.rounds ?? []).some((round) => round.status !== 'completed');
+                    const isEditingThisEvent = editingEventId === item.id;
                     return (
                     <div key={item.id} className="rounded-md border border-border p-3">
                       <div className="flex items-center justify-between gap-3">
@@ -2066,6 +2113,15 @@ export function AdminPage() {
                           <Link to={`/events/${item.id}`} className="rounded-md border border-border px-3 py-1 text-sm">
                             Manage
                           </Link>
+                          {item.status === 'setup' ? (
+                            <button
+                              type="button"
+                              onClick={() => (isEditingThisEvent ? cancelEditEvent() : startEditEvent(item))}
+                              className="rounded-md border border-border px-3 py-1 text-sm"
+                            >
+                              {isEditingThisEvent ? 'Cancel Edit' : 'Edit'}
+                            </button>
+                          ) : null}
                           {item.status === 'setup' ? (
                             <button
                               type="button"
@@ -2088,6 +2144,190 @@ export function AdminPage() {
                           ) : null}
                         </div>
                       </div>
+                      {isEditingThisEvent ? (
+                        <form className="mt-3 grid gap-3 md:grid-cols-3" onSubmit={saveEditEvent}>
+                          <label className="text-sm font-medium">
+                            Event Name
+                            <input
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.name}
+                              onChange={(event) => setEditEventForm((prev) => ({ ...prev, name: event.target.value }))}
+                              required
+                            />
+                          </label>
+                          <label className="text-sm font-medium">
+                            Format
+                            <select
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.config.format}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  config: { ...prev.config, format: event.target.value as EventConfig['format'] },
+                                }))
+                              }
+                            >
+                              <option value="swiss">Swiss</option>
+                              <option value="seeded_swiss">Seeded Swiss</option>
+                              <option value="round_robin">Round Robin</option>
+                            </select>
+                          </label>
+                          <label className="text-sm font-medium">
+                            Best Of
+                            <input
+                              type="number"
+                              min={1}
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.config.bestOfN}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  config: { ...prev.config, bestOfN: Number(event.target.value) },
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="text-sm font-medium">
+                            Deck Count
+                            <input
+                              type="number"
+                              min={1}
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.config.deckCount}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  config: { ...prev.config, deckCount: Number(event.target.value) },
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="text-sm font-medium">
+                            Min Deck Size
+                            <input
+                              type="number"
+                              min={1}
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.config.minDeckSize}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  config: { ...prev.config, minDeckSize: Number(event.target.value) },
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="text-sm font-medium">
+                            Point Multiplier
+                            <input
+                              type="number"
+                              min={0.1}
+                              step="0.1"
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.pointMultiplier}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  pointMultiplier: Number(event.target.value),
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="text-sm font-medium">
+                            Sideboard Rule
+                            <select
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.config.sideboardRule}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  config: { ...prev.config, sideboardRule: event.target.value as EventConfig['sideboardRule'] },
+                                }))
+                              }
+                            >
+                              <option value="entire_pool">Entire Pool</option>
+                              <option value="fixed_15">Fixed 15</option>
+                              <option value="none">None</option>
+                            </select>
+                          </label>
+                          <label className="text-sm font-medium">
+                            Scheduling Type
+                            <select
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.config.schedulingType}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  config: { ...prev.config, schedulingType: event.target.value as EventConfig['schedulingType'] },
+                                }))
+                              }
+                            >
+                              <option value="fixed_deadlines">Fixed Deadlines</option>
+                              <option value="open_window">Open Window</option>
+                              <option value="weekly_auto">Weekly Auto</option>
+                            </select>
+                          </label>
+                          <label className="text-sm font-medium">
+                            Deck Locking Mode
+                            <select
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.config.deckLockingMode}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  config: { ...prev.config, deckLockingMode: event.target.value as EventConfig['deckLockingMode'] },
+                                }))
+                              }
+                            >
+                              <option value="required_before_round">Required Before Round</option>
+                              <option value="free_modification">Free Modification</option>
+                              <option value="admin_locked">Admin Locked</option>
+                            </select>
+                          </label>
+                          <label className="text-sm font-medium">
+                            Seeding Source
+                            <select
+                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                              value={editEventForm.config.seedingSource ?? ''}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  config: {
+                                    ...prev.config,
+                                    seedingSource: (event.target.value || null) as EventConfig['seedingSource'],
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="">None</option>
+                              <option value="previous_season">Previous Season</option>
+                              <option value="previous_event">Previous Event</option>
+                              <option value="manual">Manual</option>
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-2 text-sm md:col-span-3">
+                            <input
+                              type="checkbox"
+                              checked={editEventForm.standingsOverride}
+                              onChange={(event) =>
+                                setEditEventForm((prev) => ({
+                                  ...prev,
+                                  standingsOverride: event.target.checked,
+                                }))
+                              }
+                            />
+                            Standings Override
+                          </label>
+                          <div className="md:col-span-3">
+                            <button
+                              type="submit"
+                              className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                            >
+                              Save Settings
+                            </button>
+                          </div>
+                        </form>
+                      ) : null}
                     </div>
                     );
                   })}

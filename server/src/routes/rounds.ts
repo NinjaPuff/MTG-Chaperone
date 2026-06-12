@@ -3,7 +3,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
 import { recomputeStandings } from '../services/standingsService.js';
-import { completeRound, deleteRound, regenerateRoundPairings, startRound } from '../services/roundService.js';
+import { completeRound, deleteRound, regenerateRoundPairings, resetRound, startRound } from '../services/roundService.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 const router = Router();
@@ -82,6 +82,28 @@ router.post('/:roundId/regenerate', requireAuth, requireAdmin, async (req, res, 
       where: { id: req.params.roundId },
       include: { matches: true },
     });
+    res.json({ data: round });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:roundId/reset', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const roundMeta = await prisma.round.findUnique({
+      where: { id: req.params.roundId },
+      select: {
+        event: {
+          select: { seasonId: true },
+        },
+      },
+    });
+    if (!roundMeta) {
+      throw new AppError(404, 'NOT_FOUND', 'Round not found');
+    }
+
+    const round = await resetRound(req.params.roundId);
+    await recomputeStandings(roundMeta.event.seasonId);
     res.json({ data: round });
   } catch (error) {
     next(error);

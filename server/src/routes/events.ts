@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma.js';
 import { requireAdmin, requireAuth, getAuthUser, optionalAuth } from '../middleware/auth.js';
 import { validateBody } from '../lib/validate.js';
 import { canViewFullSchedule } from '../lib/visibilityRules.js';
-import { completeEvent, createEvent, getEvent, startEvent, updateEvent } from '../services/eventService.js';
+import { completeEvent, createEvent, getEvent, resetEvent, startEvent, updateEvent } from '../services/eventService.js';
 import { createRound } from '../services/roundService.js';
 import { recomputeStandings } from '../services/standingsService.js';
 import { getEventResults } from '../services/eventRankingService.js';
@@ -95,6 +95,24 @@ router.post('/:eventId/complete', requireAuth, requireAdmin, async (req, res, ne
     }
 
     const event = await completeEvent(req.params.eventId);
+    await recomputeStandings(eventMeta.seasonId);
+    res.json({ data: event });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:eventId/reset', requireAuth, requireAdmin, async (req, res, next) => {
+  try {
+    const eventMeta = await prisma.event.findUnique({
+      where: { id: req.params.eventId },
+      select: { seasonId: true },
+    });
+    if (!eventMeta) {
+      throw new AppError(404, 'NOT_FOUND', 'Event not found');
+    }
+
+    const event = await resetEvent(req.params.eventId);
     await recomputeStandings(eventMeta.seasonId);
     res.json({ data: event });
   } catch (error) {

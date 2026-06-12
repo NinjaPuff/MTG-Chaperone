@@ -25,6 +25,12 @@ vi.mock('@/hooks/useCardImageWidth', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useCurrentLeague', () => ({
+  useCurrentLeague: () => ({
+    activeSeasonId: 'season-1',
+  }),
+}));
+
 import { DeckBuilderPage } from '@/pages/DeckBuilderPage';
 
 function renderPage() {

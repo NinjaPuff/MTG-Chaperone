@@ -22,7 +22,23 @@ type SeedingSource = 'previous_season' | 'previous_event' | 'manual' | null;
 type EventConfig = {
   format: 'swiss' | 'seeded_swiss' | 'round_robin';
   bestOfN: number;
+  deckCount: number;
+  minDeckSize: number;
+  sideboardRule: 'entire_pool' | 'fixed_15' | 'none';
+  schedulingType: 'fixed_deadlines' | 'open_window' | 'weekly_auto';
+  deckLockingMode: 'required_before_round' | 'free_modification' | 'admin_locked';
   seedingSource: SeedingSource;
+};
+
+const defaultEventConfig: EventConfig = {
+  format: 'swiss',
+  bestOfN: 3,
+  deckCount: 1,
+  minDeckSize: 40,
+  sideboardRule: 'entire_pool',
+  schedulingType: 'open_window',
+  deckLockingMode: 'free_modification',
+  seedingSource: null,
 };
 
 type UserSummary = {
@@ -43,6 +59,7 @@ type EventDetail = {
   name: string;
   status: EventStatus;
   pointMultiplier: number;
+  standingsOverride?: boolean;
   totalRounds: number | null;
   config: EventConfig | null;
   season: {
@@ -185,6 +202,13 @@ export function EventDetailPage() {
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [isEditingSettings, setIsEditingSettings] = useState(false);
+  const [editSettingsForm, setEditSettingsForm] = useState({
+    name: '',
+    pointMultiplier: 1,
+    standingsOverride: false,
+    config: defaultEventConfig,
+  });
 
   const isAdmin = user?.role === 'admin';
   const bestOfN = event?.config?.bestOfN ?? 3;
@@ -280,6 +304,34 @@ export function EventDetailPage() {
     setSeedInputs(nextInputs);
   }, [canEditSeeds, event, leagueMembers, seeds]);
 
+  useEffect(() => {
+    if (!event || !event.config) {
+      setEditSettingsForm({
+        name: '',
+        pointMultiplier: 1,
+        standingsOverride: false,
+        config: defaultEventConfig,
+      });
+      return;
+    }
+
+    setEditSettingsForm({
+      name: event.name,
+      pointMultiplier: event.pointMultiplier,
+      standingsOverride: event.standingsOverride ?? false,
+      config: {
+        format: event.config.format,
+        bestOfN: event.config.bestOfN,
+        deckCount: event.config.deckCount,
+        minDeckSize: event.config.minDeckSize,
+        sideboardRule: event.config.sideboardRule,
+        schedulingType: event.config.schedulingType,
+        deckLockingMode: event.config.deckLockingMode,
+        seedingSource: event.config.seedingSource,
+      },
+    });
+  }, [event]);
+
   const mutate = async (label: string, action: () => Promise<void>) => {
     setIsMutating(true);
     setError(null);
@@ -350,6 +402,60 @@ export function EventDetailPage() {
   const deleteRound = async (roundId: string) => {
     await mutate('Round deleted.', async () => {
       await authApiRequest(`/api/rounds/${roundId}`, { method: 'DELETE' });
+    });
+  };
+
+  const saveEventSettings = async (submitEvent: FormEvent) => {
+    submitEvent.preventDefault();
+    if (!eventId || !event || event.status !== 'setup') {
+      return;
+    }
+
+    await mutate('Event settings saved.', async () => {
+      await authApiRequest(`/api/events/${eventId}`, {
+        method: 'PATCH',
+        body: {
+          name: editSettingsForm.name.trim(),
+          pointMultiplier: editSettingsForm.pointMultiplier,
+          standingsOverride: editSettingsForm.standingsOverride,
+          config: editSettingsForm.config,
+        },
+      });
+    });
+    setIsEditingSettings(false);
+  };
+
+  const confirmResetEvent = async () => {
+    if (!eventId || !['active', 'completed'].includes(event.status)) {
+      return;
+    }
+    const confirmed = await confirm({
+      title: 'Reset event',
+      message:
+        'Unstart this event, reset all rounds, unlock all decks, and clear match progress? Event settings are kept; players must re-register decks.',
+      confirmLabel: 'Reset Event',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+    await mutate('Event reset.', async () => {
+      await authApiRequest(`/api/events/${eventId}/reset`, { method: 'POST' });
+    });
+  };
+
+  const confirmResetRound = async (roundId: string) => {
+    const confirmed = await confirm({
+      title: 'Reset round',
+      message: 'Clear all match results for this round, unlock decks, and return the round to not started? Pairings will be regenerated.',
+      confirmLabel: 'Reset Round',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+    await mutate('Round reset.', async () => {
+      await authApiRequest(`/api/rounds/${roundId}/reset`, { method: 'POST' });
     });
   };
 
@@ -500,6 +606,8 @@ export function EventDetailPage() {
           <p className="text-sm text-muted-foreground mt-1">
             {event.status} • {event.config?.format ?? 'unknown'} • Bo{event.config?.bestOfN ?? '-'} • x
             {event.pointMultiplier}
+            {typeof event.config?.deckCount === 'number' ? ` • Decks ${event.config.deckCount}` : ''}
+            {typeof event.config?.minDeckSize === 'number' ? ` • Min ${event.config.minDeckSize}` : ''}
             {event.config?.seedingSource ? ` • Seeding: ${event.config.seedingSource}` : ''}
             {hasRoundLimit ? ` • Rounds: ${Math.min(rounds.length, roundLimit ?? 0)} of ${roundLimit}` : ''}
           </p>
@@ -522,14 +630,24 @@ export function EventDetailPage() {
           <h2 className="text-lg font-semibold">Admin Controls</h2>
           <div className="flex flex-wrap gap-2">
             {event.status === 'setup' ? (
-              <button
-                type="button"
-                disabled={isMutating}
-                onClick={() => void transitionEvent('start')}
-                className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-60"
-              >
-                Start Event
-              </button>
+              <>
+                <button
+                  type="button"
+                  disabled={isMutating}
+                  onClick={() => setIsEditingSettings((prev) => !prev)}
+                  className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-60"
+                >
+                  {isEditingSettings ? 'Cancel Edit' : 'Edit Settings'}
+                </button>
+                <button
+                  type="button"
+                  disabled={isMutating}
+                  onClick={() => void transitionEvent('start')}
+                  className="rounded-md border border-border px-3 py-2 text-sm disabled:opacity-60"
+                >
+                  Start Event
+                </button>
+              </>
             ) : null}
             {event.status === 'active' ? (
               <>
@@ -555,7 +673,25 @@ export function EventDetailPage() {
                 >
                   Complete Event
                 </button>
+                <button
+                  type="button"
+                  disabled={isMutating}
+                  onClick={() => void confirmResetEvent()}
+                  className="rounded-md border border-border px-3 py-2 text-sm text-destructive disabled:opacity-60"
+                >
+                  Reset Event
+                </button>
               </>
+            ) : null}
+            {event.status === 'completed' ? (
+              <button
+                type="button"
+                disabled={isMutating}
+                onClick={() => void confirmResetEvent()}
+                className="rounded-md border border-border px-3 py-2 text-sm text-destructive disabled:opacity-60"
+              >
+                Reset Event
+              </button>
             ) : null}
             <button
               type="button"
@@ -566,6 +702,217 @@ export function EventDetailPage() {
               Delete Event
             </button>
           </div>
+          {isEditingSettings && event.status === 'setup' ? (
+            <form className="grid gap-3 md:grid-cols-3" onSubmit={saveEventSettings}>
+              <label className="text-sm font-medium">
+                Event Name
+                <input
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.name}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      name: changeEvent.target.value,
+                    }))
+                  }
+                  required
+                />
+              </label>
+              <label className="text-sm font-medium">
+                Format
+                <select
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.config.format}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      config: {
+                        ...prev.config,
+                        format: changeEvent.target.value as EventConfig['format'],
+                      },
+                    }))
+                  }
+                >
+                  <option value="swiss">Swiss</option>
+                  <option value="seeded_swiss">Seeded Swiss</option>
+                  <option value="round_robin">Round Robin</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium">
+                Best Of
+                <input
+                  type="number"
+                  min={1}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.config.bestOfN}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      config: {
+                        ...prev.config,
+                        bestOfN: Number(changeEvent.target.value),
+                      },
+                    }))
+                  }
+                />
+              </label>
+              <label className="text-sm font-medium">
+                Deck Count
+                <input
+                  type="number"
+                  min={1}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.config.deckCount}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      config: {
+                        ...prev.config,
+                        deckCount: Number(changeEvent.target.value),
+                      },
+                    }))
+                  }
+                />
+              </label>
+              <label className="text-sm font-medium">
+                Min Deck Size
+                <input
+                  type="number"
+                  min={1}
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.config.minDeckSize}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      config: {
+                        ...prev.config,
+                        minDeckSize: Number(changeEvent.target.value),
+                      },
+                    }))
+                  }
+                />
+              </label>
+              <label className="text-sm font-medium">
+                Point Multiplier
+                <input
+                  type="number"
+                  min={0.1}
+                  step="0.1"
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.pointMultiplier}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      pointMultiplier: Number(changeEvent.target.value),
+                    }))
+                  }
+                />
+              </label>
+              <label className="text-sm font-medium">
+                Sideboard Rule
+                <select
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.config.sideboardRule}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      config: {
+                        ...prev.config,
+                        sideboardRule: changeEvent.target.value as EventConfig['sideboardRule'],
+                      },
+                    }))
+                  }
+                >
+                  <option value="entire_pool">Entire Pool</option>
+                  <option value="fixed_15">Fixed 15</option>
+                  <option value="none">None</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium">
+                Scheduling Type
+                <select
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.config.schedulingType}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      config: {
+                        ...prev.config,
+                        schedulingType: changeEvent.target.value as EventConfig['schedulingType'],
+                      },
+                    }))
+                  }
+                >
+                  <option value="fixed_deadlines">Fixed Deadlines</option>
+                  <option value="open_window">Open Window</option>
+                  <option value="weekly_auto">Weekly Auto</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium">
+                Deck Locking Mode
+                <select
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.config.deckLockingMode}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      config: {
+                        ...prev.config,
+                        deckLockingMode: changeEvent.target.value as EventConfig['deckLockingMode'],
+                      },
+                    }))
+                  }
+                >
+                  <option value="required_before_round">Required Before Round</option>
+                  <option value="free_modification">Free Modification</option>
+                  <option value="admin_locked">Admin Locked</option>
+                </select>
+              </label>
+              <label className="text-sm font-medium">
+                Seeding Source
+                <select
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={editSettingsForm.config.seedingSource ?? ''}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      config: {
+                        ...prev.config,
+                        seedingSource: (changeEvent.target.value || null) as EventConfig['seedingSource'],
+                      },
+                    }))
+                  }
+                >
+                  <option value="">None</option>
+                  <option value="previous_season">Previous Season</option>
+                  <option value="previous_event">Previous Event</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-sm md:col-span-3">
+                <input
+                  type="checkbox"
+                  checked={editSettingsForm.standingsOverride}
+                  onChange={(changeEvent) =>
+                    setEditSettingsForm((prev) => ({
+                      ...prev,
+                      standingsOverride: changeEvent.target.checked,
+                    }))
+                  }
+                />
+                Standings Override
+              </label>
+              <div className="md:col-span-3">
+                <button
+                  type="submit"
+                  className="rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+                  disabled={isMutating}
+                >
+                  Save Settings
+                </button>
+              </div>
+            </form>
+          ) : null}
         </div>
       ) : null}
 
@@ -708,22 +1055,50 @@ export function EventDetailPage() {
                         </>
                       ) : null}
                       {round.status === 'in_progress' ? (
+                        <>
+                          <button
+                            type="button"
+                            className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${
+                              canCompleteRound
+                                ? 'border-emerald-600 bg-emerald-600/10 text-emerald-700 hover:bg-emerald-600/20 dark:text-emerald-300'
+                                : 'border-amber-600 bg-amber-600/10 text-amber-700 dark:text-amber-300'
+                            } disabled:cursor-not-allowed disabled:opacity-70`}
+                            disabled={isMutating || !canCompleteRound}
+                            title={roundBlockedReason ?? (reportedCount > 0 ? `Ready: will auto-confirm ${reportedCount} reported match(es).` : 'Ready to complete this round.')}
+                            onClick={(clickEvent) => {
+                              clickEvent.preventDefault();
+                              clickEvent.stopPropagation();
+                              void transitionRound(round.id, 'complete');
+                            }}
+                          >
+                            Complete Round
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md border border-border px-2 py-1 text-xs text-destructive"
+                            disabled={isMutating}
+                            onClick={(clickEvent) => {
+                              clickEvent.preventDefault();
+                              clickEvent.stopPropagation();
+                              void confirmResetRound(round.id);
+                            }}
+                          >
+                            Reset Round
+                          </button>
+                        </>
+                      ) : null}
+                      {round.status === 'completed' ? (
                         <button
                           type="button"
-                          className={`rounded-md border px-2 py-1 text-xs font-semibold transition-colors ${
-                            canCompleteRound
-                              ? 'border-emerald-600 bg-emerald-600/10 text-emerald-700 hover:bg-emerald-600/20 dark:text-emerald-300'
-                              : 'border-amber-600 bg-amber-600/10 text-amber-700 dark:text-amber-300'
-                          } disabled:cursor-not-allowed disabled:opacity-70`}
-                          disabled={isMutating || !canCompleteRound}
-                          title={roundBlockedReason ?? (reportedCount > 0 ? `Ready: will auto-confirm ${reportedCount} reported match(es).` : 'Ready to complete this round.')}
+                          className="rounded-md border border-border px-2 py-1 text-xs text-destructive"
+                          disabled={isMutating}
                           onClick={(clickEvent) => {
                             clickEvent.preventDefault();
                             clickEvent.stopPropagation();
-                            void transitionRound(round.id, 'complete');
+                            void confirmResetRound(round.id);
                           }}
                         >
-                          Complete Round
+                          Reset Round
                         </button>
                       ) : null}
                     </>

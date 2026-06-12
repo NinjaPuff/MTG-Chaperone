@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prismaMock, resetPrismaMock } from '../helpers/prismaMock.js';
+import { AppError } from '../../middleware/errorHandler.js';
 
 process.env.NODE_ENV = 'test';
 
@@ -8,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   listMyDecklistsForEvent: vi.fn(),
   listMyDecklistsForRound: vi.fn(),
   startEvent: vi.fn(),
+  updateEvent: vi.fn(),
+  resetEvent: vi.fn(),
   recomputeStandings: vi.fn(),
 }));
 
@@ -37,6 +40,8 @@ vi.mock('../../services/eventService.js', async (importOriginal) => {
   return {
     ...actual,
     startEvent: mocks.startEvent,
+    updateEvent: mocks.updateEvent,
+    resetEvent: mocks.resetEvent,
   };
 });
 
@@ -57,6 +62,8 @@ describe('events routes', () => {
     mocks.listMyDecklistsForEvent.mockReset();
     mocks.listMyDecklistsForRound.mockReset();
     mocks.startEvent.mockReset();
+    mocks.updateEvent.mockReset();
+    mocks.resetEvent.mockReset();
     mocks.recomputeStandings.mockReset();
   });
 
@@ -68,6 +75,53 @@ describe('events routes', () => {
     expect(response.status).toBe(200);
     expect(mocks.startEvent).toHaveBeenCalledWith('event-1');
     expect(response.body.data.status).toBe('active');
+  });
+
+  it('patches event settings and recomputes standings when multiplier changes', async () => {
+    mocks.updateEvent.mockResolvedValue({
+      id: 'event-1',
+      name: 'Week 1',
+      season: { id: 'season-1' },
+      config: { deckCount: 2 },
+    });
+
+    const response = await request(app).patch('/api/events/event-1').send({
+      pointMultiplier: 1.5,
+      config: { deckCount: 2 },
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateEvent).toHaveBeenCalledWith('event-1', {
+      pointMultiplier: 1.5,
+      config: { deckCount: 2 },
+    });
+    expect(mocks.recomputeStandings).toHaveBeenCalledWith('season-1');
+  });
+
+  it('returns service errors from patch event settings', async () => {
+    mocks.updateEvent.mockRejectedValue(new AppError(409, 'INVALID_EVENT_STATE', 'Only setup events can be edited'));
+
+    const response = await request(app).patch('/api/events/event-1').send({
+      name: 'Week 1 updated',
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('INVALID_EVENT_STATE');
+    expect(mocks.recomputeStandings).not.toHaveBeenCalled();
+  });
+
+  it('resets event and recomputes standings', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      seasonId: 'season-1',
+    });
+    mocks.resetEvent.mockResolvedValue({ id: 'event-1', status: 'setup' });
+
+    const response = await request(app).post('/api/events/event-1/reset');
+
+    expect(response.status).toBe(200);
+    expect(mocks.resetEvent).toHaveBeenCalledWith('event-1');
+    expect(mocks.recomputeStandings).toHaveBeenCalledWith('season-1');
+    expect(response.body.data.status).toBe('setup');
   });
 
   it('validates seed uniqueness', async () => {

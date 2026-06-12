@@ -8,6 +8,7 @@ import {
   generateSwissPairings,
   regeneratePairings,
 } from './pairingService.js';
+import { unlockDecklistsForRound } from './decklistService.js';
 
 type RoundTransitionAction = 'start' | 'complete' | 'delete';
 
@@ -260,6 +261,85 @@ export async function regenerateRoundPairings(roundId: string) {
   }
 }
 
+export async function resetRoundProgress(
+  tx: Prisma.TransactionClient,
+  round: {
+    id: string;
+    event: {
+      config: {
+        format: 'swiss' | 'seeded_swiss' | 'round_robin';
+      } | null;
+    };
+  },
+) {
+  if (round.event.config?.format === 'round_robin') {
+    await tx.scheduledPairing.updateMany({
+      where: { roundId: round.id },
+      data: { roundId: null },
+    });
+  }
+
+  await tx.gameResult.deleteMany({
+    where: {
+      match: {
+        roundId: round.id,
+      },
+    },
+  });
+  await tx.match.deleteMany({
+    where: {
+      roundId: round.id,
+    },
+  });
+  await unlockDecklistsForRound(tx, round.id);
+  await tx.round.update({
+    where: { id: round.id },
+    data: { status: 'not_started' },
+  });
+}
+
+export async function resetRound(roundId: string) {
+  const round = await prisma.round.findUnique({
+    where: { id: roundId },
+    include: {
+      event: {
+        include: {
+          config: true,
+        },
+      },
+    },
+  });
+  if (!round || !round.event.config) {
+    throw new AppError(404, 'NOT_FOUND', 'Round not found');
+  }
+  if (round.status === 'not_started') {
+    throw new AppError(409, 'INVALID_ROUND_STATE', 'Round is already not started. Use regenerate to reroll pairings');
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await resetRoundProgress(tx, round);
+    if (round.event.status === 'completed') {
+      await tx.event.update({
+        where: { id: round.eventId },
+        data: { status: 'active' },
+      });
+    }
+  });
+
+  if (round.event.config.format === 'swiss') {
+    await pairRoundByFormat(roundId, 'swiss');
+  } else if (round.event.config.format === 'seeded_swiss') {
+    await pairRoundByFormat(roundId, 'seeded_swiss');
+  } else {
+    await assignRoundRobinPairings(roundId);
+  }
+
+  return prisma.round.findUnique({
+    where: { id: roundId },
+    include: { matches: true },
+  });
+}
+
 export async function deleteRound(roundId: string) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
@@ -297,6 +377,7 @@ export function createRoundService() {
     startRound,
     completeRound,
     regenerateRoundPairings,
+    resetRound,
     deleteRound,
   };
 }

@@ -1,4 +1,4 @@
-import type { DeckZone } from '@prisma/client';
+import type { DeckZone, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { canViewDecklist, isPublicDecklistStatus } from '../lib/visibilityRules.js';
@@ -1375,6 +1375,19 @@ export async function deleteDecklist(decklistId: string, userId: string, isAdmin
   });
 }
 
+export async function unlockDecklistsForRound(client: Prisma.TransactionClient, roundId: string) {
+  const result = await client.decklist.updateMany({
+    where: {
+      roundId,
+      status: 'locked',
+    },
+    data: {
+      status: 'draft',
+    },
+  });
+  return result.count;
+}
+
 export function createDecklistService() {
   return {
     getDecklistById,
@@ -1388,5 +1401,6 @@ export function createDecklistService() {
     submitDecklist,
     unsubmitDecklist,
     deleteDecklist,
+    unlockDecklistsForRound,
   };
 }
