@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { PlayerPoolSetSymbols } from '@/components/PlayerPoolSetSymbols';
-import { apiRequest } from '@/lib/api';
+import { ParticipantMatchCard } from '@/components/matches/ParticipantMatchCard';
+import { ApiError, apiRequest, authApiRequest } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
+import { getUserActiveMatches } from '@/lib/activeMatches';
 import { computeMatchRecord, getMatchOutcome } from '@/lib/matchUtils';
+import { computeEventRecords } from '@/lib/eventRecords';
 import { primaryName } from '@/lib/userDisplay';
+import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
 
 type Standing = {
   id: string;
@@ -27,23 +32,27 @@ type Event = {
   status: 'setup' | 'active' | 'completed';
   config: {
     format: 'swiss' | 'seeded_swiss' | 'round_robin';
+    bestOfN?: number;
   };
   rounds: Array<{ status: string }>;
 };
 
 type Match = {
   id: string;
-  status: string;
+  status: 'pending' | 'reported' | 'confirmed' | 'disputed' | 'resolved';
   confirmedAt?: string | null;
   createdAt?: string;
-  player1: { id: string; displayName: string; publicName?: string | null; slug?: string };
-  player2: { id: string; displayName: string; publicName?: string | null; slug?: string } | null;
-  gameResults: Array<{ winnerId: string | null; isDraw: boolean }>;
+  player1: { id: string; displayName: string; publicName?: string | null; slug: string; avatarUrl?: string | null };
+  player2: { id: string; displayName: string; publicName?: string | null; slug: string; avatarUrl?: string | null } | null;
+  gameResults: Array<{ id?: string; winnerId: string | null; isDraw: boolean }>;
+  isBye: boolean;
+  reportedById: string | null;
 };
 
 type Round = {
   id: string;
-  status: string;
+  roundNumber: number;
+  status: 'not_started' | 'in_progress' | 'completed';
   matches: Match[];
 };
 
@@ -111,6 +120,7 @@ function StatCard({ title, value, subtext }: { title: string; value: string | nu
 
 export function DashboardPage() {
   const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { league, activeSeasonId, allSeasons, isLoading: leagueLoading } = useCurrentLeague();
   const [selectedSeasonId, setSelectedSeasonId] = useState<string | null>(null);
   const selectedSeason = allSeasons.find((season) => season.id === selectedSeasonId) ?? null;
@@ -119,8 +129,12 @@ export function DashboardPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
+  const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+  const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeSeasonId && !selectedSeasonId) {
@@ -128,11 +142,17 @@ export function DashboardPage() {
     }
   }, [activeSeasonId, selectedSeasonId]);
 
+  const reloadRounds = async (eventId: string) => {
+    const roundsResponse = await apiRequest<ApiListResponse<Round>>(`/api/events/${eventId}/rounds`);
+    setRounds(roundsResponse.data);
+  };
+
   useEffect(() => {
     if (!selectedSeasonId) {
       setEvents([]);
       setStandings([]);
       setRounds([]);
+      setSeasonPoints(new Map());
       setIsLoading(false);
       return;
     }
@@ -147,6 +167,7 @@ export function DashboardPage() {
         ]);
         setEvents(eventsResponse.data);
         setStandings(standingsResponse.data);
+        setSeasonPoints(new Map(standingsResponse.data.map((standing) => [standing.user.id, standing.points])));
 
         const targetEvent = eventsResponse.data.find((event) => event.status === 'active') ?? eventsResponse.data[eventsResponse.data.length - 1];
         if (!targetEvent) {
@@ -154,12 +175,12 @@ export function DashboardPage() {
           return;
         }
 
-        const roundsResponse = await apiRequest<ApiListResponse<Round>>(`/api/events/${targetEvent.id}/rounds`);
-        setRounds(roundsResponse.data);
+        await reloadRounds(targetEvent.id);
       } catch (error) {
         setEvents([]);
         setStandings([]);
         setRounds([]);
+        setSeasonPoints(new Map());
         setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data.');
       } finally {
         setIsLoading(false);
@@ -173,6 +194,13 @@ export function DashboardPage() {
   const latestEvent = useMemo(() => events[events.length - 1] ?? null, [events]);
   const currentEvent = activeEvent ?? latestEvent;
   const viewingActiveSeason = selectedSeasonId === activeSeasonId;
+  const eventRecords = useMemo(() => computeEventRecords(rounds), [rounds]);
+  const userActiveMatches = useMemo(() => getUserActiveMatches<Match, Round>(rounds, user?.id), [rounds, user?.id]);
+  const showActiveMatchesSection = Boolean(user && viewingActiveSeason && activeEvent && userActiveMatches.length > 0);
+  const selectedMatch = useMemo(
+    () => rounds.flatMap((round) => round.matches).find((match) => match.id === selectedMatchId) ?? null,
+    [rounds, selectedMatchId],
+  );
 
   const userStanding = useMemo(() => standings.find((standing) => standing.user.id === user?.id) ?? null, [standings, user?.id]);
   const userRank = useMemo(() => {
@@ -188,16 +216,6 @@ export function DashboardPage() {
     () => allMatches.filter((match) => !!user && (match.player1.id === user.id || match.player2?.id === user.id)),
     [allMatches, user],
   );
-  const nextMatch = useMemo(
-    () => userMatches.find((match) => match.status === 'pending') ?? null,
-    [userMatches],
-  );
-  const nextMatchOpponent = useMemo(() => {
-    if (!user || !nextMatch) {
-      return null;
-    }
-    return nextMatch.player1.id === user.id ? nextMatch.player2 : nextMatch.player1;
-  }, [nextMatch, user]);
   const leagueRecentResults = useMemo(() => {
     return allMatches
       .filter((match) => ['confirmed', 'resolved'].includes(match.status))
@@ -227,6 +245,64 @@ export function DashboardPage() {
       totalCount: inProgressRound.matches.length,
     };
   }, [rounds]);
+
+  const reportMatch = async (reportCounts: MatchInputCounts) => {
+    if (!selectedMatch || !activeEvent) {
+      return;
+    }
+
+    const bestOfN = activeEvent.config?.bestOfN ?? 3;
+    const requiredWins = Math.ceil(bestOfN / 2);
+    const totalWins = reportCounts.player1Wins + reportCounts.player2Wins;
+    if (totalWins > bestOfN) {
+      setActionError(`Total wins cannot exceed best-of-${bestOfN}. Draws are tracked separately.`);
+      return;
+    }
+    if (reportCounts.player1Wins > requiredWins || reportCounts.player2Wins > requiredWins) {
+      setActionError(`A player cannot exceed ${requiredWins} wins in best-of-${bestOfN}.`);
+      return;
+    }
+    if (reportCounts.gameDraws > 5) {
+      setActionError('Game draws cannot exceed 5.');
+      return;
+    }
+
+    const gameResults: Array<{ winnerId: string | null; isDraw: boolean }> = [];
+    for (let i = 0; i < reportCounts.player1Wins; i += 1) {
+      gameResults.push({ winnerId: selectedMatch.player1.id, isDraw: false });
+    }
+    for (let i = 0; i < reportCounts.player2Wins; i += 1) {
+      gameResults.push({ winnerId: selectedMatch.player2?.id ?? null, isDraw: false });
+    }
+    for (let i = 0; i < reportCounts.gameDraws; i += 1) {
+      gameResults.push({ winnerId: null, isDraw: true });
+    }
+
+    try {
+      await authApiRequest(`/api/matches/${selectedMatch.id}/report`, {
+        method: 'POST',
+        body: { gameResults },
+      });
+      setSelectedMatchId(null);
+      setActionError(null);
+      await reloadRounds(activeEvent.id);
+    } catch (reportError) {
+      setActionError(reportError instanceof ApiError ? reportError.message : 'Unable to report match');
+    }
+  };
+
+  const confirmOrDispute = async (matchId: string, action: 'confirm' | 'dispute') => {
+    if (!activeEvent) {
+      return;
+    }
+    try {
+      await authApiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
+      setActionError(null);
+      await reloadRounds(activeEvent.id);
+    } catch (matchError) {
+      setActionError(matchError instanceof ApiError ? matchError.message : `Unable to ${action} match`);
+    }
+  };
 
   const renderTop3 = () => (
     <div className="rounded-lg border border-border bg-card p-4">
@@ -332,6 +408,44 @@ export function DashboardPage() {
       {loadError ? (
         <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{loadError}</div>
       ) : null}
+      {actionError ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">{actionError}</div>
+      ) : null}
+
+      {showActiveMatchesSection ? (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Your Active Matches</h2>
+              <p className="text-sm text-muted-foreground">Report or confirm your in-progress matches.</p>
+            </div>
+            <Link to="/schedule" className="text-sm underline text-muted-foreground">
+              View full schedule
+            </Link>
+          </div>
+          <div className="space-y-4">
+            {userActiveMatches.map(({ match, round }) => (
+              <div key={match.id} className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Round {round.roundNumber}</p>
+                <ParticipantMatchCard
+                  match={match}
+                  round={round}
+                  user={user}
+                  isAdmin={isAdmin}
+                  eventRecords={eventRecords}
+                  seasonPoints={seasonPoints}
+                  poolSetsByUserId={poolSetsByUserId}
+                  poolSetsLoading={poolSetsLoading}
+                  getSet={getSet}
+                  onReport={setSelectedMatchId}
+                  onConfirm={(matchId) => void confirmOrDispute(matchId, 'confirm')}
+                  onDispute={(matchId) => void confirmOrDispute(matchId, 'dispute')}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-4">
@@ -350,13 +464,6 @@ export function DashboardPage() {
                 subtext="Wins - Losses - Draws"
               />
               <StatCard title="Your Points" value={isLoading ? '...' : userStanding?.points ?? 0} subtext="Season points" />
-              {viewingActiveSeason && nextMatch ? (
-                <StatCard
-                  title="Next Match"
-                  value={nextMatchOpponent ? primaryName(nextMatchOpponent) : 'BYE'}
-                  subtext={`${activeEvent?.name ?? 'Current event'} - Pending`}
-                />
-              ) : null}
             </>
           ) : (
             <div className="rounded-lg border border-border bg-card p-4">
@@ -389,6 +496,20 @@ export function DashboardPage() {
           {renderRecentResults()}
         </div>
       </div>
+
+      {selectedMatch ? (
+        <ReportMatchDialog
+          match={selectedMatch}
+          bestOfN={activeEvent?.config?.bestOfN ?? 3}
+          mode="report"
+          initialCounts={initialReportCounts}
+          isMutating={false}
+          onSubmit={reportMatch}
+          onClose={() => {
+            setSelectedMatchId(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -23,7 +23,7 @@ function makeDeck(id: string, name: string): BuilderDeck {
 }
 
 describe('DeckTabList', () => {
-  it('should_render_all_deck_names_as_tabs', () => {
+  it('should_render_deck_selector_with_all_deck_options', () => {
     renderWithAppProviders(
       <DeckTabList
         decks={[makeDeck('deck-1', 'Deck 1'), makeDeck('deck-2', 'Deck 2')]}
@@ -32,12 +32,13 @@ describe('DeckTabList', () => {
       />,
     );
 
-    expect(screen.getByTestId('deck-tab-list')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Deck 1' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Deck 2' })).toBeInTheDocument();
+    const selector = screen.getByTestId('deck-tab-list');
+    expect(selector).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Deck 1' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Deck 2' })).toBeInTheDocument();
   });
 
-  it('should_highlight_active_deck_tab', () => {
+  it('should_show_active_deck_in_selector', () => {
     renderWithAppProviders(
       <DeckTabList
         decks={[makeDeck('deck-1', 'Deck 1'), makeDeck('deck-2', 'Deck 2')]}
@@ -46,11 +47,10 @@ describe('DeckTabList', () => {
       />,
     );
 
-    expect(screen.getByTestId('deck-tab-deck-1')).toHaveClass('border-primary');
-    expect(screen.getByTestId('deck-tab-deck-2')).toHaveClass('border-border');
+    expect(screen.getByTestId('deck-tab-list')).toHaveValue('deck-1');
   });
 
-  it('should_call_onActiveDeckChange_when_inactive_tab_clicked', () => {
+  it('should_call_onActiveDeckChange_when_selector_changes', () => {
     const onActiveDeckChange = vi.fn();
     renderWithAppProviders(
       <DeckTabList
@@ -60,7 +60,19 @@ describe('DeckTabList', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Deck 2' }));
+    fireEvent.change(screen.getByTestId('deck-tab-list'), { target: { value: 'deck-2' } });
     expect(onActiveDeckChange).toHaveBeenCalledWith('deck-2');
+  });
+
+  it('should_render_status_labels_in_option_text', () => {
+    const submitted = makeDeck('deck-1', 'Deck 1');
+    submitted.status = 'submitted';
+    const locked = makeDeck('deck-2', 'Deck 2');
+    locked.status = 'locked';
+
+    renderWithAppProviders(<DeckTabList decks={[submitted, locked]} activeDeckId="deck-1" onActiveDeckChange={vi.fn()} />);
+
+    expect(screen.getByRole('option', { name: 'Deck 1 (Registered)' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Deck 2 (Locked)' })).toBeInTheDocument();
   });
 });

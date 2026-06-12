@@ -25,6 +25,12 @@ vi.mock('@/hooks/useCardImageWidth', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useCurrentLeague', () => ({
+  useCurrentLeague: () => ({
+    activeSeasonId: 'season-1',
+  }),
+}));
+
 import { DeckBuilderPage } from '@/pages/DeckBuilderPage';
 
 function renderPage() {
@@ -37,25 +43,46 @@ function renderPage() {
   );
 }
 
-function configureApi() {
-  mocks.authApiRequest.mockImplementation(async (path: string) => {
+function configureApi(options?: {
+  registeredCount?: number;
+  deckStatus?: 'draft' | 'submitted' | 'locked';
+  deckCount?: number;
+  extraDraftDeck?: boolean;
+}) {
+  const deckStatus = options?.deckStatus ?? 'draft';
+  const deckCount = options?.deckCount ?? 1;
+  const registeredCount = options?.registeredCount ?? (deckStatus === 'draft' ? 0 : 1);
+
+  mocks.authApiRequest.mockImplementation(async (path: string, init?: { method?: string }) => {
     if (path === '/api/events/e1/my-decklists') {
+      const decklists = [
+        {
+          id: 'deck-1',
+          orderIndex: 0,
+          name: 'Deck 1',
+          status: deckStatus,
+          entries: [],
+        },
+      ];
+      if (options?.extraDraftDeck) {
+        decklists.push({
+          id: 'deck-2',
+          orderIndex: deckCount,
+          name: 'Extra Deck',
+          status: 'draft',
+          entries: [],
+        });
+      }
       return {
         data: {
           roundId: 'r1',
           roundNumber: 1,
           poolId: 'pool-1',
-          decklists: [
-            {
-              id: 'deck-1',
-              orderIndex: 0,
-              name: 'Deck 1',
-              status: 'draft',
-              entries: [],
-            },
-          ],
+          registeredCount,
+          decklists,
           eventConfig: {
-            deckCount: 1,
+            format: 'swiss',
+            deckCount,
             minDeckSize: 40,
             sideboardRule: 'entire_pool',
             deckLockingMode: 'free_modification',
@@ -100,6 +127,9 @@ function configureApi() {
         },
       };
     }
+    if (path === '/api/decklists/deck-2' && init?.method === 'DELETE') {
+      return { data: null };
+    }
     throw new Error(`Unexpected path: ${path}`);
   });
 }
@@ -110,7 +140,7 @@ describe('DeckBuilderPage layout', () => {
     configureApi();
   });
 
-  it('should_render_work_area_with_viewport_height_class_on_xl', async () => {
+  it('should_render_work_area_with_viewport_height_class_on_large_screens', async () => {
     renderPage();
 
     await waitFor(() => {
@@ -118,8 +148,9 @@ describe('DeckBuilderPage layout', () => {
     });
 
     const workArea = screen.getByTestId('deckbuilder-work-area');
-    expect(workArea.className).toMatch(/xl:h-\[calc\(100dvh-9rem\)\]/);
-    expect(workArea.className).toMatch(/xl:overflow-hidden/);
+    expect(workArea.className).toMatch(/lg:h-\[calc\(100dvh-9rem\)\]/);
+    expect(workArea.className).toMatch(/lg:overflow-hidden/);
+    expect(workArea.className).toMatch(/lg:grid-cols-\[minmax\(0,1fr\)_minmax\(300px,24vw\)\]/);
   });
 
   it('should_use_tighter_viewport_height_on_work_area', async () => {
@@ -130,7 +161,7 @@ describe('DeckBuilderPage layout', () => {
     });
 
     expect(screen.getByTestId('deckbuilder-work-area').className).toMatch(
-      /xl:h-\[calc\(100dvh-9rem\)\]/,
+      /lg:h-\[calc\(100dvh-9rem\)\]/,
     );
   });
 
@@ -202,5 +233,67 @@ describe('DeckBuilderPage layout', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Build' }));
 
     expect(screen.getByTestId('deckbuilder-work-area')).toBeInTheDocument();
+  });
+
+  it('renders the view toggle on a separate row below deck controls', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-view-toggle')).toBeInTheDocument();
+    });
+
+    const controls = screen.getByTestId('deckbuilder-header-controls');
+    const viewRow = screen.getByTestId('deckbuilder-header-view-row');
+    const viewToggle = screen.getByTestId('deck-view-toggle');
+    const deleteButton = screen.getByTestId('deck-delete-button');
+
+    expect(controls.contains(viewToggle)).toBe(false);
+    expect(viewRow.contains(viewToggle)).toBe(true);
+    expect(controls.contains(deleteButton)).toBe(true);
+    expect(controls.compareDocumentPosition(viewRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(viewToggle).getByText('View')).toBeInTheDocument();
+  });
+
+  it('requires confirmation before deleting an extra draft deck', async () => {
+    configureApi({ extraDraftDeck: true });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-tab-list')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('deck-tab-list'), { target: { value: 'deck-2' } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-delete-button')).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByTestId('deck-delete-button'));
+
+    expect(screen.getByText('Delete deck')).toBeInTheDocument();
+    expect(screen.getByText(/Delete "Extra Deck"/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(mocks.authApiRequest).not.toHaveBeenCalledWith('/api/decklists/deck-2', { method: 'DELETE' });
+
+    fireEvent.click(screen.getByTestId('deck-delete-button'));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => {
+      expect(mocks.authApiRequest).toHaveBeenCalledWith('/api/decklists/deck-2', { method: 'DELETE' });
+    });
+  });
+
+  it('shows registration counter and disables register at cap', async () => {
+    configureApi({ deckStatus: 'draft', deckCount: 1, registeredCount: 1 });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-registration-counter')).toHaveTextContent('1/1');
+    });
+
+    expect(screen.getByTestId('deck-register-button')).toBeDisabled();
+    expect(screen.getByTestId('deck-unregister-button')).toBeDisabled();
+    expect(screen.getByTestId('deck-delete-button')).toBeDisabled();
   });
 });

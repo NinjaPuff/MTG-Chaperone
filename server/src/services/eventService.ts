@@ -1,6 +1,8 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
+import { assignRoundRobinPairings, generateSeededSwissPairings, generateSwissPairings } from './pairingService.js';
+import { resetRoundProgress } from './roundService.js';
 
 type EventConfigInput = {
   format: 'swiss' | 'seeded_swiss' | 'round_robin';
@@ -294,6 +296,56 @@ export async function updateEvent(eventId: string, updates: Partial<CreateEventI
   if (!event) {
     throw new AppError(404, 'NOT_FOUND', 'Event not found');
   }
+  if (event.status !== 'setup') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Only setup events can be edited');
+  }
+
+  if (updates.config?.format && updates.config.format !== event.config?.format) {
+    const roundWithMatches = await prisma.round.findFirst({
+      where: {
+        eventId,
+        matches: {
+          some: {},
+        },
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (roundWithMatches) {
+      throw new AppError(409, 'INVALID_EVENT_STATE', 'Format cannot be changed after pairings are generated');
+    }
+  }
+
+  if (typeof updates.config?.deckCount === 'number') {
+    const registeredDecklists = await prisma.decklist.findMany({
+      where: {
+        eventId,
+        status: {
+          in: ['submitted', 'locked'],
+        },
+      },
+      select: {
+        userId: true,
+      },
+    });
+    let maxRegisteredForUser = 0;
+    const registeredCountByUser = new Map<string, number>();
+    for (const decklist of registeredDecklists) {
+      const nextCount = (registeredCountByUser.get(decklist.userId) ?? 0) + 1;
+      registeredCountByUser.set(decklist.userId, nextCount);
+      if (nextCount > maxRegisteredForUser) {
+        maxRegisteredForUser = nextCount;
+      }
+    }
+    if (updates.config.deckCount < maxRegisteredForUser) {
+      throw new AppError(
+        409,
+        'INVALID_EVENT_STATE',
+        `Deck count cannot be lowered below ${maxRegisteredForUser} because at least one player already has that many registered decks`,
+      );
+    }
+  }
 
   await prisma.event.update({
     where: { id: eventId },
@@ -383,6 +435,87 @@ export async function completeEvent(eventId: string) {
   });
 }
 
+async function createMatchesForRound(roundId: string, pairs: Array<{ player1Id: string; player2Id: string | null; isBye: boolean }>) {
+  return Promise.all(
+    pairs.map((pair) =>
+      prisma.match.create({
+        data: {
+          roundId,
+          player1Id: pair.player1Id,
+          player2Id: pair.player2Id,
+          isBye: pair.isBye,
+          status: pair.isBye ? 'confirmed' : 'pending',
+          confirmedAt: pair.isBye ? new Date() : null,
+        },
+      }),
+    ),
+  );
+}
+
+async function repopulatePairingsForRound(roundId: string, format: 'swiss' | 'seeded_swiss' | 'round_robin') {
+  if (format === 'round_robin') {
+    await assignRoundRobinPairings(roundId);
+    return;
+  }
+  const pairs = format === 'swiss' ? await generateSwissPairings(roundId) : await generateSeededSwissPairings(roundId);
+  await createMatchesForRound(roundId, pairs);
+}
+
+export async function resetEvent(eventId: string) {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    include: {
+      config: true,
+      rounds: {
+        include: {
+          matches: {
+            select: { id: true },
+          },
+        },
+        orderBy: { roundNumber: 'asc' },
+      },
+    },
+  });
+  if (!event || !event.config) {
+    throw new AppError(404, 'NOT_FOUND', 'Event not found');
+  }
+  if (event.status === 'setup') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Only active or completed events can be reset');
+  }
+
+  const roundIdsToRepair: string[] = [];
+  await prisma.$transaction(async (tx) => {
+    for (const round of event.rounds) {
+      const shouldResetRound =
+        round.status === 'in_progress' || round.status === 'completed' || (round.status === 'not_started' && round.matches.length > 0);
+      if (!shouldResetRound) {
+        continue;
+      }
+      await resetRoundProgress(tx, {
+        id: round.id,
+        event: {
+          config: event.config,
+        },
+      });
+      roundIdsToRepair.push(round.id);
+    }
+
+    await tx.event.update({
+      where: { id: event.id },
+      data: {
+        status: 'setup',
+        totalRounds: null,
+      },
+    });
+  });
+
+  for (const roundId of roundIdsToRepair) {
+    await repopulatePairingsForRound(roundId, event.config.format);
+  }
+
+  return getEvent(eventId);
+}
+
 export function createEventService() {
   return {
     validateEventTransition,
@@ -392,5 +525,6 @@ export function createEventService() {
     updateEvent,
     startEvent,
     completeEvent,
+    resetEvent,
   };
 }

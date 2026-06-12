@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, authApiRequest } from '@/lib/api';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
 import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
 import { CurveView } from '@/components/cardpool/CurveView';
@@ -14,11 +16,14 @@ import { DeckBuildDetailsToggle } from '@/components/deckbuilder/DeckBuildDetail
 import { DeckBuilderContextMenu, type DeckBuilderMenuAction } from '@/components/deckbuilder/DeckBuilderContextMenu';
 import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import { DeckSidebar } from '@/components/deckbuilder/DeckSidebar';
+import { DeckRegistrationCounter } from '@/components/deckbuilder/DeckRegistrationCounter';
 import { DeckTabList } from '@/components/deckbuilder/DeckTabList';
 import { DragGhost } from '@/components/deckbuilder/DragGhost';
 import { DragProvider } from '@/components/deckbuilder/DragContext';
+import { ImportDeckDialog, type ImportEntry } from '@/components/deckbuilder/ImportDeckDialog';
 import { PoolCardBadge } from '@/components/deckbuilder/PoolCardBadge';
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
+import { DECKBUILDER_WORK_AREA_HEIGHT_CLASS } from '@/lib/deckBuilderLayout';
 import { moveCardBetweenZones } from '@/lib/deckMutations';
 
 type DecklistEntryResponse = {
@@ -48,8 +53,10 @@ type RoundDeckBuilderResponse = {
     roundId: string;
     roundNumber: number;
     poolId: string;
+    registeredCount?: number;
     decklists: DecklistResponse[];
     eventConfig: {
+      format: 'swiss' | 'seeded_swiss' | 'round_robin';
       deckCount: number;
       minDeckSize: number;
       sideboardRule: 'entire_pool' | 'fixed_15' | 'none';
@@ -156,6 +163,8 @@ function extractBasicCounts(cards: DeckBuilderCard[]) {
 }
 
 export function DeckBuilderPage() {
+  const { confirm } = useConfirm();
+  const { activeSeasonId } = useCurrentLeague();
   const { eventId } = useParams<{ eventId: string }>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -176,8 +185,16 @@ export function DeckBuilderPage() {
   const [stacksOrganizeBy, setStacksOrganizeBy] = useState<StacksOrganizeBy>('type');
   const { cardImageWidth, setCardImageWidth } = useCardImageWidth();
   const [minDeckSize, setMinDeckSize] = useState(40);
+  const [requiredDeckCount, setRequiredDeckCount] = useState(1);
+  const [registeredDeckCount, setRegisteredDeckCount] = useState(0);
+  const [activeRoundId, setActiveRoundId] = useState<string | null>(null);
+  const [eventFormat, setEventFormat] = useState<'swiss' | 'seeded_swiss' | 'round_robin' | null>(null);
+  const [deckLockingMode, setDeckLockingMode] = useState<
+    'required_before_round' | 'free_modification' | 'admin_locked'
+  >('free_modification');
   const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null);
   const [contextMenu, setContextMenu] = useState<DeckBuilderContextMenuState | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const saveTimeoutRef = useRef<number | null>(null);
 
   const restrictedMap = useRef(
@@ -212,7 +229,6 @@ export function DeckBuilderPage() {
   const refreshAllDeckValidations = async (deckIds: string[]) => {
     const uniqueDeckIds = [...new Set(deckIds.filter(Boolean))];
     if (uniqueDeckIds.length === 0) {
-      setSaveBlockedCardIdsByDeckId({});
       return;
     }
 
@@ -227,13 +243,21 @@ export function DeckBuilderPage() {
       }),
     );
 
-    const next: Record<string, string[]> = {};
-    for (const [deckId, invalidCardIds] of entries) {
-      if (invalidCardIds.length > 0) {
-        next[deckId] = invalidCardIds;
+    setSaveBlockedCardIdsByDeckId((prev) => {
+      // Keep warnings sticky for this deck set until a successful save clears them.
+      const next: Record<string, string[]> = {};
+      for (const deckId of uniqueDeckIds) {
+        if (prev[deckId]?.length) {
+          next[deckId] = [...prev[deckId]];
+        }
       }
-    }
-    setSaveBlockedCardIdsByDeckId(next);
+      for (const [deckId, invalidCardIds] of entries) {
+        if (invalidCardIds.length > 0) {
+          next[deckId] = [...new Set([...(next[deckId] ?? []), ...invalidCardIds])];
+        }
+      }
+      return next;
+    });
   };
 
   const loadData = async () => {
@@ -266,6 +290,14 @@ export function DeckBuilderPage() {
       setDecks(mappedDecks);
       setActiveDeckId((prev) => prev ?? mappedDecks[0]?.id ?? null);
       setMinDeckSize(deckResponse.data.eventConfig?.minDeckSize ?? 40);
+      setRequiredDeckCount(Math.max(1, deckResponse.data.eventConfig?.deckCount ?? 1));
+      setRegisteredDeckCount(
+        deckResponse.data.registeredCount ??
+          mappedDecks.filter((deck) => deck.status === 'submitted' || deck.status === 'locked').length,
+      );
+      setActiveRoundId(deckResponse.data.roundId);
+      setEventFormat(deckResponse.data.eventConfig?.format ?? null);
+      setDeckLockingMode(deckResponse.data.eventConfig?.deckLockingMode ?? 'free_modification');
       setActiveRoundNumber(deckResponse.data.roundNumber);
 
       restrictedMap.current = new Map(
@@ -298,11 +330,24 @@ export function DeckBuilderPage() {
     return map;
   }, [decks]);
 
+  const activeDeckAllocationByCardId = useMemo(() => {
+    const map = new Map<string, number>();
+    const activeDeck = decks.find((deck) => deck.id === activeDeckId);
+    if (!activeDeck) {
+      return map;
+    }
+    for (const card of activeDeck.cards) {
+      map.set(card.cachedCardId, (map.get(card.cachedCardId) ?? 0) + card.quantity);
+    }
+    return map;
+  }, [decks, activeDeckId]);
+
   const cardOverlayData = useMemo(() => {
     const map = new Map<
       string,
       {
         allocated: number;
+        allocatedInActiveDeck: number;
         restricted: number;
         reason?: string;
       }
@@ -310,15 +355,17 @@ export function DeckBuilderPage() {
 
     for (const card of poolCards) {
       const allocated = combinedAllocationByCardId.get(card.scryfallId) ?? 0;
+      const allocatedInActiveDeck = activeDeckAllocationByCardId.get(card.scryfallId) ?? 0;
       const restricted = restrictedMap.current.get(card.scryfallId)?.restrictedQty ?? 0;
       map.set(card.scryfallId, {
         allocated,
+        allocatedInActiveDeck,
         restricted,
         reason: restrictedMap.current.get(card.scryfallId)?.reason,
       });
     }
     return map;
-  }, [combinedAllocationByCardId, poolCards]);
+  }, [activeDeckAllocationByCardId, combinedAllocationByCardId, poolCards]);
 
   const visiblePoolCards = useMemo(() => {
     const filtered = filterPoolCards(sortCards(poolCards, sortKey), {
@@ -353,8 +400,280 @@ export function DeckBuilderPage() {
     () => visiblePoolCards.reduce((sum, card) => sum + card.quantity, 0),
     [visiblePoolCards],
   );
+  const poolCardByScryfallId = useMemo(
+    () => new Map(poolCards.map((card) => [card.scryfallId, card])),
+    [poolCards],
+  );
+  const basicLandCardIdSet = useMemo(
+    () => new Set([...basicLandCatalogRef.current.values()].map((entry) => entry.cachedCardId)),
+    [poolCards, decks],
+  );
+  const siblingAllocationByCardId = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const deck of decks) {
+      if (deck.id === activeDeckId) {
+        continue;
+      }
+      for (const card of deck.cards) {
+        map.set(card.cachedCardId, (map.get(card.cachedCardId) ?? 0) + card.quantity);
+      }
+    }
+    return map;
+  }, [decks, activeDeckId]);
+
+  const getImportIssueSummary = useCallback(
+    (entries: ImportEntry[]) => {
+      const importedAllocationByCardId = new Map<string, number>();
+      const invalidCardIds = new Set<string>();
+      const details: string[] = [];
+
+      for (const entry of entries) {
+        importedAllocationByCardId.set(
+          entry.cachedCardId,
+          (importedAllocationByCardId.get(entry.cachedCardId) ?? 0) + entry.quantity,
+        );
+      }
+
+      for (const [cachedCardId, importedQty] of importedAllocationByCardId.entries()) {
+        if (basicLandCardIdSet.has(cachedCardId)) {
+          continue;
+        }
+        const poolCard = poolCardByScryfallId.get(cachedCardId);
+        if (!poolCard) {
+          invalidCardIds.add(cachedCardId);
+          details.push(`- Unknown card (${cachedCardId}) is not in your current pool.`);
+          continue;
+        }
+        const restrictedQty = restrictedMap.current.get(cachedCardId)?.restrictedQty ?? 0;
+        const allowedQty = Math.max(0, poolCard.quantity - restrictedQty);
+        const siblingQty = siblingAllocationByCardId.get(cachedCardId) ?? 0;
+        const attemptedTotal = siblingQty + importedQty;
+        if (attemptedTotal > allowedQty) {
+          invalidCardIds.add(cachedCardId);
+          const restrictionReason = restrictedMap.current.get(cachedCardId)?.reason;
+          const reasonSuffix = restrictionReason ? ` (${restrictionReason})` : '';
+          details.push(
+            `- ${poolCard.name}: ${attemptedTotal} allocated across decks, ${allowedQty} allowed${reasonSuffix}.`,
+          );
+        }
+      }
+
+      const invalidCount = invalidCardIds.size;
+      return {
+        invalidCardIds: [...invalidCardIds],
+        summary:
+          invalidCount > 0
+            ? `${invalidCount} card${invalidCount === 1 ? '' : 's'} fail current round constraints (pool copies, restrictions, or unavailable cards).`
+            : 'No import issues detected.',
+        details,
+      };
+    },
+    [basicLandCardIdSet, poolCardByScryfallId, siblingAllocationByCardId],
+  );
 
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? null;
+  const activeDeckEditable =
+    activeDeck?.status === 'draft' || (activeDeck?.status === 'submitted' && eventFormat === 'round_robin');
+  const isDeckEditable = (deck: BuilderDeck) => deck.status === 'draft' || (deck.status === 'submitted' && eventFormat === 'round_robin');
+  const isDeckRenamable = () => deckLockingMode !== 'admin_locked';
+  const canRegisterActiveDeck =
+    !!activeDeck && activeDeck.status === 'draft' && registeredDeckCount < requiredDeckCount;
+  const canUnregisterActiveDeck = !!activeDeck && activeDeck.status === 'submitted';
+  const canDeleteActiveDeck =
+    !!activeDeck && activeDeck.status === 'draft' && activeDeck.orderIndex >= requiredDeckCount;
+  const canImportActiveDeck = !!activeDeckEditable && !!activeSeasonId;
+  const importDisabledReason = !activeSeasonId
+    ? 'No active season found to import from.'
+    : !activeDeckEditable
+      ? 'Only editable decks can import previous decklists.'
+      : undefined;
+  const deleteActiveDeckDisabledReason = !activeDeck
+    ? undefined
+    : activeDeck.status !== 'draft'
+      ? 'Only draft decks can be deleted. Unregister the deck first.'
+      : activeDeck.orderIndex < requiredDeckCount
+        ? `Deck ${activeDeck.orderIndex + 1} is a required slot for this event. Only extra decks added with Add can be deleted.`
+        : undefined;
+
+  const registerActiveDeck = async () => {
+    if (!activeDeck) {
+      return;
+    }
+    setSuccess(null);
+    setError(null);
+    try {
+      const validation = await authApiRequest<DeckValidationResponse>(`/api/decklists/${activeDeck.id}/validate`);
+      const invalidCardIds = extractInvalidCardIds(validation.data);
+      if (invalidCardIds.length > 0) {
+        setSaveBlockedCardIdsByDeckId((prev) => ({
+          ...prev,
+          [activeDeck.id]: invalidCardIds,
+        }));
+      }
+      if (!validation.data.isValid) {
+        const messages =
+          validation.data.errors.length > 0
+            ? validation.data.errors
+            : ['Deck has invalid card allocation and cannot be registered.'];
+        const formattedMessage = messages.map((message, index) => `${index + 1}. ${message}`).join(' ');
+        await confirm({
+          title: 'Cannot register deck',
+          message: formattedMessage,
+          confirmLabel: 'OK',
+          cancelLabel: 'Close',
+        });
+        return;
+      }
+      if (validation.data.warnings.length > 0) {
+        const formattedWarnings = validation.data.warnings
+          .map((warning, index) => `${index + 1}. ${warning}`)
+          .join(' ');
+        const proceed = await confirm({
+          title: 'Register with warnings?',
+          message: formattedWarnings,
+          confirmLabel: 'Register',
+          cancelLabel: 'Cancel',
+        });
+        if (!proceed) {
+          return;
+        }
+      }
+      await authApiRequest(`/api/decklists/${activeDeck.id}/submit`, { method: 'POST' });
+      setSuccess('Deck registered');
+      await loadData();
+    } catch (submitError) {
+      setError(submitError instanceof ApiError ? submitError.message : 'Unable to register deck');
+    }
+  };
+
+  const unregisterActiveDeck = async () => {
+    if (!activeDeck) {
+      return;
+    }
+    setError(null);
+    try {
+      await authApiRequest(`/api/decklists/${activeDeck.id}/unsubmit`, { method: 'POST' });
+      setSuccess('Deck unregistered');
+      await loadData();
+    } catch (unsubmitError) {
+      setError(unsubmitError instanceof ApiError ? unsubmitError.message : 'Unable to unregister deck');
+    }
+  };
+
+  const addDeck = async () => {
+    if (!eventId || !activeRoundId) {
+      return;
+    }
+    setError(null);
+    try {
+      await authApiRequest('/api/decklists', {
+        method: 'POST',
+        body: {
+          eventId,
+          roundId: activeRoundId,
+        },
+      });
+      setSuccess('Deck added');
+      await loadData();
+    } catch (addError) {
+      setError(addError instanceof ApiError ? addError.message : 'Unable to add deck');
+    }
+  };
+
+  const importIntoActiveDeck = async (entries: ImportEntry[]) => {
+    if (!activeDeck || !activeDeckEditable) {
+      return;
+    }
+    setError(null);
+    if (activeDeck.cards.length > 0) {
+      const confirmed = await confirm({
+        title: 'Replace current deck?',
+        message: 'Importing a previous deck will replace all cards in the active deck.',
+        confirmLabel: 'Replace',
+        cancelLabel: 'Keep Current Deck',
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    const importedCards: DeckBuilderCard[] = [];
+    let skipped = 0;
+    for (const entry of entries) {
+      const poolCard = poolCardByScryfallId.get(entry.cachedCardId);
+      if (!poolCard) {
+        skipped += 1;
+        continue;
+      }
+      importedCards.push({
+        cachedCardId: entry.cachedCardId,
+        name: poolCard.name,
+        layout: poolCard.layout ?? null,
+        manaCost: poolCard.manaCost,
+        typeLine: poolCard.typeLine,
+        cmc: poolCard.cmc,
+        quantity: entry.quantity,
+        zone: entry.zone,
+        colorIdentity: poolCard.colorIdentity,
+      });
+    }
+    const importIssues = getImportIssueSummary(entries);
+
+    setDecks((prev) =>
+      prev.map((deck) =>
+        deck.id === activeDeck.id
+          ? {
+              ...deck,
+              cards: importedCards,
+              basicLands: extractBasicCounts(importedCards),
+            }
+          : deck,
+      ),
+    );
+    setSaveBlockedCardIdsByDeckId((prev) => {
+      if (importIssues.invalidCardIds.length === 0) {
+        if (!(activeDeck.id in prev)) {
+          return prev;
+        }
+        const next = { ...prev };
+        delete next[activeDeck.id];
+        return next;
+      }
+      return {
+        ...prev,
+        [activeDeck.id]: importIssues.invalidCardIds,
+      };
+    });
+    setShowImportDialog(false);
+    if (skipped > 0) {
+      setSuccess(`Imported ${importedCards.length} cards (${skipped} skipped - not in pool)`);
+      return;
+    }
+    setSuccess(`Imported ${importedCards.length} cards`);
+  };
+
+  const deleteActiveDeck = async () => {
+    if (!activeDeck) {
+      return;
+    }
+    const confirmed = await confirm({
+      title: 'Delete deck',
+      message: `Delete "${activeDeck.name}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+    });
+    if (!confirmed) {
+      return;
+    }
+    setError(null);
+    try {
+      await authApiRequest(`/api/decklists/${activeDeck.id}`, { method: 'DELETE' });
+      setSuccess('Deck deleted');
+      await loadData();
+    } catch (deleteError) {
+      setError(deleteError instanceof ApiError ? deleteError.message : 'Unable to delete deck');
+    }
+  };
 
   const saveDeck = async (deck: BuilderDeck) => {
     const basicEntries = BASIC_LAND_ORDER.flatMap((landName) => {
@@ -389,6 +708,13 @@ export function DeckBuilderPage() {
     });
   };
 
+  const saveDeckName = async (deck: BuilderDeck) => {
+    await authApiRequest(`/api/decklists/${deck.id}`, {
+      method: 'PATCH',
+      body: { name: deck.name },
+    });
+  };
+
   useEffect(() => {
     if (loading || decks.length === 0) {
       return;
@@ -405,8 +731,16 @@ export function DeckBuilderPage() {
               ...decks.filter((deck) => deck.id !== activeDeckId),
             ]
           : decks;
+        const editableDecks = activeDeckFirst.filter((deck) => isDeckEditable(deck));
+        const renamableOnlyDecks = activeDeckFirst.filter(
+          (deck) => !isDeckEditable(deck) && isDeckRenamable(),
+        );
+        if (editableDecks.length === 0 && renamableOnlyDecks.length === 0) {
+          setSuccess('Saved');
+          return;
+        }
 
-        for (const deck of activeDeckFirst) {
+        for (const deck of editableDecks) {
           try {
             await saveDeck(deck);
             setSaveBlockedCardIdsByDeckId((prev) => {
@@ -426,11 +760,15 @@ export function DeckBuilderPage() {
               const blockedCardId = saveError.fields.cachedCardId;
               setSaveBlockedCardIdsByDeckId((prev) => ({
                 ...prev,
-                [deck.id]: [blockedCardId],
+                [deck.id]: [...new Set([...(prev[deck.id] ?? []), blockedCardId])],
               }));
             }
             throw saveError;
           }
+        }
+
+        for (const deck of renamableOnlyDecks) {
+          await saveDeckName(deck);
         }
         setSuccess('Saved');
       } catch (saveError) {
@@ -447,7 +785,7 @@ export function DeckBuilderPage() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decks, loading]);
+  }, [decks, loading, eventFormat, deckLockingMode]);
 
   useEffect(() => {
     setSaveBlockedCardIdsByDeckId((prev) => {
@@ -479,7 +817,7 @@ export function DeckBuilderPage() {
   }, [decks]);
 
   const addCardToActiveDeck = (poolCard: PoolCard, zone: 'main' | 'sideboard' = 'main') => {
-    if (!activeDeckId) {
+    if (!activeDeckId || !activeDeck || !isDeckEditable(activeDeck)) {
       return;
     }
     const restricted = restrictedMap.current.get(poolCard.scryfallId)?.restrictedQty ?? 0;
@@ -545,6 +883,10 @@ export function DeckBuilderPage() {
   );
 
   const removeCardFromDeck = (card: DeckBuilderCard, deckId: string) => {
+    const targetDeck = decks.find((deck) => deck.id === deckId);
+    if (!targetDeck || !isDeckEditable(targetDeck)) {
+      return;
+    }
     setDecks((prev) =>
       prev.map((deck) => {
         if (deck.id !== deckId) {
@@ -595,7 +937,7 @@ export function DeckBuilderPage() {
       const restricted = restrictedMap.current.get(contextMenu.card.scryfallId)?.restrictedQty ?? 0;
       const allocated = combinedAllocationByCardId.get(contextMenu.card.scryfallId) ?? 0;
       const available = getPoolCardAvailableQty(contextMenu.card, restricted, allocated);
-      const disabled = available < 1;
+      const disabled = available < 1 || !activeDeck || !isDeckEditable(activeDeck);
 
       return [
         {
@@ -619,10 +961,13 @@ export function DeckBuilderPage() {
 
     const targetZone = contextMenu.card.zone === 'main' ? 'sideboard' : 'main';
     const moveLabel = contextMenu.card.zone === 'main' ? 'Move to sideboard' : 'Move to main deck';
+    const contextDeck = decks.find((deck) => deck.id === contextMenu.deckId);
+    const contextDeckLocked = !contextDeck || !isDeckEditable(contextDeck);
 
     return [
       {
         label: moveLabel,
+        disabled: contextDeckLocked,
         onAction: () => {
           setDecks((prev) =>
             moveCardBetweenZones(
@@ -638,6 +983,7 @@ export function DeckBuilderPage() {
       },
       {
         label: 'Remove one',
+        disabled: contextDeckLocked,
         onAction: () => {
           removeCardFromDeck(contextMenu.card, contextMenu.deckId);
           setContextMenu(null);
@@ -659,9 +1005,9 @@ export function DeckBuilderPage() {
 
   return (
     <DragProvider>
-      <div className="flex flex-col space-y-2">
+      <div className="flex min-h-0 flex-1 flex-col space-y-2">
         <div
-          className="flex shrink-0 flex-wrap items-center justify-between gap-2"
+          className="flex shrink-0 flex-wrap items-start justify-between gap-2"
           data-testid="deckbuilder-page-header"
         >
           <div className="min-w-0">
@@ -670,26 +1016,91 @@ export function DeckBuilderPage() {
               {saving ? 'Saving...' : success ? success : activeRoundNumber ? `Using Round ${activeRoundNumber}` : 'Ready'}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <DeckTabList
-              decks={decks}
-              activeDeckId={activeDeckId ?? ''}
-              onActiveDeckChange={setActiveDeckId}
-            />
-            <DeckBuildDetailsToggle
-              expandedDeckMode={expandedDeckMode}
-              onChange={setExpandedDeckMode}
-            />
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <div
+              className="flex flex-nowrap items-center gap-2"
+              data-testid="deckbuilder-header-controls"
+            >
+              <DeckRegistrationCounter
+                decks={decks}
+                registeredCount={registeredDeckCount}
+                requiredCount={requiredDeckCount}
+              />
+              <DeckTabList
+                decks={decks}
+                activeDeckId={activeDeckId ?? ''}
+                onActiveDeckChange={setActiveDeckId}
+              />
+              <div className="flex shrink-0 items-center gap-1 border-l border-border/60 pl-2">
+                <button
+                  type="button"
+                  data-testid="deck-add-button"
+                  className="rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={() => void addDeck()}
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  data-testid="deck-import-button"
+                  className="rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canImportActiveDeck}
+                  title={importDisabledReason}
+                  onClick={() => setShowImportDialog(true)}
+                >
+                  Import
+                </button>
+                <button
+                  type="button"
+                  data-testid="deck-register-button"
+                  className="rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canRegisterActiveDeck}
+                  onClick={() => void registerActiveDeck()}
+                >
+                  Register
+                </button>
+                <button
+                  type="button"
+                  data-testid="deck-unregister-button"
+                  className="rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canUnregisterActiveDeck}
+                  onClick={() => void unregisterActiveDeck()}
+                >
+                  Unregister
+                </button>
+                <button
+                  type="button"
+                  data-testid="deck-delete-button"
+                  className="rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canDeleteActiveDeck}
+                  title={deleteActiveDeckDisabledReason}
+                  onClick={() => void deleteActiveDeck()}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+            <div data-testid="deckbuilder-header-view-row">
+              <DeckBuildDetailsToggle
+                expandedDeckMode={expandedDeckMode}
+                onChange={setExpandedDeckMode}
+              />
+            </div>
           </div>
         </div>
 
         {error ? <p className="shrink-0 text-sm text-destructive">{error}</p> : null}
 
         {expandedDeckMode && activeDeck ? (
-          <DeckAnalyticsView deck={activeDeck} />
+          <div
+            className={`min-h-0 flex-1 overflow-y-auto ${DECKBUILDER_WORK_AREA_HEIGHT_CLASS}`}
+            data-testid="deckbuilder-details-area"
+          >
+            <DeckAnalyticsView deck={activeDeck} poolImageByCardId={poolImageByCardId} />
+          </div>
         ) : (
           <div
-            className="grid min-h-0 grid-cols-1 gap-3 xl:h-[calc(100dvh-9rem)] xl:grid-cols-[minmax(0,1fr)_360px] xl:overflow-hidden"
+            className={`grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,24vw)] lg:overflow-hidden ${DECKBUILDER_WORK_AREA_HEIGHT_CLASS}`}
             data-testid="deckbuilder-work-area"
           >
             <div
@@ -766,6 +1177,7 @@ export function DeckBuilderPage() {
                       return (
                         <PoolCardBadge
                           allocated={data?.allocated ?? 0}
+                          allocatedInActiveDeck={data?.allocatedInActiveDeck ?? 0}
                           restricted={showRestrictedCards ? data?.restricted ?? 0 : 0}
                           restrictionReason={data?.reason}
                         />
@@ -789,6 +1201,7 @@ export function DeckBuilderPage() {
                       return (
                         <PoolCardBadge
                           allocated={data?.allocated ?? 0}
+                          allocatedInActiveDeck={data?.allocatedInActiveDeck ?? 0}
                           restricted={showRestrictedCards ? data?.restricted ?? 0 : 0}
                           restrictionReason={data?.reason}
                         />
@@ -812,6 +1225,7 @@ export function DeckBuilderPage() {
                       return (
                         <PoolCardBadge
                           allocated={data?.allocated ?? 0}
+                          allocatedInActiveDeck={data?.allocatedInActiveDeck ?? 0}
                           restricted={showRestrictedCards ? data?.restricted ?? 0 : 0}
                           restrictionReason={data?.reason}
                         />
@@ -835,6 +1249,7 @@ export function DeckBuilderPage() {
                       return (
                         <PoolCardBadge
                           allocated={data?.allocated ?? 0}
+                          allocatedInActiveDeck={data?.allocatedInActiveDeck ?? 0}
                           restricted={showRestrictedCards ? data?.restricted ?? 0 : 0}
                           restrictionReason={data?.reason}
                         />
@@ -853,7 +1268,9 @@ export function DeckBuilderPage() {
                 poolImageByCardId={poolImageByCardId}
                 saveBlockedCardIdsByDeckId={saveBlockedCardIdsByDeckId}
                 onDeckNameChange={(deckId, name) =>
-                  setDecks((prev) => prev.map((deck) => (deck.id === deckId ? { ...deck, name } : deck)))
+                  setDecks((prev) =>
+                    prev.map((deck) => (deck.id === deckId && isDeckRenamable() ? { ...deck, name } : deck))
+                  )
                 }
                 onCardClick={removeCardFromDeck}
                 onCardContextMenu={handleDeckCardContextMenu}
@@ -861,6 +1278,9 @@ export function DeckBuilderPage() {
                   setDecks((prev) =>
                     prev.map((deck) => {
                       if (deck.id !== deckId) {
+                        return deck;
+                      }
+                      if (!isDeckEditable(deck)) {
                         return deck;
                       }
                       const nonBasicCards = deck.cards.filter(
@@ -894,11 +1314,23 @@ export function DeckBuilderPage() {
                     }),
                   );
                 }}
+                disabled={!activeDeckEditable}
+                nameDisabled={!isDeckRenamable()}
               />
             </div>
           </div>
         )}
       </div>
+      <ImportDeckDialog
+        open={showImportDialog}
+        seasonId={activeSeasonId}
+        excludeEventId={eventId}
+        getEntryIssueSummary={getImportIssueSummary}
+        onClose={() => setShowImportDialog(false)}
+        onImport={(entries) => {
+          void importIntoActiveDeck(entries);
+        }}
+      />
       {contextMenu ? (
         <DeckBuilderContextMenu
           cardName={contextMenuCardName}

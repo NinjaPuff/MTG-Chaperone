@@ -20,7 +20,7 @@ describe('matchService', () => {
       player2Id: 'u2',
       roundId: 'r1',
       reportedById: null,
-      round: { status: 'in_progress', event: { season: {} } },
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'swiss' } } },
       gameResults: [],
     });
 
@@ -40,7 +40,7 @@ describe('matchService', () => {
       player2Id: 'u2',
       roundId: 'r1',
       reportedById: 'u1',
-      round: { status: 'in_progress', event: { season: {} } },
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'swiss' } } },
       gameResults: [],
     });
     prismaMock.round.findUnique.mockResolvedValue({
@@ -65,6 +65,14 @@ describe('matchService', () => {
       where: { id: 'r1' },
       data: { status: 'completed' },
     });
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
+      where: {
+        roundId: 'r1',
+        userId: { in: ['u1', 'u2'] },
+        status: 'submitted',
+      },
+      data: { status: 'locked' },
+    });
   });
 
   it('blocks reporting when round has not started', async () => {
@@ -75,7 +83,7 @@ describe('matchService', () => {
       player2Id: 'u2',
       roundId: 'r1',
       reportedById: null,
-      round: { status: 'not_started', event: { season: {} } },
+      round: { status: 'not_started', event: { season: {}, config: { format: 'swiss' } } },
       gameResults: [],
     });
 
@@ -84,5 +92,48 @@ describe('matchService', () => {
       message: 'Round must be in progress to report matches',
     });
     expect(prismaMock.match.update).not.toHaveBeenCalled();
+  });
+
+  it('locks submitted decks after reporting a swiss match', async () => {
+    prismaMock.match.findUnique.mockResolvedValue({
+      id: 'm1',
+      status: 'pending',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      roundId: 'r1',
+      reportedById: null,
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'swiss' } } },
+      gameResults: [],
+    });
+    prismaMock.match.update.mockResolvedValue({ id: 'm1', status: 'reported', gameResults: [] });
+
+    await reportMatch('m1', 'u1', [{ winnerId: 'u1', isDraw: false }]);
+
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
+      where: {
+        roundId: 'r1',
+        userId: { in: ['u1', 'u2'] },
+        status: 'submitted',
+      },
+      data: { status: 'locked' },
+    });
+  });
+
+  it('does not lock decklists for round robin matches', async () => {
+    prismaMock.match.findUnique.mockResolvedValue({
+      id: 'm1',
+      status: 'pending',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      roundId: 'r1',
+      reportedById: null,
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'round_robin' } } },
+      gameResults: [],
+    });
+    prismaMock.match.update.mockResolvedValue({ id: 'm1', status: 'reported', gameResults: [] });
+
+    await reportMatch('m1', 'u1', [{ winnerId: 'u1', isDraw: false }]);
+
+    expect(prismaMock.decklist.updateMany).not.toHaveBeenCalled();
   });
 });

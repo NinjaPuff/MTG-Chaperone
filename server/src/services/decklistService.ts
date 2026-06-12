@@ -1,4 +1,4 @@
-import type { DeckZone } from '@prisma/client';
+import type { DeckZone, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { canViewDecklist, isPublicDecklistStatus } from '../lib/visibilityRules.js';
@@ -796,6 +796,7 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
     roundId: round.id,
     roundNumber: round.roundNumber,
     decklists,
+    registeredCount: decklists.filter((decklist) => decklist.status === 'submitted' || decklist.status === 'locked').length,
     eventConfig: event.config,
     basicLandCardIds: [...basicLandCardIds],
     basicLands: [...basicLandCatalog.values()],
@@ -819,7 +820,23 @@ export async function createDecklist(input: {
   const { event, round } = await getEventRoundContext(input.eventId, input.roundId);
   await getPoolCardsForUserSeason(input.userId, event.season.id);
 
-  const orderIndex = Math.max(0, input.orderIndex ?? 0);
+  let orderIndex = Math.max(0, input.orderIndex ?? 0);
+  if (typeof input.orderIndex !== 'number') {
+    const highestOrder = await prisma.decklist.findFirst({
+      where: {
+        userId: input.userId,
+        eventId: input.eventId,
+        roundId: input.roundId,
+      },
+      orderBy: {
+        orderIndex: 'desc',
+      },
+      select: {
+        orderIndex: true,
+      },
+    });
+    orderIndex = (highestOrder?.orderIndex ?? -1) + 1;
+  }
   const exists = await prisma.decklist.findFirst({
     where: {
       userId: input.userId,
@@ -934,11 +951,34 @@ export async function updateDecklist(
   if (!isAdmin && decklist.userId !== userId) {
     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to update this decklist');
   }
-  if (decklist.status === 'locked' || decklist.status === 'submitted' || decklist.event.config?.deckLockingMode === 'admin_locked') {
+  if (decklist.event.config?.deckLockingMode === 'admin_locked') {
     throw new AppError(409, 'INVALID_EVENT_STATE', 'Decklist is locked and cannot be edited');
   }
 
+  const isRoundRobin = decklist.event.config?.format === 'round_robin';
+  const contentLocked =
+    decklist.status === 'locked' || (decklist.status === 'submitted' && !isRoundRobin);
   const normalizedEntries = input.entries ? normalizeEntryInputs(input.entries) : null;
+
+  if (contentLocked) {
+    if (normalizedEntries !== null) {
+      throw new AppError(409, 'INVALID_EVENT_STATE', 'Decklist contents cannot be edited');
+    }
+    if (typeof input.name !== 'string') {
+      throw new AppError(400, 'VALIDATION_ERROR', 'At least one field must be provided');
+    }
+    return prisma.decklist.update({
+      where: { id: decklistId },
+      data: { name: input.name.trim() || null },
+      include: {
+        entries: {
+          include: {
+            cachedCard: true,
+          },
+        },
+      },
+    });
+  }
   const effectiveEntries =
     normalizedEntries ??
     decklist.entries.map((entry) => ({
@@ -1197,6 +1237,8 @@ export async function submitDecklist(decklistId: string, userId: string, isAdmin
     select: {
       id: true,
       userId: true,
+      eventId: true,
+      roundId: true,
       status: true,
       event: {
         include: {
@@ -1217,6 +1259,27 @@ export async function submitDecklist(decklistId: string, userId: string, isAdmin
   if (decklist.event.config?.deckLockingMode === 'admin_locked') {
     throw new AppError(409, 'INVALID_EVENT_STATE', 'Event deck submissions are admin locked');
   }
+  if (decklist.status === 'submitted') {
+    return decklist;
+  }
+
+  const deckCount = Math.max(1, decklist.event.config?.deckCount ?? 1);
+  const registeredDeckCount = await prisma.decklist.count({
+    where: {
+      userId: decklist.userId,
+      eventId: decklist.eventId,
+      roundId: decklist.roundId,
+      status: {
+        in: ['submitted', 'locked'],
+      },
+      id: {
+        not: decklist.id,
+      },
+    },
+  });
+  if (registeredDeckCount >= deckCount) {
+    throw new AppError(409, 'CONFLICT', `Already registered ${deckCount} deck(s) for this round. Unregister one first.`);
+  }
 
   const validation = await validateDecklist(decklistId, userId, true);
   if (!validation.isValid) {
@@ -1227,6 +1290,102 @@ export async function submitDecklist(decklistId: string, userId: string, isAdmin
     where: { id: decklistId },
     data: { status: 'submitted' },
   });
+}
+
+export async function unsubmitDecklist(decklistId: string, userId: string, isAdmin = false) {
+  const decklist = await prisma.decklist.findUnique({
+    where: { id: decklistId },
+    select: {
+      id: true,
+      userId: true,
+      eventId: true,
+      roundId: true,
+      status: true,
+      event: {
+        include: {
+          config: true,
+        },
+      },
+    },
+  });
+  if (!decklist) {
+    throw new AppError(404, 'NOT_FOUND', 'Decklist not found');
+  }
+  if (!isAdmin && decklist.userId !== userId) {
+    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to unsubmit this decklist');
+  }
+  if (decklist.status !== 'submitted') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Only submitted decklists can be unsubmitted');
+  }
+
+  const isRoundRobin = decklist.event.config?.format === 'round_robin';
+  if (!isRoundRobin) {
+    const playedMatch = await prisma.match.findFirst({
+      where: {
+        roundId: decklist.roundId,
+        status: {
+          not: 'pending',
+        },
+        OR: [{ player1Id: decklist.userId }, { player2Id: decklist.userId }],
+      },
+      select: { id: true },
+    });
+    if (playedMatch) {
+      throw new AppError(409, 'INVALID_EVENT_STATE', 'Cannot unsubmit after a match has been played in this round');
+    }
+  }
+
+  return prisma.decklist.update({
+    where: { id: decklist.id },
+    data: { status: 'draft' },
+  });
+}
+
+export async function deleteDecklist(decklistId: string, userId: string, isAdmin = false) {
+  const decklist = await prisma.decklist.findUnique({
+    where: { id: decklistId },
+    select: {
+      id: true,
+      userId: true,
+      orderIndex: true,
+      status: true,
+      event: {
+        include: {
+          config: true,
+        },
+      },
+    },
+  });
+  if (!decklist) {
+    throw new AppError(404, 'NOT_FOUND', 'Decklist not found');
+  }
+  if (!isAdmin && decklist.userId !== userId) {
+    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to delete this decklist');
+  }
+  if (decklist.status !== 'draft') {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Only draft decklists can be deleted');
+  }
+  const requiredDeckCount = Math.max(1, decklist.event.config?.deckCount ?? 1);
+  if (decklist.orderIndex < requiredDeckCount) {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Cannot delete required deck slots');
+  }
+
+  return prisma.decklist.delete({
+    where: { id: decklist.id },
+  });
+}
+
+export async function unlockDecklistsForRound(client: Prisma.TransactionClient, roundId: string) {
+  const result = await client.decklist.updateMany({
+    where: {
+      roundId,
+      status: 'locked',
+    },
+    data: {
+      status: 'draft',
+    },
+  });
+  return result.count;
 }
 
 export function createDecklistService() {
@@ -1240,5 +1399,8 @@ export function createDecklistService() {
     updateDecklist,
     validateDecklist,
     submitDecklist,
+    unsubmitDecklist,
+    deleteDecklist,
+    unlockDecklistsForRound,
   };
 }

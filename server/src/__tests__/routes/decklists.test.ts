@@ -6,9 +6,11 @@ process.env.NODE_ENV = 'test';
 
 const mocks = vi.hoisted(() => ({
   createDecklist: vi.fn(),
+  deleteDecklist: vi.fn(),
   getDecklistById: vi.fn(),
   listDecklistsForSeason: vi.fn(),
   submitDecklist: vi.fn(),
+  unsubmitDecklist: vi.fn(),
   updateDecklist: vi.fn(),
   validateDecklist: vi.fn(),
 }));
@@ -42,9 +44,11 @@ vi.mock('../../middleware/auth.js', async () => {
 
 vi.mock('../../services/decklistService.js', () => ({
   createDecklist: mocks.createDecklist,
+  deleteDecklist: mocks.deleteDecklist,
   getDecklistById: mocks.getDecklistById,
   listDecklistsForSeason: mocks.listDecklistsForSeason,
   submitDecklist: mocks.submitDecklist,
+  unsubmitDecklist: mocks.unsubmitDecklist,
   updateDecklist: mocks.updateDecklist,
   validateDecklist: mocks.validateDecklist,
 }));
@@ -55,9 +59,11 @@ describe('decklists routes', () => {
   beforeEach(() => {
     resetPrismaMock();
     mocks.createDecklist.mockReset();
+    mocks.deleteDecklist.mockReset();
     mocks.getDecklistById.mockReset();
     mocks.listDecklistsForSeason.mockReset();
     mocks.submitDecklist.mockReset();
+    mocks.unsubmitDecklist.mockReset();
     mocks.updateDecklist.mockReset();
     mocks.validateDecklist.mockReset();
   });
@@ -145,5 +151,25 @@ describe('decklists routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.status).toBe('submitted');
     expect(mocks.submitDecklist).toHaveBeenCalledWith('deck-1', 'user-1', false);
+  });
+
+  it('unsubmits a decklist', async () => {
+    mocks.unsubmitDecklist.mockResolvedValue({ id: 'deck-1', status: 'draft' });
+
+    const response = await request(app).post('/api/decklists/deck-1/unsubmit').set('x-test-user', 'user-1');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe('draft');
+    expect(mocks.unsubmitDecklist).toHaveBeenCalledWith('deck-1', 'user-1', false);
+  });
+
+  it('deletes a draft decklist', async () => {
+    mocks.deleteDecklist.mockResolvedValue({ id: 'deck-1' });
+
+    const response = await request(app).delete('/api/decklists/deck-1').set('x-test-user', 'user-1');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.id).toBe('deck-1');
+    expect(mocks.deleteDecklist).toHaveBeenCalledWith('deck-1', 'user-1', false);
   });
 });

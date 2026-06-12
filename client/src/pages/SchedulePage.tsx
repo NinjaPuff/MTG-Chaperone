@@ -6,7 +6,9 @@ import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
 import { useAuth } from '@/context/AuthContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { computeEventRecords } from '@/lib/eventRecords';
+import { confirmDisputeMatch } from '@/lib/matchDisputeConfirm';
 import { primaryName } from '@/lib/userDisplay';
 import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
 
@@ -54,6 +56,7 @@ function matchResultRecord(match: Match) {
 
 export function SchedulePage() {
   const { user } = useAuth();
+  const { confirm } = useConfirm();
   const isAdmin = user?.role === 'admin';
   const { league, activeSeason, activeSeasonId } = useCurrentLeague();
   const { poolSetsByUserId, isLoading: poolSetsLoading } = useSeasonPoolSets(league?.slug, activeSeason?.number);
@@ -205,6 +208,9 @@ export function SchedulePage() {
   };
 
   const confirmOrDispute = async (matchId: string, action: 'confirm' | 'dispute') => {
+    if (action === 'dispute' && !(await confirmDisputeMatch(confirm))) {
+      return;
+    }
     try {
       await authApiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
       if (selectedEventId) {

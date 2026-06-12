@@ -25,6 +25,12 @@ vi.mock('@/hooks/useCardImageWidth', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useCurrentLeague', () => ({
+  useCurrentLeague: () => ({
+    activeSeasonId: 'season-1',
+  }),
+}));
+
 import { DeckBuilderPage } from '@/pages/DeckBuilderPage';
 
 function renderPage() {
@@ -71,9 +77,17 @@ function configureApi(options?: {
     };
   }>;
   poolQuantity?: number;
+  deckStatus?: 'draft' | 'submitted' | 'locked';
+  eventFormat?: 'swiss' | 'seeded_swiss' | 'round_robin';
+  deckCount?: number;
+  registeredCount?: number;
 }) {
   const deckEntries = options?.deckEntries ?? [];
   const poolQuantity = options?.poolQuantity ?? 2;
+  const deckStatus = options?.deckStatus ?? 'draft';
+  const eventFormat = options?.eventFormat ?? 'swiss';
+  const deckCount = options?.deckCount ?? 1;
+  const registeredCount = options?.registeredCount ?? (deckStatus === 'draft' ? 0 : 1);
 
   mocks.authApiRequest.mockImplementation(async (path: string) => {
     if (path === '/api/events/e1/my-decklists') {
@@ -87,12 +101,14 @@ function configureApi(options?: {
               id: 'deck-1',
               orderIndex: 0,
               name: 'Deck 1',
-              status: 'draft',
+              status: deckStatus,
               entries: deckEntries,
             },
           ],
+          registeredCount,
           eventConfig: {
-            deckCount: 1,
+            format: eventFormat,
+            deckCount,
             minDeckSize: 40,
             sideboardRule: 'entire_pool',
             deckLockingMode: 'free_modification',
@@ -223,5 +239,23 @@ describe('DeckBuilderPage context menu', () => {
     const sideboardScroll = screen.getByTestId('deck-sidebar-sideboard-scroll');
     expect(within(sideboardScroll).getByRole('button', { name: /1x Lightning Bolt/i })).toBeInTheDocument();
     expect(within(mainScroll).queryByRole('button', { name: /Lightning Bolt/i })).not.toBeInTheDocument();
+  });
+
+  it('keeps submitted round robin decks editable', async () => {
+    configureApi({
+      deckStatus: 'submitted',
+      eventFormat: 'round_robin',
+      deckCount: 1,
+      registeredCount: 1,
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Lightning Bolt')).toBeInTheDocument();
+    });
+
+    fireEvent.contextMenu(screen.getByText('Lightning Bolt'));
+    expect(screen.getByRole('button', { name: 'Add to main deck' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to sideboard' })).toBeEnabled();
   });
 });
