@@ -47,7 +47,7 @@ async function getMatch(matchId: string) {
       round: {
         include: {
           event: {
-            include: { season: true },
+            include: { season: true, config: true },
           },
         },
       },
@@ -58,6 +58,24 @@ async function getMatch(matchId: string) {
     throw new AppError(404, 'NOT_FOUND', 'Match not found');
   }
   return match;
+}
+
+async function lockDecklistsForMatchParticipants(
+  client: Pick<Prisma.TransactionClient, 'decklist'> | Pick<typeof prisma, 'decklist'>,
+  roundId: string,
+  playerIds: string[],
+) {
+  if (playerIds.length === 0) {
+    return;
+  }
+  await client.decklist.updateMany({
+    where: {
+      roundId,
+      userId: { in: playerIds },
+      status: 'submitted',
+    },
+    data: { status: 'locked' },
+  });
 }
 
 function ensureParticipant(match: Awaited<ReturnType<typeof getMatch>>, userId: string) {
@@ -162,7 +180,7 @@ export async function reportMatch(matchId: string, reporterId: string, gameResul
 
   await writeGameResults(matchId, gameResults);
 
-  return prisma.match.update({
+  const updated = await prisma.match.update({
     where: { id: matchId },
     data: {
       status: 'reported',
@@ -170,6 +188,14 @@ export async function reportMatch(matchId: string, reporterId: string, gameResul
     },
     include: { gameResults: true },
   });
+  if (match.round.event.config?.format !== 'round_robin') {
+    await lockDecklistsForMatchParticipants(
+      prisma,
+      match.roundId,
+      [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
+    );
+  }
+  return updated;
 }
 
 export async function confirmMatch(matchId: string, confirmerId: string) {
@@ -186,6 +212,14 @@ export async function confirmMatch(matchId: string, confirmerId: string) {
       },
       include: { gameResults: true },
     });
+
+    if (match.round.event.config?.format !== 'round_robin') {
+      await lockDecklistsForMatchParticipants(
+        tx,
+        match.roundId,
+        [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
+      );
+    }
 
     await tryAutoCompleteRound(tx, match.roundId);
 
@@ -221,6 +255,14 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
       },
       include: { gameResults: true },
     });
+
+    if (match.round.event.config?.format !== 'round_robin') {
+      await lockDecklistsForMatchParticipants(
+        tx,
+        match.roundId,
+        [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
+      );
+    }
 
     await tryAutoCompleteRound(tx, match.roundId);
 

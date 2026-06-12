@@ -6,6 +6,8 @@ describe('DeckBuildDetailsToggle', () => {
   it('marks Build as active when not in expanded mode', () => {
     render(<DeckBuildDetailsToggle expandedDeckMode={false} onChange={vi.fn()} />);
 
+    expect(screen.getByTestId('deck-view-toggle')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Deck view' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Build' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Details' })).toHaveAttribute('aria-pressed', 'false');
   });

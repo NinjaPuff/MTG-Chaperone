@@ -3,10 +3,12 @@ import { z } from 'zod';
 import { requireAuth, getAuthUser, optionalAuth } from '../middleware/auth.js';
 import {
   createDecklist,
+  deleteDecklist,
   getDecklistById,
   listDecklistsForSeason,
   listVisibleDecklistsForSeason,
   submitDecklist,
+  unsubmitDecklist,
   updateDecklist,
   validateDecklist,
 } from '../services/decklistService.js';
@@ -93,6 +95,26 @@ router.post('/:decklistId/submit', requireAuth, async (req, res, next) => {
     const user = getAuthUser(req);
     const submitted = await submitDecklist(req.params.decklistId, user.id, user.role === 'admin');
     res.json({ data: submitted });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:decklistId/unsubmit', requireAuth, async (req, res, next) => {
+  try {
+    const user = getAuthUser(req);
+    const unsubmitted = await unsubmitDecklist(req.params.decklistId, user.id, user.role === 'admin');
+    res.json({ data: unsubmitted });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete('/:decklistId', requireAuth, async (req, res, next) => {
+  try {
+    const user = getAuthUser(req);
+    const deleted = await deleteDecklist(req.params.decklistId, user.id, user.role === 'admin');
+    res.json({ data: deleted });
   } catch (error) {
     next(error);
   }

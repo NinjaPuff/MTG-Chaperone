@@ -71,10 +71,13 @@ describe('roundService', () => {
   it('completes round when all matches are reported or better and auto-confirms reported matches', async () => {
     prismaMock.round.findUnique.mockResolvedValue({
       id: 'r1',
+      eventId: 'e1',
       status: 'in_progress',
       matches: [{ status: 'reported' }, { status: 'confirmed' }],
+      event: { config: { format: 'swiss' } },
     });
     prismaMock.match.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.decklist.updateMany.mockResolvedValue({ count: 2 });
     prismaMock.round.update.mockResolvedValue({ id: 'r1', status: 'completed' });
 
     const result = await completeRound('r1');
@@ -88,6 +91,29 @@ describe('roundService', () => {
       where: { id: 'r1' },
       data: { status: 'completed' },
     });
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
+      where: {
+        roundId: 'r1',
+        status: { in: ['draft', 'submitted'] },
+      },
+      data: { status: 'locked' },
+    });
+  });
+
+  it('does not lock decklists when completing a round robin round', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      eventId: 'e1',
+      status: 'in_progress',
+      matches: [{ status: 'reported' }, { status: 'confirmed' }],
+      event: { config: { format: 'round_robin' } },
+    });
+    prismaMock.match.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.round.update.mockResolvedValue({ id: 'r1', status: 'completed' });
+
+    await completeRound('r1');
+
+    expect(prismaMock.decklist.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects manual round creation for round robin events', async () => {

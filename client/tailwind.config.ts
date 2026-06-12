@@ -4,6 +4,16 @@ const config: Config = {
   darkMode: 'class',
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
+    container: {
+      center: true,
+      screens: {
+        sm: '672px',
+        md: '832px',
+        lg: '1152px',
+        xl: '1440px',
+        '2xl': '1728px',
+      },
+    },
     extend: {
       colors: {
         border: 'hsl(var(--border))',

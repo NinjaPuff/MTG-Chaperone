@@ -8,10 +8,13 @@ import type { BuilderDeck } from './types';
 
 type DeckAnalyticsViewProps = {
   deck: BuilderDeck;
+  poolImageByCardId?: Map<string, string>;
 };
 
-function toPoolCards(deck: BuilderDeck): PoolCard[] {
-  return deck.cards.map((card) => ({
+function toPoolCards(deck: BuilderDeck, poolImageByCardId?: Map<string, string>): PoolCard[] {
+  return deck.cards.map((card) => {
+    const imageUrl = poolImageByCardId?.get(card.cachedCardId) ?? null;
+    return {
     scryfallId: card.cachedCardId,
     name: card.name,
     layout: card.layout,
@@ -19,7 +22,7 @@ function toPoolCards(deck: BuilderDeck): PoolCard[] {
     typeLine: card.typeLine,
     rarity: 'unknown',
     setCode: 'UNK',
-    imageUris: null,
+    imageUris: imageUrl ? { normal: imageUrl, border_crop: imageUrl } : null,
     cmc: card.cmc,
     colors: card.colorIdentity,
     colorIdentity: card.colorIdentity,
@@ -28,13 +31,14 @@ function toPoolCards(deck: BuilderDeck): PoolCard[] {
     phaseQuantities: {
       [card.zone === 'main' ? 'Main Deck' : 'Sideboard']: card.quantity,
     },
-  }));
+  };
+  });
 }
 
-export function DeckAnalyticsView({ deck }: DeckAnalyticsViewProps) {
+export function DeckAnalyticsView({ deck, poolImageByCardId }: DeckAnalyticsViewProps) {
   const [viewMode, setViewMode] = useState<'curve' | 'stacks'>('curve');
   const { cardImageWidth } = useCardImageWidth();
-  const cards = useMemo(() => toPoolCards(deck), [deck]);
+  const cards = useMemo(() => toPoolCards(deck, poolImageByCardId), [deck, poolImageByCardId]);
   const mainCards = cards.filter((card) => card.phaseLabel === 'Main Deck');
 
   const mainDeckCount = mainCards.reduce((sum, card) => sum + card.quantity, 0);

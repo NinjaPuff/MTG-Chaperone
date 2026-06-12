@@ -1,5 +1,5 @@
 import { useMemo, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil } from 'lucide-react';
 import { BasicLandAdderPopup } from './BasicLandAdderPopup';
 import { DeckCardList, type DeckCardListItem } from './DeckCardList';
 import { MiniManaCurve } from './MiniManaCurve';
@@ -11,6 +11,7 @@ type DeckSidebarProps = {
   activeDeckId: string;
   minDeckSize: number;
   disabled?: boolean;
+  nameDisabled?: boolean;
   onDeckNameChange: (deckId: string, name: string) => void;
   onCardClick: (card: DeckBuilderCard, deckId: string) => void;
   onCardContextMenu?: (event: MouseEvent, card: DeckBuilderCard, deckId: string) => void;
@@ -58,6 +59,7 @@ export function DeckSidebar({
   activeDeckId,
   minDeckSize,
   disabled = false,
+  nameDisabled,
   onDeckNameChange,
   onCardClick,
   onCardContextMenu,
@@ -102,6 +104,13 @@ export function DeckSidebar({
     );
   }
 
+  const renameDisabled = nameDisabled ?? disabled;
+
+  const startEditingName = () => {
+    setDraftName(activeDeck.name);
+    setIsEditingName(true);
+  };
+
   const saveDeckName = () => {
     setIsEditingName(false);
     if (draftName.trim() && draftName.trim() !== activeDeck.name) {
@@ -123,29 +132,43 @@ export function DeckSidebar({
     <aside className="flex h-full min-h-0 flex-col rounded-lg border border-primary/30 bg-muted/40 p-2 ring-1 ring-primary/10">
       <div className="mb-1.5 shrink-0 border-b border-border/70 pb-1.5">
         <div className="flex items-center justify-between gap-2">
-          {isEditingName ? (
-            <input
-              value={draftName}
-              onChange={(event) => setDraftName(event.target.value)}
-              onBlur={saveDeckName}
-              onKeyDown={onNameKeyDown}
-              className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
-              autoFocus
-              disabled={disabled}
-            />
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setDraftName(activeDeck.name);
-                setIsEditingName(true);
-              }}
-              disabled={disabled}
-              className="truncate text-left text-sm font-semibold hover:underline disabled:no-underline"
-            >
-              {activeDeck.name}
-            </button>
-          )}
+          <div className="flex min-w-0 flex-1 items-center gap-1">
+            {isEditingName ? (
+              <input
+                value={draftName}
+                onChange={(event) => setDraftName(event.target.value)}
+                onBlur={saveDeckName}
+                onKeyDown={onNameKeyDown}
+                className="w-full rounded border border-border bg-background px-2 py-1 text-sm"
+                autoFocus
+                disabled={renameDisabled}
+              />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={startEditingName}
+                  disabled={renameDisabled}
+                  title={renameDisabled ? undefined : 'Click to rename deck'}
+                  className="min-w-0 flex-1 truncate text-left text-sm font-semibold hover:underline disabled:cursor-default disabled:no-underline disabled:opacity-100"
+                >
+                  {activeDeck.name}
+                </button>
+                {!renameDisabled ? (
+                  <button
+                    type="button"
+                    data-testid="deck-rename-button"
+                    aria-label={`Rename ${activeDeck.name}`}
+                    title="Rename deck"
+                    onClick={startEditingName}
+                    className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  >
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </>
+            )}
+          </div>
           <span className="shrink-0 rounded bg-primary/15 px-2 py-1 text-xs font-medium text-primary">
             {mainCount}/{minDeckSize}
           </span>

@@ -1,7 +1,14 @@
 import type { BuilderDeck } from './types';
 
-const ACTIVE_TAB_CLASS = 'border-primary bg-primary/10';
-const INACTIVE_TAB_CLASS = 'border-border bg-background';
+function formatDeckOptionLabel(deck: BuilderDeck) {
+  if (deck.status === 'locked') {
+    return `${deck.name} (Locked)`;
+  }
+  if (deck.status === 'submitted') {
+    return `${deck.name} (Registered)`;
+  }
+  return deck.name;
+}
 
 type DeckTabListProps = {
   decks: BuilderDeck[];
@@ -17,21 +24,19 @@ export function DeckTabList({
   disabled = false,
 }: DeckTabListProps) {
   return (
-    <div className="flex flex-wrap items-center gap-1" data-testid="deck-tab-list">
+    <select
+      data-testid="deck-tab-list"
+      value={activeDeckId}
+      disabled={disabled || decks.length === 0}
+      onChange={(event) => onActiveDeckChange(event.target.value)}
+      className="h-7 w-44 shrink-0 truncate rounded border border-border bg-background px-2 text-xs"
+      aria-label="Select deck"
+    >
       {decks.map((deck) => (
-        <button
-          key={deck.id}
-          type="button"
-          data-testid={`deck-tab-${deck.id}`}
-          disabled={disabled}
-          className={`rounded border px-1.5 py-0.5 text-xs ${
-            deck.id === activeDeckId ? ACTIVE_TAB_CLASS : INACTIVE_TAB_CLASS
-          }`}
-          onClick={() => onActiveDeckChange(deck.id)}
-        >
-          {deck.name}
-        </button>
+        <option key={deck.id} value={deck.id} data-testid={`deck-tab-${deck.id}`}>
+          {formatDeckOptionLabel(deck)}
+        </option>
       ))}
-    </div>
+    </select>
   );
 }

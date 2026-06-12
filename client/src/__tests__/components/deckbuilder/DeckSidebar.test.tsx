@@ -174,6 +174,37 @@ describe('DeckSidebar', () => {
     expect(screen.queryByText('Always visible drop zone.')).not.toBeInTheDocument();
   });
 
+  it('shows_a_pencil_button_when_renaming_is_enabled', () => {
+    renderWithAppProviders(<DeckSidebar {...defaultSidebarProps} />);
+
+    expect(screen.getByTestId('deck-rename-button')).toBeInTheDocument();
+  });
+
+  it('hides_the_pencil_button_when_renaming_is_disabled', () => {
+    renderWithAppProviders(<DeckSidebar {...defaultSidebarProps} disabled nameDisabled />);
+
+    expect(screen.queryByTestId('deck-rename-button')).not.toBeInTheDocument();
+  });
+
+  it('allows_renaming_when_content_is_disabled_but_name_is_enabled', () => {
+    const onDeckNameChange = vi.fn();
+    renderWithAppProviders(
+      <DeckSidebar
+        {...defaultSidebarProps}
+        disabled
+        nameDisabled={false}
+        onDeckNameChange={onDeckNameChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('deck-rename-button'));
+    const input = screen.getByDisplayValue('Deck 1');
+    fireEvent.change(input, { target: { value: 'Azorius Control' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onDeckNameChange).toHaveBeenCalledWith('deck-1', 'Azorius Control');
+  });
+
   it('should_forward_contextmenu_from_main_deck_row_to_onCardContextMenu', () => {
     const onCardContextMenu = vi.fn();
     const card = makeCard({ cachedCardId: 'card-1', name: 'Grizzly Bears' });

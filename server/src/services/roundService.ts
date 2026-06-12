@@ -189,7 +189,14 @@ export async function startRound(roundId: string) {
 export async function completeRound(roundId: string) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
-    include: { matches: true },
+    include: {
+      matches: true,
+      event: {
+        include: {
+          config: true,
+        },
+      },
+    },
   });
   if (!round) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
@@ -209,6 +216,20 @@ export async function completeRound(roundId: string) {
       where: { id: roundId },
       data: { status: 'completed' },
     });
+
+    if (round.event.config?.format !== 'round_robin') {
+      await tx.decklist.updateMany({
+        where: {
+          roundId,
+          status: {
+            in: ['draft', 'submitted'],
+          },
+        },
+        data: {
+          status: 'locked',
+        },
+      });
+    }
 
     await tryAutoCompleteEvent(tx, round.eventId);
 

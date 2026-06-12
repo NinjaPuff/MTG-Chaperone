@@ -76,6 +76,7 @@ export const prismaMock = {
   },
   match: {
     findUnique: vi.fn(),
+    findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -86,6 +87,28 @@ export const prismaMock = {
     create: vi.fn(),
     deleteMany: vi.fn(),
   },
+  decklist: {
+    findUnique: vi.fn(),
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    create: vi.fn(),
+    createMany: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    delete: vi.fn(),
+    count: vi.fn(),
+  },
+  decklistEntry: {
+    deleteMany: vi.fn(),
+    createMany: vi.fn(),
+  },
+  deckUniquenessRule: {
+    findUnique: vi.fn(),
+  },
+  cachedCard: {
+    findMany: vi.fn(),
+    findUnique: vi.fn(),
+  },
   inviteLink: {
     create: vi.fn(),
     findMany: vi.fn(),
@@ -93,6 +116,7 @@ export const prismaMock = {
     update: vi.fn(),
   },
   cardPool: {
+    findUnique: vi.fn(),
     deleteMany: vi.fn(),
   },
   boosterProduct: {
