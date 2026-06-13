@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, authApiRequest } from '@/lib/api';
+import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
-import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
+import { flattenEntries, sortCards } from '@/lib/cardPoolSort';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
 import { ListView } from '@/components/cardpool/ListView';
@@ -865,7 +866,7 @@ export function DeckBuilderPage() {
   const poolImageByCardId = useMemo(() => {
     const map = new Map<string, string>();
     for (const card of poolCards) {
-      const url = getImageUrl(card, 'normal') ?? getImageUrl(card, 'border_crop');
+      const url = getPrimaryCardImageUrl(card.imageUris, ['normal', 'border_crop', 'small']);
       if (url) {
         map.set(card.scryfallId, url);
       }

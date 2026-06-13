@@ -2,6 +2,7 @@ import { parseBulkDecklistText } from '@mtg-league/shared';
 import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest, authApiRequest, getStoredToken } from '@/lib/api';
+import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
@@ -20,7 +21,7 @@ import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import type { GroupMode, PoolCard, SearchResult, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
-import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
+import { flattenEntries, sortCards } from '@/lib/cardPoolSort';
 import {
   buildApplyStagedRemovalsConfirmMessage,
   countStagedAddCardTotal,
@@ -689,8 +690,7 @@ export function CardPoolDetailPage() {
       return;
     }
 
-    const stagedImageUri =
-      getImageUrl(adminContextMenu.card, 'small') ?? getImageUrl(adminContextMenu.card, 'normal');
+    const stagedImageUri = getPrimaryCardImageUrl(adminContextMenu.card.imageUris, ['small', 'normal', 'border_crop']);
 
     if (action !== 'add') {
       const existingRemovalIndex = stagedPoolChanges.findIndex(

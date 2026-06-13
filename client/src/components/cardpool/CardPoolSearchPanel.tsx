@@ -2,19 +2,23 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { CardNameWithFlavorSubtitle } from '@/components/cardpool/CardNameWithFlavorSubtitle';
 import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
 import { ManaCostSymbols } from '@/components/cardpool/ManaCostSymbols';
+import { PoolCardImage } from '@/components/cardpool/PoolCardImage';
 import type { SearchResult } from '@/components/cardpool/types';
 import { SetSymbol } from '@/components/SetSymbol';
 import type { ScryfallSetSummary } from '@/hooks/useScryfallSets';
 import { useSearchResultsKeyboard } from '@/hooks/useSearchResultsKeyboard';
+import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import { focusAndSelectInput } from '@/lib/focusSearchInputAfterStage';
 import { cn } from '@/lib/utils';
 
-function getSmallImage(imageUris: unknown): string | null {
-  if (!imageUris || typeof imageUris !== 'object') {
+function normalizeImageUris(imageUris: unknown): Record<string, string> | null {
+  if (!imageUris || typeof imageUris !== 'object' || Array.isArray(imageUris)) {
     return null;
   }
-  const maybeSmall = (imageUris as Record<string, unknown>).small;
-  return typeof maybeSmall === 'string' ? maybeSmall : null;
+  const entries = Object.entries(imageUris as Record<string, unknown>).filter(
+    (entry): entry is [string, string] => typeof entry[1] === 'string',
+  );
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 type CardPoolSearchPanelProps = {
@@ -129,7 +133,8 @@ export function CardPoolSearchPanel({
           className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-border p-2"
         >
           {searchResults.map((card, index) => {
-            const imageUri = getSmallImage(card.imageUris);
+            const imageUris = normalizeImageUris(card.imageUris);
+            const imageUrl = getPrimaryCardImageUrl(imageUris, ['small', 'normal', 'border_crop']);
             const isActive = activeIndex === index;
 
             return (
@@ -152,16 +157,17 @@ export function CardPoolSearchPanel({
                   scryfallId={card.scryfallId}
                   name={card.name}
                   layout={card.layout ?? null}
-                  imageUrl={imageUri}
+                  imageUrl={imageUrl}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                    {imageUri ? (
-                      <img
-                        src={imageUri}
-                        alt={card.name}
-                        className="h-10 w-8 rounded border border-border object-cover"
-                      />
-                    ) : null}
+                    <PoolCardImage
+                      name={card.name}
+                      scryfallId={card.scryfallId}
+                      imageUris={imageUris}
+                      preference={['small', 'normal', 'border_crop']}
+                      className="h-10 w-8 rounded border border-border object-cover"
+                      fallbackClassName="inline-flex h-10 w-8 items-center justify-center rounded border border-border bg-muted px-1 text-center text-[9px] text-muted-foreground"
+                    />
                     <div className="min-w-0">
                       <CardNameWithFlavorSubtitle
                         name={card.name}

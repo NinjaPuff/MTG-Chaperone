@@ -2,7 +2,9 @@ import type { MouseEvent, ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
-import { getImageUrl, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { PoolCardImage } from './PoolCardImage';
+import { groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import { stackBadgeTopPx } from '@/lib/stackBadgeLayout';
 
 type StacksViewProps = {
@@ -48,7 +50,7 @@ function StackColumn({
       </h4>
       <div className="relative" style={{ height: stackHeight }}>
         {cards.map((card, index) => {
-          const image = getImageUrl(card, 'border_crop') ?? getImageUrl(card, 'normal');
+          const image = getPrimaryCardImageUrl(card.imageUris, ['border_crop', 'normal', 'small']);
           return (
             <HoverTarget
               key={`${card.phaseLabel}-${card.scryfallId}`}
@@ -69,23 +71,15 @@ function StackColumn({
                 onClick={onCardClick ? () => onCardClick(card) : undefined}
                 onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
               >
-                {image ? (
-                  <img
-                    src={image}
-                    alt={card.name}
-                    loading="lazy"
-                    decoding="async"
-                    className="h-full w-full rounded-md border border-border object-cover object-top shadow-sm"
-                    style={{ height: cardHeight }}
-                  />
-                ) : (
-                  <div
-                    className="w-full rounded-md border border-border bg-muted p-2 text-center text-xs text-muted-foreground"
-                    style={{ height: cardHeight }}
-                  >
-                    {card.name}
-                  </div>
-                )}
+                <PoolCardImage
+                  name={card.name}
+                  scryfallId={card.scryfallId}
+                  imageUris={card.imageUris}
+                  preference={['border_crop', 'normal', 'small']}
+                  className="h-full w-full rounded-md border border-border object-cover object-top shadow-sm"
+                  fallbackClassName="w-full rounded-md border border-border bg-muted p-2 text-center text-xs text-muted-foreground"
+                  style={{ height: cardHeight }}
+                />
                 <div className="absolute inset-x-2 top-2 text-[11px] font-medium leading-tight text-transparent select-text">
                   {card.name}
                   {card.manaCost ? ` ${card.manaCost}` : ''}

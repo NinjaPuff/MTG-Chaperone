@@ -1,4 +1,5 @@
 import { HoverTarget } from '@/components/cardpool/CardPreviewContext';
+import { PoolCardImage } from '@/components/cardpool/PoolCardImage';
 import { StagedRowQuantityPrefix } from '@/components/cardpool/StagedRowQuantityPrefix';
 import { StagedRowRemoveButton } from '@/components/cardpool/StagedRowRemoveButton';
 
@@ -52,10 +53,12 @@ export function StagedChangeRow({
       <StagedRowQuantityPrefix mode="badge" value={badgeValue(action, quantity)} />
       {imageUri ? (
         <HoverTarget scryfallId={cachedCardId} name={name} layout={null} imageUrl={imageUri}>
-          <img
-            src={imageUri}
-            alt={name}
+          <PoolCardImage
+            name={name}
+            scryfallId={cachedCardId}
+            imageUris={{ normal: imageUri }}
             className="h-10 w-8 shrink-0 rounded border border-border object-cover"
+            fallbackClassName="inline-flex h-10 w-8 shrink-0 items-center justify-center rounded border border-border bg-muted px-1 text-center text-[9px] text-muted-foreground"
           />
         </HoverTarget>
       ) : null}

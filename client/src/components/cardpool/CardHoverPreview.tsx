@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { apiRequest } from '@/lib/api';
+import {
+  fetchCardImageUrisOnce,
+  getCachedCardImageUrl,
+  getFaceImageCandidates,
+  getPrimaryCardImageUrl,
+  setCachedCardImageUrl,
+} from '@/lib/cardImage';
 import { frontFaceName, isDoubleSidedLayout } from '@/lib/cardLayout';
 import { deviceHasHover, useCardPreview } from './CardPreviewContext';
 
@@ -17,28 +24,41 @@ type CardFacesResponse = {
 
 type CardResponse = {
   data: {
-    name: string;
     imageUris: Record<string, string> | null;
   };
 };
 
 const facesCache = new Map<string, CardFace[]>();
-const imageCache = new Map<string, string>();
 
-function getFaceImage(face: CardFace): string | null {
-  if (!face.imageUris) {
-    return null;
-  }
-  const url = face.imageUris.normal ?? face.imageUris.small ?? null;
-  return typeof url === 'string' ? url : null;
-}
+function PreviewFace({
+  face,
+  imageClassName,
+  fallbackClassName,
+}: {
+  face: CardFace;
+  imageClassName: string;
+  fallbackClassName: string;
+}) {
+  const candidates = useMemo(() => getFaceImageCandidates(face.imageUris), [face.imageUris]);
+  const [candidateIndex, setCandidateIndex] = useState(0);
 
-function getCardImage(imageUris: Record<string, string> | null | undefined): string | null {
-  if (!imageUris) {
-    return null;
+  useEffect(() => {
+    setCandidateIndex(0);
+  }, [face.name, candidates]);
+
+  const image = candidates[candidateIndex] ?? null;
+  if (!image) {
+    return <div className={fallbackClassName}>{face.name}</div>;
   }
-  const url = imageUris.normal ?? imageUris.small ?? null;
-  return typeof url === 'string' ? url : null;
+
+  return (
+    <img
+      src={image}
+      alt={face.name}
+      className={imageClassName}
+      onError={() => setCandidateIndex((prev) => prev + 1)}
+    />
+  );
 }
 
 function DesktopFlyout({
@@ -59,24 +79,14 @@ function DesktopFlyout({
       aria-hidden
     >
       <div className={`flex gap-2 ${loadingFaces ? 'animate-pulse' : ''}`}>
-        {displayFaces.map((face, index) => {
-          const image = getFaceImage(face);
-          return image ? (
-            <img
-              key={`${face.name}-${index}`}
-              src={image}
-              alt={face.name}
-              className="max-h-[80vh] w-auto max-w-[240px] rounded-md border border-border object-contain"
-            />
-          ) : (
-            <div
-              key={`${face.name}-${index}`}
-              className="flex h-[336px] w-[240px] items-center justify-center rounded-md border border-border bg-muted p-3 text-center text-xs text-muted-foreground"
-            >
-              {face.name}
-            </div>
-          );
-        })}
+        {displayFaces.map((face, index) => (
+          <PreviewFace
+            key={`${face.name}-${index}`}
+            face={face}
+            imageClassName="max-h-[80vh] w-auto max-w-[240px] rounded-md border border-border object-contain"
+            fallbackClassName="flex h-[336px] w-[240px] items-center justify-center rounded-md border border-border bg-muted p-3 text-center text-xs text-muted-foreground"
+          />
+        ))}
       </div>
     </div>
   );
@@ -132,24 +142,14 @@ function TouchPreviewModal({
           </button>
         </div>
         <div className={`flex flex-wrap justify-center gap-2 ${loadingFaces ? 'animate-pulse' : ''}`}>
-          {displayFaces.map((face, index) => {
-            const image = getFaceImage(face);
-            return image ? (
-              <img
-                key={`${face.name}-${index}`}
-                src={image}
-                alt={face.name}
-                className="max-h-[55vh] w-auto max-w-[240px] rounded-md border border-border object-contain"
-              />
-            ) : (
-              <div
-                key={`${face.name}-${index}`}
-                className="flex h-[336px] w-[240px] items-center justify-center rounded-md border border-border bg-muted p-3 text-center text-xs text-muted-foreground"
-              >
-                {face.name}
-              </div>
-            );
-          })}
+          {displayFaces.map((face, index) => (
+            <PreviewFace
+              key={`${face.name}-${index}`}
+              face={face}
+              imageClassName="max-h-[55vh] w-auto max-w-[240px] rounded-md border border-border object-contain"
+              fallbackClassName="flex h-[336px] w-[240px] items-center justify-center rounded-md border border-border bg-muted p-3 text-center text-xs text-muted-foreground"
+            />
+          ))}
         </div>
         {touchActions.length > 0 ? (
           <div className="flex flex-col gap-2">
@@ -236,11 +236,12 @@ export function CardHoverPreview() {
 
     if (preview.imageUrl) {
       setResolvedImageUrl(preview.imageUrl);
+      setCachedCardImageUrl(preview.scryfallId, preview.imageUrl);
       setLoadingImage(false);
       return;
     }
 
-    const cachedImage = imageCache.get(preview.scryfallId);
+    const cachedImage = getCachedCardImageUrl(preview.scryfallId);
     if (cachedImage) {
       setResolvedImageUrl(cachedImage);
       setLoadingImage(false);
@@ -251,14 +252,17 @@ export function CardHoverPreview() {
     setLoadingImage(true);
     setResolvedImageUrl(null);
 
-    void apiRequest<CardResponse>(`/api/cards/${preview.scryfallId}`)
-      .then((response) => {
+    void fetchCardImageUrisOnce(preview.scryfallId, async (scryfallId) => {
+      const response = await apiRequest<CardResponse>(`/api/cards/${scryfallId}`);
+      return response.data.imageUris;
+    })
+      .then((imageUris) => {
         if (cancelled) {
           return;
         }
-        const imageUrl = getCardImage(response.data.imageUris);
+        const imageUrl = getPrimaryCardImageUrl(imageUris, ['normal', 'small', 'border_crop']);
         if (imageUrl) {
-          imageCache.set(preview.scryfallId, imageUrl);
+          setCachedCardImageUrl(preview.scryfallId, imageUrl);
         }
         setResolvedImageUrl(imageUrl);
       })

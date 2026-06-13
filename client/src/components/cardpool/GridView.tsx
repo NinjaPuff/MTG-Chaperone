@@ -2,7 +2,9 @@ import type { MouseEvent, ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
-import { getImageUrl, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { PoolCardImage } from './PoolCardImage';
+import { groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 
 type GridViewProps = {
   cards: PoolCard[];
@@ -32,7 +34,7 @@ function CardCell({
   renderBadge?: (card: PoolCard) => ReactNode;
   getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
-  const image = getImageUrl(card, 'border_crop') ?? getImageUrl(card, 'normal');
+  const image = getPrimaryCardImageUrl(card.imageUris, ['border_crop', 'normal', 'small']);
 
   return (
     <HoverTarget
@@ -49,19 +51,14 @@ function CardCell({
         onClick={onCardClick ? () => onCardClick(card) : undefined}
         onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
       >
-        {image ? (
-          <img
-            src={image}
-            alt={card.name}
-            loading="lazy"
-            decoding="async"
-            className="aspect-[488/680] w-full rounded-md border border-border object-cover"
-          />
-        ) : (
-          <div className="aspect-[488/680] w-full rounded-md border border-border bg-muted p-2 text-center text-xs text-muted-foreground">
-            {card.name}
-          </div>
-        )}
+        <PoolCardImage
+          name={card.name}
+          scryfallId={card.scryfallId}
+          imageUris={card.imageUris}
+          preference={['border_crop', 'normal', 'small']}
+          className="aspect-[488/680] w-full rounded-md border border-border object-cover"
+          fallbackClassName="aspect-[488/680] w-full rounded-md border border-border bg-muted p-2 text-center text-xs text-muted-foreground"
+        />
         {card.quantity > 1 ? (
           <span className="absolute right-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white">
             x{card.quantity}

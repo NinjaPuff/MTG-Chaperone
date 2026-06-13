@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCardPreview } from '../../../components/cardpool/CardPreviewContext';
+import { clearCardImageCachesForTests } from '../../../lib/cardImage';
 import { mockMatchMedia, restoreMatchMedia } from '../../helpers/matchMedia';
 import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
@@ -48,6 +49,7 @@ function PreviewController({
 describe('CardHoverPreview', () => {
   beforeEach(() => {
     mockedApiRequest.mockReset();
+    clearCardImageCachesForTests();
   });
 
   afterEach(() => {
@@ -225,6 +227,47 @@ describe('CardHoverPreview', () => {
 
     await waitFor(() => {
       expect(mockedApiRequest).toHaveBeenCalledWith('/api/cards/transform-1/faces');
+    });
+  });
+
+  it('rotates face image candidates after image error', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValueOnce({
+      data: {
+        faces: [
+          {
+            name: 'Delver of Secrets',
+            imageUris: {
+              normal: 'https://example.com/front-normal.jpg',
+              small: 'https://example.com/front-small.jpg',
+            },
+          },
+        ],
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId="transform-rotate-1"
+        name="Delver of Secrets // Insectile Aberration"
+        layout="transform"
+        imageUrl="https://example.com/front-normal.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(mockedApiRequest).toHaveBeenCalledWith('/api/cards/transform-rotate-1/faces');
+    });
+
+    const faceImage = screen.getByAltText('Delver of Secrets');
+    expect(faceImage).toHaveAttribute('src', 'https://example.com/front-normal.jpg');
+
+    fireEvent.error(faceImage);
+
+    await waitFor(() => {
+      expect(screen.getByAltText('Delver of Secrets')).toHaveAttribute('src', 'https://example.com/front-small.jpg');
     });
   });
 

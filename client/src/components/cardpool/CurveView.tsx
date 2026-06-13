@@ -2,8 +2,10 @@ import { type MouseEvent, type ReactNode } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
+import { PoolCardImage } from './PoolCardImage';
 import { sumBucketQuantity } from '@/lib/curveBucketTotal';
-import { getImageUrl, getPrimaryType, groupByCmc, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { getPrimaryType, groupByCmc, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import { stackBadgeTopPx } from '@/lib/stackBadgeLayout';
 
 type CurveViewProps = {
@@ -74,7 +76,7 @@ function CurveColumns({
               <div className="mx-auto" style={{ width: cardWidth }} data-testid="curve-card-wrapper">
                 <div className="relative" style={{ height: stackHeight }}>
                   {ordered.map((card, index) => {
-                    const image = getImageUrl(card, 'normal') ?? getImageUrl(card, 'border_crop');
+                    const image = getPrimaryCardImageUrl(card.imageUris, ['normal', 'border_crop', 'small']);
                     const isTop = index === ordered.length - 1;
                     const visibleHeight = isTop ? cardHeight : peekHeight;
                     const stackSliceClass = isTop
@@ -98,25 +100,19 @@ function CurveColumns({
                           onClick={onCardClick ? () => onCardClick(card) : undefined}
                           onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
                         >
-                          {image ? (
-                            <img
-                              src={image}
-                              alt={card.name}
-                              loading="lazy"
-                              decoding="async"
-                              className={`h-full w-full bg-black object-contain object-top shadow-sm ${
-                                isTop ? 'rounded-md' : 'rounded-t-md rounded-b-none'
-                              }`}
-                              style={{ height: cardHeight }}
-                            />
-                          ) : (
-                            <div
-                              className="w-full rounded-md border border-border bg-muted p-2 text-center text-xs text-muted-foreground"
-                              style={{ height: cardHeight }}
-                            >
-                              {card.name}
-                            </div>
-                          )}
+                          <PoolCardImage
+                            name={card.name}
+                            scryfallId={card.scryfallId}
+                            imageUris={card.imageUris}
+                            preference={['normal', 'border_crop', 'small']}
+                            className={`h-full w-full bg-black object-contain object-top shadow-sm ${
+                              isTop ? 'rounded-md' : 'rounded-t-md rounded-b-none'
+                            }`}
+                            fallbackClassName={`w-full border border-border bg-muted p-2 text-center text-xs text-muted-foreground ${
+                              isTop ? 'rounded-md' : 'rounded-t-md rounded-b-none'
+                            }`}
+                            style={{ height: cardHeight }}
+                          />
                           {card.quantity > 1 ? (
                             <span className="absolute right-1 top-1 rounded-full border border-white/35 bg-black/90 px-1.5 py-0.5 text-[10px] font-bold text-white">
                               x{card.quantity}
