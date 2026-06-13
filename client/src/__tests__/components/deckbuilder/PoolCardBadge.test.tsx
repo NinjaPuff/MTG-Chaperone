@@ -13,6 +13,10 @@ describe('PoolCardBadge', () => {
     render(<PoolCardBadge allocated={2} allocatedInActiveDeck={0} restricted={0} />);
     expect(screen.queryByText(/in deck/)).not.toBeInTheDocument();
     expect(screen.getByText('other decks 2')).toBeInTheDocument();
+    expect(screen.getByText('other decks 2')).toHaveAttribute(
+      'title',
+      'Allocated in other registered decks, not the active deck',
+    );
   });
 
   it('shows both badges when copies are split across active and other decks', () => {
