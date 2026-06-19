@@ -7,11 +7,15 @@ import { useAuth } from '@/context/AuthContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
-import { getUserActiveMatches } from '@/lib/activeMatches';
+import { getUserActiveMatches, formatActiveRoundLabel } from '@/lib/activeMatches';
 import { computeMatchRecord, getMatchOutcome } from '@/lib/matchUtils';
 import { computeEventRecords } from '@/lib/eventRecords';
 import { primaryName } from '@/lib/userDisplay';
 import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
+import { BracketView } from '@/components/bracket/BracketView';
+import type { BracketSlotView } from '@/components/bracket/types';
+import { fetchBracketState, reloadBracketEventViews } from '@/lib/bracketApi';
+import { isBracketFormat } from '@mtg-league/shared';
 
 type Standing = {
   id: string;
@@ -31,7 +35,7 @@ type Event = {
   name: string;
   status: 'setup' | 'active' | 'completed';
   config: {
-    format: 'swiss' | 'seeded_swiss' | 'round_robin';
+    format: 'swiss' | 'seeded_swiss' | 'round_robin' | 'single_elimination' | 'double_elimination' | 'custom_10_player';
     bestOfN?: number;
   };
   rounds: Array<{ status: string }>;
@@ -71,6 +75,9 @@ function formatEventFormat(format: Event['config']['format'] | undefined): strin
   if (format === 'swiss') return 'Swiss';
   if (format === 'seeded_swiss') return 'Seeded Swiss';
   if (format === 'round_robin') return 'Round Robin';
+  if (format === 'single_elimination') return 'Single Elimination';
+  if (format === 'double_elimination') return 'Double Elimination';
+  if (format === 'custom_10_player') return 'Custom 10 Player';
   return '';
 }
 
@@ -129,6 +136,7 @@ export function DashboardPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
+  const [bracketSlots, setBracketSlots] = useState<BracketSlotView[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
@@ -142,9 +150,14 @@ export function DashboardPage() {
     }
   }, [activeSeasonId, selectedSeasonId]);
 
-  const reloadRounds = async (eventId: string) => {
-    const roundsResponse = await apiRequest<ApiListResponse<Round>>(`/api/events/${eventId}/rounds`);
-    setRounds(roundsResponse.data);
+  const reloadRounds = async (eventId: string, eventFormat?: string) => {
+    const isBracketEvent = Boolean(eventFormat && isBracketFormat(eventFormat));
+    const { rounds: nextRounds, bracketSlots: nextBracketSlots } = await reloadBracketEventViews<Round>(
+      eventId,
+      isBracketEvent,
+    );
+    setRounds(nextRounds);
+    setBracketSlots(nextBracketSlots);
   };
 
   useEffect(() => {
@@ -152,6 +165,7 @@ export function DashboardPage() {
       setEvents([]);
       setStandings([]);
       setRounds([]);
+      setBracketSlots([]);
       setSeasonPoints(new Map());
       setIsLoading(false);
       return;
@@ -172,14 +186,21 @@ export function DashboardPage() {
         const targetEvent = eventsResponse.data.find((event) => event.status === 'active') ?? eventsResponse.data[eventsResponse.data.length - 1];
         if (!targetEvent) {
           setRounds([]);
+          setBracketSlots([]);
           return;
         }
 
         await reloadRounds(targetEvent.id);
+        if (targetEvent.config?.format && isBracketFormat(targetEvent.config.format)) {
+          setBracketSlots(await fetchBracketState(targetEvent.id));
+        } else {
+          setBracketSlots([]);
+        }
       } catch (error) {
         setEvents([]);
         setStandings([]);
         setRounds([]);
+        setBracketSlots([]);
         setSeasonPoints(new Map());
         setLoadError(error instanceof Error ? error.message : 'Failed to load dashboard data.');
       } finally {
@@ -285,7 +306,7 @@ export function DashboardPage() {
       });
       setSelectedMatchId(null);
       setActionError(null);
-      await reloadRounds(activeEvent.id);
+      await reloadRounds(activeEvent.id, activeEvent.config?.format);
     } catch (reportError) {
       setActionError(reportError instanceof ApiError ? reportError.message : 'Unable to report match');
     }
@@ -298,7 +319,7 @@ export function DashboardPage() {
     try {
       await authApiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
       setActionError(null);
-      await reloadRounds(activeEvent.id);
+      await reloadRounds(activeEvent.id, activeEvent.config?.format);
     } catch (matchError) {
       setActionError(matchError instanceof ApiError ? matchError.message : `Unable to ${action} match`);
     }
@@ -426,7 +447,9 @@ export function DashboardPage() {
           <div className="space-y-4">
             {userActiveMatches.map(({ match, round }) => (
               <div key={match.id} className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Round {round.roundNumber}</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {formatActiveRoundLabel(round.roundNumber, activeEvent?.config?.format)}
+                </p>
                 <ParticipantMatchCard
                   match={match}
                   round={round}
@@ -496,6 +519,13 @@ export function DashboardPage() {
           {renderRecentResults()}
         </div>
       </div>
+
+      {activeEvent?.config?.format && isBracketFormat(activeEvent.config.format) && bracketSlots.length > 0 ? (
+        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+          <h2 className="text-lg font-semibold">Active Bracket</h2>
+          <BracketView slots={bracketSlots} />
+        </div>
+      ) : null}
 
       {selectedMatch ? (
         <ReportMatchDialog

@@ -38,6 +38,9 @@ export enum EventFormat {
   SWISS = 'swiss',
   SEEDED_SWISS = 'seeded_swiss',
   ROUND_ROBIN = 'round_robin',
+  SINGLE_ELIMINATION = 'single_elimination',
+  DOUBLE_ELIMINATION = 'double_elimination',
+  CUSTOM_10_PLAYER = 'custom_10_player',
 }
 
 export enum SideboardRule {
@@ -61,6 +64,7 @@ export enum DeckLockingMode {
 export enum SeedingSource {
   PREVIOUS_SEASON = 'previous_season',
   PREVIOUS_EVENT = 'previous_event',
+  CURRENT_SEASON = 'current_season',
   MANUAL = 'manual',
 }
 

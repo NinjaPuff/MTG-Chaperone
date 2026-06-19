@@ -1,6 +1,8 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 import type { Prisma } from '@prisma/client';
+import { isBracketFormat } from '@mtg-league/shared';
+import { advanceBracket, syncBracketPairings } from './bracketService.js';
 
 type GameInput = {
   winnerId?: string | null;
@@ -177,6 +179,23 @@ export async function reportMatch(matchId: string, reporterId: string, gameResul
   if (gameResults.length === 0) {
     throw new AppError(400, 'VALIDATION_ERROR', 'At least one game result is required');
   }
+  if (match.round.event.config && isBracketFormat(match.round.event.config.format)) {
+    let player1Wins = 0;
+    let player2Wins = 0;
+    for (const game of gameResults) {
+      if (game.isDraw || !game.winnerId) {
+        continue;
+      }
+      if (game.winnerId === match.player1Id) {
+        player1Wins += 1;
+      } else if (game.winnerId === match.player2Id) {
+        player2Wins += 1;
+      }
+    }
+    if (player1Wins === player2Wins) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Bracket matches must produce a winner');
+    }
+  }
 
   await writeGameResults(matchId, gameResults);
 
@@ -195,6 +214,9 @@ export async function reportMatch(matchId: string, reporterId: string, gameResul
       [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
     );
   }
+  if (match.round.event.config && isBracketFormat(match.round.event.config.format)) {
+    await syncBracketPairings(match.round.eventId);
+  }
   return updated;
 }
 
@@ -203,7 +225,7 @@ export async function confirmMatch(matchId: string, confirmerId: string) {
   ensureParticipant(match, confirmerId);
   validateMatchStateTransition(match.status, 'confirm', match.reportedById ?? null, confirmerId);
 
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const updated = await tx.match.update({
       where: { id: matchId },
       data: {
@@ -225,6 +247,10 @@ export async function confirmMatch(matchId: string, confirmerId: string) {
 
     return updated;
   });
+  if (match.round.event.config && isBracketFormat(match.round.event.config.format)) {
+    await advanceBracket(matchId);
+  }
+  return updated;
 }
 
 export async function disputeMatch(matchId: string, disputerId: string) {
@@ -246,7 +272,7 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
 
   await writeGameResults(matchId, gameResults);
 
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const updated = await tx.match.update({
       where: { id: matchId },
       data: {
@@ -268,6 +294,10 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
 
     return updated;
   });
+  if (match.round.event.config && isBracketFormat(match.round.event.config.format)) {
+    await advanceBracket(matchId);
+  }
+  return updated;
 }
 
 export function createMatchService() {

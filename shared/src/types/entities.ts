@@ -124,6 +124,7 @@ export interface EventConfig {
   schedulingType: SchedulingType;
   deckLockingMode: DeckLockingMode;
   seedingSource: SeedingSource | null;
+  grandFinalsReset: boolean;
 }
 
 export interface Round {
@@ -252,4 +253,17 @@ export interface ScheduledPairing {
   player2Id: string;
   eventId: string | null;
   roundId: string | null;
+}
+
+export interface BracketSlot {
+  id: string;
+  eventId: string;
+  slotKey: string;
+  bracketSide: string;
+  bracketRound: number;
+  player1Id: string | null;
+  player2Id: string | null;
+  matchId: string | null;
+  winnerId: string | null;
+  loserId: string | null;
 }

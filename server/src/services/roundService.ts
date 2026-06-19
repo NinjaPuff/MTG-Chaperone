@@ -9,6 +9,7 @@ import {
   regeneratePairings,
 } from './pairingService.js';
 import { unlockDecklistsForRound } from './decklistService.js';
+import { isBracketFormat } from '@mtg-league/shared';
 
 type RoundTransitionAction = 'start' | 'complete' | 'delete';
 
@@ -116,6 +117,9 @@ export async function createRound(eventId: string) {
 
   if (!event || !event.config) {
     throw new AppError(404, 'NOT_FOUND', 'Event not found');
+  }
+  if (isBracketFormat(event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Bracket events do not support manual round creation');
   }
   if (event.config.format === 'round_robin') {
     throw new AppError(409, 'INVALID_OPERATION', 'Round robin events do not support manual round creation');
@@ -312,6 +316,9 @@ export async function resetRound(roundId: string) {
   if (!round || !round.event.config) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
   }
+  if (isBracketFormat(round.event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Bracket rounds can only be reset by resetting the entire event');
+  }
   if (round.status === 'not_started') {
     throw new AppError(409, 'INVALID_ROUND_STATE', 'Round is already not started. Use regenerate to reroll pairings');
   }
@@ -351,6 +358,9 @@ export async function deleteRound(roundId: string) {
   });
   if (!round) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
+  }
+  if (round.event.config?.format && isBracketFormat(round.event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Bracket rounds can only be deleted by resetting the entire event');
   }
   validateRoundTransition(round.status, 'delete');
 

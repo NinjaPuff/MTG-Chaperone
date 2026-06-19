@@ -22,6 +22,7 @@ import {
 } from '@/components/admin/StaleCacheReferencesDialog';
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { primaryName, profileSubtitle } from '@/lib/userDisplay';
+import { isBracketFormat } from '@mtg-league/shared';
 
 type League = {
   id: string;
@@ -62,14 +63,15 @@ type InviteLink = {
 };
 
 type EventConfig = {
-  format: 'swiss' | 'seeded_swiss' | 'round_robin';
+  format: 'swiss' | 'seeded_swiss' | 'round_robin' | 'single_elimination' | 'double_elimination' | 'custom_10_player';
   bestOfN: number;
   deckCount: number;
   minDeckSize: number;
   sideboardRule: 'entire_pool' | 'fixed_15' | 'none';
   schedulingType: 'fixed_deadlines' | 'open_window' | 'weekly_auto';
   deckLockingMode: 'required_before_round' | 'free_modification' | 'admin_locked';
-  seedingSource: 'previous_season' | 'previous_event' | 'manual' | null;
+  seedingSource: 'previous_season' | 'previous_event' | 'current_season' | 'manual' | null;
+  grandFinalsReset?: boolean;
 };
 
 type Event = {
@@ -172,6 +174,7 @@ const defaultEventConfig: EventConfig = {
   schedulingType: 'open_window',
   deckLockingMode: 'free_modification',
   seedingSource: null,
+  grandFinalsReset: false,
 };
 
 function formatBoosterTypeLabel(type: BoosterProduct['boosterType']) {
@@ -1937,6 +1940,9 @@ export function AdminPage() {
                         <option value="swiss">Swiss</option>
                         <option value="seeded_swiss">Seeded Swiss</option>
                         <option value="round_robin">Round Robin</option>
+                        <option value="single_elimination">Single Elimination</option>
+                        <option value="double_elimination">Double Elimination</option>
+                        <option value="custom_10_player">Custom 10 Player</option>
                       </select>
                     </label>
                     <label className="text-sm font-medium">
@@ -2012,46 +2018,50 @@ export function AdminPage() {
                         <option value="none">None</option>
                       </select>
                     </label>
-                    <label className="text-sm font-medium">
-                      Scheduling Type
-                      <select
-                        className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                        value={eventForm.config.schedulingType}
-                        onChange={(event) =>
-                          setEventForm((prev) => ({
-                            ...prev,
-                            config: {
-                              ...prev.config,
-                              schedulingType: event.target.value as EventConfig['schedulingType'],
-                            },
-                          }))
-                        }
-                      >
-                        <option value="fixed_deadlines">Fixed Deadlines</option>
-                        <option value="open_window">Open Window</option>
-                        <option value="weekly_auto">Weekly Auto</option>
-                      </select>
-                    </label>
-                    <label className="text-sm font-medium">
-                      Deck Locking Mode
-                      <select
-                        className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                        value={eventForm.config.deckLockingMode}
-                        onChange={(event) =>
-                          setEventForm((prev) => ({
-                            ...prev,
-                            config: {
-                              ...prev.config,
-                              deckLockingMode: event.target.value as EventConfig['deckLockingMode'],
-                            },
-                          }))
-                        }
-                      >
-                        <option value="required_before_round">Required Before Round</option>
-                        <option value="free_modification">Free Modification</option>
-                        <option value="admin_locked">Admin Locked</option>
-                      </select>
-                    </label>
+                    {!isBracketFormat(eventForm.config.format) ? (
+                      <>
+                        <label className="text-sm font-medium">
+                          Scheduling Type
+                          <select
+                            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            value={eventForm.config.schedulingType}
+                            onChange={(event) =>
+                              setEventForm((prev) => ({
+                                ...prev,
+                                config: {
+                                  ...prev.config,
+                                  schedulingType: event.target.value as EventConfig['schedulingType'],
+                                },
+                              }))
+                            }
+                          >
+                            <option value="fixed_deadlines">Fixed Deadlines</option>
+                            <option value="open_window">Open Window</option>
+                            <option value="weekly_auto">Weekly Auto</option>
+                          </select>
+                        </label>
+                        <label className="text-sm font-medium">
+                          Deck Locking Mode
+                          <select
+                            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                            value={eventForm.config.deckLockingMode}
+                            onChange={(event) =>
+                              setEventForm((prev) => ({
+                                ...prev,
+                                config: {
+                                  ...prev.config,
+                                  deckLockingMode: event.target.value as EventConfig['deckLockingMode'],
+                                },
+                              }))
+                            }
+                          >
+                            <option value="required_before_round">Required Before Round</option>
+                            <option value="free_modification">Free Modification</option>
+                            <option value="admin_locked">Admin Locked</option>
+                          </select>
+                        </label>
+                      </>
+                    ) : null}
                     <label className="text-sm font-medium">
                       Seeding Source
                       <select
@@ -2068,11 +2078,27 @@ export function AdminPage() {
                         }
                       >
                         <option value="">None</option>
-                        <option value="previous_season">Previous Season</option>
-                        <option value="previous_event">Previous Event</option>
+                        <option value="current_season">Current Season Standings</option>
+                        <option value="previous_season">Prior Season Standings</option>
+                        <option value="previous_event">Previous Event in This Season</option>
                         <option value="manual">Manual</option>
                       </select>
                     </label>
+                    {['double_elimination', 'custom_10_player'].includes(eventForm.config.format) ? (
+                      <label className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(eventForm.config.grandFinalsReset)}
+                          onChange={(event) =>
+                            setEventForm((prev) => ({
+                              ...prev,
+                              config: { ...prev.config, grandFinalsReset: event.target.checked },
+                            }))
+                          }
+                        />
+                        Grand Finals Reset
+                      </label>
+                    ) : null}
                     <label className="flex items-center gap-2 text-sm md:col-span-3">
                       <input
                         type="checkbox"
@@ -2170,6 +2196,9 @@ export function AdminPage() {
                               <option value="swiss">Swiss</option>
                               <option value="seeded_swiss">Seeded Swiss</option>
                               <option value="round_robin">Round Robin</option>
+                              <option value="single_elimination">Single Elimination</option>
+                              <option value="double_elimination">Double Elimination</option>
+                              <option value="custom_10_player">Custom 10 Player</option>
                             </select>
                           </label>
                           <label className="text-sm font-medium">
@@ -2250,40 +2279,44 @@ export function AdminPage() {
                               <option value="none">None</option>
                             </select>
                           </label>
-                          <label className="text-sm font-medium">
-                            Scheduling Type
-                            <select
-                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                              value={editEventForm.config.schedulingType}
-                              onChange={(event) =>
-                                setEditEventForm((prev) => ({
-                                  ...prev,
-                                  config: { ...prev.config, schedulingType: event.target.value as EventConfig['schedulingType'] },
-                                }))
-                              }
-                            >
-                              <option value="fixed_deadlines">Fixed Deadlines</option>
-                              <option value="open_window">Open Window</option>
-                              <option value="weekly_auto">Weekly Auto</option>
-                            </select>
-                          </label>
-                          <label className="text-sm font-medium">
-                            Deck Locking Mode
-                            <select
-                              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                              value={editEventForm.config.deckLockingMode}
-                              onChange={(event) =>
-                                setEditEventForm((prev) => ({
-                                  ...prev,
-                                  config: { ...prev.config, deckLockingMode: event.target.value as EventConfig['deckLockingMode'] },
-                                }))
-                              }
-                            >
-                              <option value="required_before_round">Required Before Round</option>
-                              <option value="free_modification">Free Modification</option>
-                              <option value="admin_locked">Admin Locked</option>
-                            </select>
-                          </label>
+                          {!isBracketFormat(editEventForm.config.format) ? (
+                            <>
+                              <label className="text-sm font-medium">
+                                Scheduling Type
+                                <select
+                                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                                  value={editEventForm.config.schedulingType}
+                                  onChange={(event) =>
+                                    setEditEventForm((prev) => ({
+                                      ...prev,
+                                      config: { ...prev.config, schedulingType: event.target.value as EventConfig['schedulingType'] },
+                                    }))
+                                  }
+                                >
+                                  <option value="fixed_deadlines">Fixed Deadlines</option>
+                                  <option value="open_window">Open Window</option>
+                                  <option value="weekly_auto">Weekly Auto</option>
+                                </select>
+                              </label>
+                              <label className="text-sm font-medium">
+                                Deck Locking Mode
+                                <select
+                                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                                  value={editEventForm.config.deckLockingMode}
+                                  onChange={(event) =>
+                                    setEditEventForm((prev) => ({
+                                      ...prev,
+                                      config: { ...prev.config, deckLockingMode: event.target.value as EventConfig['deckLockingMode'] },
+                                    }))
+                                  }
+                                >
+                                  <option value="required_before_round">Required Before Round</option>
+                                  <option value="free_modification">Free Modification</option>
+                                  <option value="admin_locked">Admin Locked</option>
+                                </select>
+                              </label>
+                            </>
+                          ) : null}
                           <label className="text-sm font-medium">
                             Seeding Source
                             <select
@@ -2305,6 +2338,21 @@ export function AdminPage() {
                               <option value="manual">Manual</option>
                             </select>
                           </label>
+                          {['double_elimination', 'custom_10_player'].includes(editEventForm.config.format) ? (
+                            <label className="flex items-center gap-2 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(editEventForm.config.grandFinalsReset)}
+                                onChange={(event) =>
+                                  setEditEventForm((prev) => ({
+                                    ...prev,
+                                    config: { ...prev.config, grandFinalsReset: event.target.checked },
+                                  }))
+                                }
+                              />
+                              Grand Finals Reset
+                            </label>
+                          ) : null}
                           <label className="flex items-center gap-2 text-sm md:col-span-3">
                             <input
                               type="checkbox"

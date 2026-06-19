@@ -11,12 +11,19 @@ const roundServiceMocks = vi.hoisted(() => ({
   resetRoundProgress: vi.fn(),
 }));
 
+const bracketServiceMocks = vi.hoisted(() => ({
+  initializeBracket: vi.fn(),
+  resetBracketEvent: vi.fn(),
+  ensureBracketSeeds: vi.fn(),
+}));
+
 vi.mock('../../lib/prisma.js', () => ({
   prisma: prismaMock,
 }));
 
 vi.mock('../../services/pairingService.js', () => pairingMocks);
 vi.mock('../../services/roundService.js', () => roundServiceMocks);
+vi.mock('../../services/bracketService.js', () => bracketServiceMocks);
 
 import { completeEvent, resetEvent, startEvent, updateEvent } from '../../services/eventService.js';
 
@@ -27,6 +34,9 @@ describe('eventService', () => {
     pairingMocks.generateSeededSwissPairings.mockReset();
     pairingMocks.generateSwissPairings.mockReset();
     roundServiceMocks.resetRoundProgress.mockReset();
+    bracketServiceMocks.initializeBracket.mockReset();
+    bracketServiceMocks.resetBracketEvent.mockReset();
+    bracketServiceMocks.ensureBracketSeeds.mockReset();
   });
 
   it('starts setup events when no other active event exists', async () => {
@@ -60,6 +70,77 @@ describe('eventService', () => {
     });
   });
 
+  it('initializes brackets when starting bracket-format events', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      seasonId: 's1',
+      status: 'setup',
+      totalRounds: null,
+      config: { format: 'custom_10_player' },
+      season: { leagueId: 'l1' },
+    });
+    prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.leagueMembership.count.mockResolvedValue(10);
+    prismaMock.round.count.mockResolvedValue(0);
+    prismaMock.event.update.mockResolvedValue({ id: 'e1', status: 'active', config: { format: 'custom_10_player' } });
+    bracketServiceMocks.ensureBracketSeeds.mockResolvedValue([]);
+
+    await startEvent('e1');
+
+    expect(bracketServiceMocks.ensureBracketSeeds).toHaveBeenCalledWith('e1');
+    expect(bracketServiceMocks.initializeBracket).toHaveBeenCalledWith('e1');
+  });
+
+  it('rolls bracket events back to setup when initialization fails', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      seasonId: 's1',
+      status: 'setup',
+      totalRounds: null,
+      config: { format: 'custom_10_player' },
+      season: { leagueId: 'l1' },
+    });
+    prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.leagueMembership.count.mockResolvedValue(10);
+    prismaMock.round.count.mockResolvedValue(0);
+    prismaMock.event.update
+      .mockResolvedValueOnce({ id: 'e1', status: 'active', config: { format: 'custom_10_player' } })
+      .mockResolvedValueOnce({ id: 'e1', status: 'setup', totalRounds: null });
+    bracketServiceMocks.ensureBracketSeeds.mockResolvedValue([]);
+    bracketServiceMocks.initializeBracket.mockRejectedValue(new Error('init failed'));
+
+    await expect(startEvent('e1')).rejects.toThrow('init failed');
+
+    expect(prismaMock.event.update).toHaveBeenLastCalledWith({
+      where: { id: 'e1' },
+      data: { status: 'setup', totalRounds: null },
+    });
+  });
+
+  it('blocks bracket start when seed resolution fails before activation', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      seasonId: 's1',
+      status: 'setup',
+      totalRounds: null,
+      config: { format: 'custom_10_player', seedingSource: 'previous_season' },
+      season: { leagueId: 'l1' },
+    });
+    prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.leagueMembership.count.mockResolvedValue(10);
+    prismaMock.round.count.mockResolvedValue(0);
+    bracketServiceMocks.ensureBracketSeeds.mockRejectedValue({
+      code: 'SEEDING_SOURCE_UNAVAILABLE',
+      message: 'No previous inactive season found for seeding',
+    });
+
+    await expect(startEvent('e1')).rejects.toMatchObject({
+      code: 'SEEDING_SOURCE_UNAVAILABLE',
+    });
+    expect(prismaMock.event.update).not.toHaveBeenCalled();
+    expect(bracketServiceMocks.initializeBracket).not.toHaveBeenCalled();
+  });
+
   it('blocks completion when event has unfinished rounds', async () => {
     prismaMock.event.findUnique.mockResolvedValue({
       id: 'e1',
@@ -91,6 +172,7 @@ describe('eventService', () => {
           schedulingType: 'open_window',
           deckLockingMode: 'free_modification',
           seedingSource: null,
+          grandFinalsReset: false,
         },
       })
       .mockResolvedValueOnce({
@@ -108,6 +190,7 @@ describe('eventService', () => {
           schedulingType: 'open_window',
           deckLockingMode: 'free_modification',
           seedingSource: null,
+          grandFinalsReset: false,
         },
         rounds: [],
         season: {
@@ -177,6 +260,7 @@ describe('eventService', () => {
         schedulingType: 'open_window',
         deckLockingMode: 'free_modification',
         seedingSource: null,
+        grandFinalsReset: false,
       },
     });
     prismaMock.decklist.findMany.mockResolvedValue([
@@ -211,6 +295,7 @@ describe('eventService', () => {
         schedulingType: 'open_window',
         deckLockingMode: 'free_modification',
         seedingSource: null,
+        grandFinalsReset: false,
       },
     });
     prismaMock.round.findFirst.mockResolvedValue({ id: 'r1' });
@@ -267,6 +352,65 @@ describe('eventService', () => {
     });
     expect(pairingMocks.generateSwissPairings).toHaveBeenCalledWith('r1');
     expect(result.status).toBe('setup');
+  });
+
+  it('resets bracket events via bracket service', async () => {
+    prismaMock.event.findUnique
+      .mockResolvedValueOnce({
+        id: 'e1',
+        status: 'active',
+        config: { format: 'double_elimination' },
+        rounds: [],
+      })
+      .mockResolvedValueOnce({
+        id: 'e1',
+        status: 'setup',
+        config: { format: 'double_elimination', deckCount: 1, minDeckSize: 40, sideboardRule: 'entire_pool', deckLockingMode: 'free_modification' },
+        rounds: [],
+        season: {
+          id: 's1',
+          league: {
+            id: 'l1',
+            slug: 'league',
+            memberships: [],
+          },
+        },
+      });
+    bracketServiceMocks.resetBracketEvent.mockResolvedValue(undefined);
+
+    await resetEvent('e1');
+
+    expect(bracketServiceMocks.resetBracketEvent).toHaveBeenCalledWith('e1');
+    expect(roundServiceMocks.resetRoundProgress).not.toHaveBeenCalled();
+  });
+
+  it('blocks grand finals reset for non-double/custom formats', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      status: 'setup',
+      name: 'Week 1',
+      pointMultiplier: 1,
+      standingsOverride: false,
+      config: {
+        format: 'swiss',
+        bestOfN: 3,
+        deckCount: 2,
+        minDeckSize: 40,
+        sideboardRule: 'entire_pool',
+        schedulingType: 'open_window',
+        deckLockingMode: 'free_modification',
+        seedingSource: null,
+        grandFinalsReset: false,
+      },
+    });
+
+    await expect(
+      updateEvent('e1', {
+        config: { grandFinalsReset: true },
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
   });
 
   it('re-pairs not_started rounds with stale matches during reset', async () => {
