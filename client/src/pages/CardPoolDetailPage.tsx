@@ -159,7 +159,6 @@ function getSmallImage(imageUris: unknown): string | null {
 }
 
 const VIEW_PREFERENCES_KEY = 'cardpool-view-prefs';
-const VISUAL_VIEW_MAX_CARDS = 180;
 const STACKS_ORGANIZE_DEFAULT: StacksOrganizeBy = 'type';
 function parseViewPreferences(rawValue: string | null): { viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode } {
   if (!rawValue) {
@@ -428,13 +427,6 @@ export function CardPoolDetailPage() {
     () => countStagedAddCardTotal(stagedCards, stagedPoolChanges),
     [stagedCards, stagedPoolChanges],
   );
-  const disableVisualViews = totalCards > VISUAL_VIEW_MAX_CARDS;
-
-  useEffect(() => {
-    if (disableVisualViews && viewMode !== 'list') {
-      setViewMode('list');
-    }
-  }, [disableVisualViews, viewMode]);
 
   const addSearchResultToStage = (card: SearchResult) => {
     setSuccess(null);
@@ -1122,7 +1114,6 @@ export function CardPoolDetailPage() {
           stacksOrganizeBy={stacksOrganizeBy}
           visibleCardCount={visibleCardCount}
           poolCardCount={totalCards}
-          disableVisualViews={disableVisualViews}
           selectedColorFilters={selectedColorFilters}
           selectedTypeFilters={selectedTypeFilters}
           showBasicLands={showBasicLands}
@@ -1167,7 +1158,7 @@ export function CardPoolDetailPage() {
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
-        {viewMode === 'grid' && !disableVisualViews ? (
+        {viewMode === 'grid' ? (
           <GridView
             cards={visibleCards}
             sortKey={sortKey}
@@ -1177,7 +1168,7 @@ export function CardPoolDetailPage() {
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
-        {viewMode === 'stacks' && !disableVisualViews ? (
+        {viewMode === 'stacks' ? (
           <StacksView
             cards={visibleCards}
             sortKey={sortKey}
@@ -1187,7 +1178,7 @@ export function CardPoolDetailPage() {
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
-        {viewMode === 'curve' && !disableVisualViews ? (
+        {viewMode === 'curve' ? (
           <CurveView
             cards={visibleCards}
             sortKey={sortKey}

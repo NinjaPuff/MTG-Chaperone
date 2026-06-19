@@ -14,7 +14,6 @@ type ViewToolbarProps = {
   stacksOrganizeBy?: StacksOrganizeBy;
   visibleCardCount: number;
   poolCardCount: number;
-  disableVisualViews?: boolean;
   selectedColorFilters: string[];
   selectedTypeFilters: string[];
   showBasicLands: boolean;
@@ -272,7 +271,6 @@ export function ViewToolbar({
   stacksOrganizeBy = 'type',
   visibleCardCount,
   poolCardCount,
-  disableVisualViews = false,
   selectedColorFilters,
   selectedTypeFilters,
   showBasicLands,
@@ -298,25 +296,20 @@ export function ViewToolbar({
       )}
     >
       <div className="flex items-center gap-1">
-        {VIEW_OPTIONS.map((view) => {
-          const isDisabled = disableVisualViews && view.id !== 'list';
-          return (
+        {VIEW_OPTIONS.map((view) => (
           <button
             key={view.id}
             type="button"
             title={view.label}
-            disabled={isDisabled}
             className={cn(
               'inline-flex h-8 w-8 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-muted',
               viewMode === view.id && 'border-primary bg-primary/10 text-foreground',
-              isDisabled && 'cursor-not-allowed opacity-40 hover:bg-transparent',
             )}
             onClick={() => onChange({ viewMode: view.id })}
           >
             {view.icon}
           </button>
-          );
-        })}
+        ))}
       </div>
 
       <label className="flex items-center gap-2 text-sm">
@@ -378,9 +371,6 @@ export function ViewToolbar({
       <span className="ml-auto text-sm text-muted-foreground">
         {formatPoolCardCountLabel(visibleCardCount, poolCardCount)}
       </span>
-      {disableVisualViews ? (
-        <span className="w-full text-xs text-amber-600">Visual modes are disabled for large pools to keep the page responsive.</span>
-      ) : null}
     </div>
   );
 }

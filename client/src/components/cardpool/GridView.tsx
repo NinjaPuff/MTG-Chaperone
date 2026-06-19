@@ -1,10 +1,17 @@
-import type { MouseEvent, ReactNode } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import type { MouseEvent, ReactNode, RefObject } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from './types';
 import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { PoolCardImage } from './PoolCardImage';
-import { groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
 import { getPrimaryCardImageUrl } from '@/lib/cardImage';
+import {
+  GRID_GAP_PX,
+  buildVirtualGridRows,
+  computeGridColumnCount,
+  estimateVirtualGridRowHeight,
+} from '@/lib/virtualGridRows';
 
 type GridViewProps = {
   cards: PoolCard[];
@@ -12,6 +19,7 @@ type GridViewProps = {
   groupMode: GroupMode;
   organizeBy: StacksOrganizeBy;
   cardWidth: number;
+  scrollElementRef?: RefObject<HTMLElement | null>;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
@@ -74,53 +82,53 @@ function CardCell({
   );
 }
 
-function OrganizedGridSections({
-  cards,
-  sortKey,
-  organizeBy,
-  cardWidth,
+function VirtualGridRowContent({
+  row,
+  columnCount,
   onCardContextMenu,
   onCardClick,
   onCardDoubleClick,
   renderBadge,
   getTouchActions,
 }: {
-  cards: PoolCard[];
-  sortKey: SortKey;
-  organizeBy: StacksOrganizeBy;
-  cardWidth: number;
+  row: ReturnType<typeof buildVirtualGridRows>[number];
+  columnCount: number;
   onCardContextMenu?: (event: MouseEvent, card: PoolCard) => void;
   onCardClick?: (card: PoolCard) => void;
   onCardDoubleClick?: (card: PoolCard) => void;
   renderBadge?: (card: PoolCard) => ReactNode;
   getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
-  const groups = groupByOrganize(cards, organizeBy);
+  if (row.kind === 'phase-header') {
+    return (
+      <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{row.label}</h3>
+    );
+  }
+
+  if (row.kind === 'section-header') {
+    return (
+      <h4 className="text-sm font-semibold text-muted-foreground">
+        <GroupHeadingLabel label={row.label} /> ({row.count})
+      </h4>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      {[...groups.entries()].map(([label, groupedCards]) => (
-        <div key={label} className="space-y-2">
-          <h4 className="text-sm font-semibold text-muted-foreground">
-            <GroupHeadingLabel label={label} /> ({groupedCards.reduce((sum, card) => sum + card.quantity, 0)})
-          </h4>
-          <div
-            className="grid gap-2"
-            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardWidth}px, 1fr))` }}
-          >
-            {sortCards(groupedCards, sortKey).map((card) => (
-              <CardCell
-                key={`${card.phaseLabel}-${card.scryfallId}`}
-                card={card}
-                onCardContextMenu={onCardContextMenu}
-                onCardClick={onCardClick}
-                onCardDoubleClick={onCardDoubleClick}
-                renderBadge={renderBadge}
-                getTouchActions={getTouchActions}
-              />
-            ))}
-          </div>
-        </div>
+    <div
+      className="grid gap-2"
+      data-testid="virtual-grid-card-row"
+      style={{ gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))` }}
+    >
+      {row.cards.map((card) => (
+        <CardCell
+          key={`${card.phaseLabel}-${card.scryfallId}`}
+          card={card}
+          onCardContextMenu={onCardContextMenu}
+          onCardClick={onCardClick}
+          onCardDoubleClick={onCardDoubleClick}
+          renderBadge={renderBadge}
+          getTouchActions={getTouchActions}
+        />
       ))}
     </div>
   );
@@ -132,52 +140,130 @@ export function GridView({
   groupMode,
   organizeBy,
   cardWidth,
+  scrollElementRef,
   onCardContextMenu,
   onCardClick,
   onCardDoubleClick,
   renderBadge,
   getTouchActions,
 }: GridViewProps) {
+  const parentRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    const element = parentRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateWidth = (width: number) => {
+      setContainerWidth(Math.max(0, Math.round(width)));
+    };
+
+    updateWidth(element.getBoundingClientRect().width);
+
+    if (typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) {
+        return;
+      }
+      updateWidth(entry.contentRect.width);
+    });
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [cards.length, cardWidth, groupMode, organizeBy, sortKey]);
+
+  const columnCount = useMemo(
+    () => computeGridColumnCount(containerWidth, cardWidth, GRID_GAP_PX),
+    [containerWidth, cardWidth],
+  );
+
+  const rows = useMemo(
+    () =>
+      buildVirtualGridRows(cards, {
+        sortKey,
+        groupMode,
+        organizeBy,
+        columnCount,
+      }),
+    [cards, sortKey, groupMode, organizeBy, columnCount],
+  );
+
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => scrollElementRef?.current ?? document.documentElement,
+    estimateSize: (index) => estimateVirtualGridRowHeight(rows[index], cardWidth, GRID_GAP_PX),
+    overscan: 3,
+    scrollMargin: parentRef.current?.offsetTop ?? 0,
+  });
+
   if (cards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
   }
 
-  if (groupMode === 'flat') {
+  const virtualItems = virtualizer.getVirtualItems();
+  const rowContentProps = {
+    columnCount,
+    onCardContextMenu,
+    onCardClick,
+    onCardDoubleClick,
+    renderBadge,
+    getTouchActions,
+  };
+
+  if (virtualItems.length === 0) {
     return (
-      <OrganizedGridSections
-        cards={cards}
-        sortKey={sortKey}
-        organizeBy={organizeBy}
-        cardWidth={cardWidth}
-        onCardContextMenu={onCardContextMenu}
-        onCardClick={onCardClick}
-        onCardDoubleClick={onCardDoubleClick}
-        renderBadge={renderBadge}
-        getTouchActions={getTouchActions}
-      />
+      <div ref={parentRef} className="relative w-full" data-testid="virtual-grid-container">
+        {rows.map((row) => (
+          <div key={row.id} data-testid="virtual-grid-row">
+            <VirtualGridRowContent row={row} {...rowContentProps} />
+          </div>
+        ))}
+      </div>
     );
   }
 
-  const byPhase = groupByPhase(cards);
-
   return (
-    <div className="space-y-5">
-      {[...byPhase.entries()].map(([phase, phaseCards]) => (
-        <div key={phase} className="space-y-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{phase}</h3>
-          <OrganizedGridSections
-            cards={phaseCards}
-            sortKey={sortKey}
-            organizeBy={organizeBy}
-            cardWidth={cardWidth}
-            onCardContextMenu={onCardContextMenu}
-            onCardClick={onCardClick}
-            onCardDoubleClick={onCardDoubleClick}
-            renderBadge={renderBadge}
-            getTouchActions={getTouchActions}
-          />
-        </div>
-      ))}
+    <div ref={parentRef} className="relative w-full" data-testid="virtual-grid-container">
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: '100%',
+          position: 'relative',
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const row = rows[virtualRow.index];
+          if (!row) {
+            return null;
+          }
+
+          return (
+            <div
+              key={row.id}
+              data-index={virtualRow.index}
+              data-testid="virtual-grid-row"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <VirtualGridRowContent
+                row={row}
+                {...rowContentProps}
+              />
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
