@@ -26,6 +26,7 @@ import { PoolCardBadge } from '@/components/deckbuilder/PoolCardBadge';
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
 import { DECKBUILDER_WORK_AREA_HEIGHT_CLASS } from '@/lib/deckBuilderLayout';
 import { moveCardBetweenZones } from '@/lib/deckMutations';
+import { buildPoolAllocationMaps } from '@mtg-league/shared';
 
 type DecklistEntryResponse = {
   cachedCardId: string;
@@ -322,27 +323,10 @@ export function DeckBuilderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  const combinedAllocationByCardId = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const deck of decks) {
-      for (const card of deck.cards) {
-        map.set(card.cachedCardId, (map.get(card.cachedCardId) ?? 0) + card.quantity);
-      }
-    }
-    return map;
-  }, [decks]);
-
-  const activeDeckAllocationByCardId = useMemo(() => {
-    const map = new Map<string, number>();
-    const activeDeck = decks.find((deck) => deck.id === activeDeckId);
-    if (!activeDeck) {
-      return map;
-    }
-    for (const card of activeDeck.cards) {
-      map.set(card.cachedCardId, (map.get(card.cachedCardId) ?? 0) + card.quantity);
-    }
-    return map;
-  }, [decks, activeDeckId]);
+  const allocationByDeckStatus = useMemo(() => buildPoolAllocationMaps(decks, activeDeckId), [decks, activeDeckId]);
+  const combinedAllocationByCardId = allocationByDeckStatus.combinedForAvailability;
+  const activeDeckAllocationByCardId = allocationByDeckStatus.activeDeckByCardId;
+  const registeredOtherDecksByCardId = allocationByDeckStatus.registeredOtherDecksByCardId;
 
   const cardOverlayData = useMemo(() => {
     const map = new Map<
@@ -410,19 +394,6 @@ export function DeckBuilderPage() {
     () => new Set([...basicLandCatalogRef.current.values()].map((entry) => entry.cachedCardId)),
     [poolCards, decks],
   );
-  const siblingAllocationByCardId = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const deck of decks) {
-      if (deck.id === activeDeckId) {
-        continue;
-      }
-      for (const card of deck.cards) {
-        map.set(card.cachedCardId, (map.get(card.cachedCardId) ?? 0) + card.quantity);
-      }
-    }
-    return map;
-  }, [decks, activeDeckId]);
-
   const getImportIssueSummary = useCallback(
     (entries: ImportEntry[]) => {
       const importedAllocationByCardId = new Map<string, number>();
@@ -448,8 +419,8 @@ export function DeckBuilderPage() {
         }
         const restrictedQty = restrictedMap.current.get(cachedCardId)?.restrictedQty ?? 0;
         const allowedQty = Math.max(0, poolCard.quantity - restrictedQty);
-        const siblingQty = siblingAllocationByCardId.get(cachedCardId) ?? 0;
-        const attemptedTotal = siblingQty + importedQty;
+        const registeredOtherQty = registeredOtherDecksByCardId.get(cachedCardId) ?? 0;
+        const attemptedTotal = registeredOtherQty + importedQty;
         if (attemptedTotal > allowedQty) {
           invalidCardIds.add(cachedCardId);
           const restrictionReason = restrictedMap.current.get(cachedCardId)?.reason;
@@ -470,7 +441,7 @@ export function DeckBuilderPage() {
         details,
       };
     },
-    [basicLandCardIdSet, poolCardByScryfallId, siblingAllocationByCardId],
+    [basicLandCardIdSet, poolCardByScryfallId, registeredOtherDecksByCardId],
   );
 
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? null;

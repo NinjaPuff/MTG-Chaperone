@@ -11,6 +11,7 @@ import {
   listMyDecklistsForRound,
   submitDecklist,
   unsubmitDecklist,
+  validateDecklist,
   updateDecklist,
 } from '../../services/decklistService.js';
 
@@ -220,5 +221,228 @@ describe('decklistService registration behaviors', () => {
 
     const result = await updateDecklist('deck-2', 'user-1', false, { name: 'Updated' });
     expect(result.id).toBe('deck-2');
+  });
+
+  it('ignores draft sibling overlap when updating a draft decklist', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-2',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-1',
+      status: 'draft',
+      event: { season: { id: 'season-1' }, config: { format: 'swiss', deckLockingMode: 'free_modification' } },
+      round: { roundNumber: 1 },
+      entries: [],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [{ cachedCardId: 'card-1', quantity: 2, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        },
+      ],
+    });
+    prismaMock.cachedCard.findMany.mockResolvedValue([]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.decklist.update.mockResolvedValue({ id: 'deck-2', name: 'Updated', entries: [] });
+
+    const result = await updateDecklist('deck-2', 'user-1', false, {
+      entries: [{ cachedCardId: 'card-1', quantity: 2, zone: 'main' }],
+    });
+
+    expect(result.id).toBe('deck-2');
+    expect(prismaMock.decklist.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ['submitted', 'locked'] },
+        }),
+      }),
+    );
+  });
+
+  it('blocks update when a registered sibling would over-allocate copies', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-2',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-1',
+      status: 'draft',
+      event: { season: { id: 'season-1' }, config: { format: 'swiss', deckLockingMode: 'free_modification' } },
+      round: { roundNumber: 1 },
+      entries: [],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [{ cachedCardId: 'card-1', quantity: 2, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        },
+      ],
+    });
+    prismaMock.cachedCard.findMany.mockResolvedValue([]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          status: 'submitted',
+          entries: [{ cachedCardId: 'card-1', quantity: 2 }],
+        },
+      ]);
+    prismaMock.cachedCard.findUnique.mockResolvedValue({ name: 'Card One', setCode: 'SET', collectorNumber: '1' });
+
+    await expect(
+      updateDecklist('deck-2', 'user-1', false, {
+        entries: [{ cachedCardId: 'card-1', quantity: 2, zone: 'main' }],
+      }),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      fields: { cachedCardId: 'card-1' },
+    });
+  });
+
+  it('validates against registered siblings only for allocation checks', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-1',
+      status: 'draft',
+      event: { config: { minDeckSize: 40, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
+      round: { roundNumber: 1 },
+      entries: [{ cachedCardId: 'card-1', quantity: 2, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [{ cachedCardId: 'card-1', quantity: 2, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        },
+      ],
+    });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { entries: [{ cachedCardId: 'card-1', quantity: 2 }] },
+      ]);
+    prismaMock.cachedCard.findMany.mockResolvedValue([]);
+
+    const validResult = await validateDecklist('deck-1', 'user-1');
+    expect(validResult.isValid).toBe(true);
+    expect(validResult.errors).toEqual([]);
+
+    expect(prismaMock.decklist.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { id: 'deck-1' },
+            { status: { in: ['submitted', 'locked'] } },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('marks validation invalid when registered allocations exceed pool copies', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-1',
+      status: 'draft',
+      event: { config: { minDeckSize: 40, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
+      round: { roundNumber: 1 },
+      entries: [{ cachedCardId: 'card-1', quantity: 2, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [{ cachedCardId: 'card-1', quantity: 2, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        },
+      ],
+    });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { entries: [{ cachedCardId: 'card-1', quantity: 4 }] },
+      ]);
+    prismaMock.cachedCard.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ scryfallId: 'card-1', name: 'Card One', setCode: 'SET', collectorNumber: '1' }]);
+
+    const invalidResult = await validateDecklist('deck-1', 'user-1');
+
+    expect(invalidResult.isValid).toBe(false);
+    expect(invalidResult.errors[0]).toContain('Too many copies allocated');
+    expect(invalidResult.invalidCardIds).toContain('card-1');
+  });
+
+  it('applies minimum-changes warnings using only registered prior-round decks', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-2',
+      orderIndex: 0,
+      status: 'draft',
+      event: { config: { minDeckSize: 40, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
+      round: { roundNumber: 2 },
+      entries: [{ cachedCardId: 'card-1', quantity: 2, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [{ cachedCardId: 'card-1', quantity: 4, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        },
+      ],
+    });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue({
+      constraintType: 'minimum_changes',
+      parameters: { minChanges: 1 },
+    });
+    prismaMock.cachedCard.findMany.mockResolvedValue([]);
+
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ entries: [{ cachedCardId: 'card-1', quantity: 2 }] }]);
+    const withoutRegisteredPrior = await validateDecklist('deck-1', 'user-1');
+    expect(withoutRegisteredPrior.warnings.some((warning) => warning.includes('more non-basic card changes required'))).toBe(false);
+
+    prismaMock.decklist.findMany.mockReset();
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([
+        {
+          orderIndex: 0,
+          round: { roundNumber: 1 },
+          entries: [
+            {
+              cachedCardId: 'card-1',
+              quantity: 2,
+              cachedCard: { typeLine: 'Creature - Wizard' },
+            },
+          ],
+        },
+      ])
+      .mockResolvedValueOnce([{ entries: [{ cachedCardId: 'card-1', quantity: 2 }] }]);
+
+    const withRegisteredPrior = await validateDecklist('deck-1', 'user-1');
+    expect(withRegisteredPrior.warnings).toContain('1 more non-basic card changes required from previous round');
+    expect(prismaMock.decklist.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: ['submitted', 'locked'] },
+        }),
+      }),
+    );
   });
 });

@@ -447,6 +447,9 @@ async function getPriorRoundEntries(userId: string, eventId: string, roundNumber
     where: {
       userId,
       eventId,
+      status: {
+        in: ['submitted', 'locked'],
+      },
       round: {
         roundNumber: {
           lt: roundNumber,
@@ -1001,6 +1004,9 @@ export async function updateDecklist(
       userId: decklist.userId,
       eventId: decklist.eventId,
       roundId: decklist.roundId,
+      status: {
+        in: ['submitted', 'locked'],
+      },
       id: {
         not: decklist.id,
       },
@@ -1143,6 +1149,16 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
       userId: decklist.userId,
       eventId: decklist.eventId,
       roundId: decklist.roundId,
+      OR: [
+        {
+          id: decklist.id,
+        },
+        {
+          status: {
+            in: ['submitted', 'locked'],
+          },
+        },
+      ],
     },
     select: {
       entries: {
