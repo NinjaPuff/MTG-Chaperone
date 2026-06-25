@@ -89,6 +89,7 @@ function CurveColumns({
                         scryfallId={card.scryfallId}
                         name={card.name}
                         layout={card.layout}
+                        typeLine={card.typeLine}
                         imageUrl={image}
                         touchActions={getTouchActions?.(card)}
                         element="div"

@@ -8,6 +8,11 @@ import { SetSymbol } from '@/components/SetSymbol';
 import type { ScryfallSetSummary } from '@/hooks/useScryfallSets';
 import { useSearchResultsKeyboard } from '@/hooks/useSearchResultsKeyboard';
 import { getPrimaryCardImageUrl } from '@/lib/cardImage';
+import {
+  cardImageLandscapeRotationClassName,
+  faceTypeLineFromCard,
+  needsImageRotation,
+} from '@/lib/cardLayout';
 import { focusAndSelectInput } from '@/lib/focusSearchInputAfterStage';
 import { cn } from '@/lib/utils';
 
@@ -134,7 +139,11 @@ export function CardPoolSearchPanel({
         >
           {searchResults.map((card, index) => {
             const imageUris = normalizeImageUris(card.imageUris);
-            const imageUrl = getPrimaryCardImageUrl(imageUris, ['small', 'normal', 'border_crop']);
+            const hoverImageUrl = getPrimaryCardImageUrl(imageUris, ['normal', 'small', 'border_crop']);
+            const rotateLandscape = needsImageRotation(
+              card.layout ?? null,
+              faceTypeLineFromCard(card.typeLine, 0),
+            );
             const isActive = activeIndex === index;
 
             return (
@@ -157,17 +166,31 @@ export function CardPoolSearchPanel({
                   scryfallId={card.scryfallId}
                   name={card.name}
                   layout={card.layout ?? null}
-                  imageUrl={imageUrl}
+                  typeLine={card.typeLine ?? null}
+                  imageUrl={hoverImageUrl}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                    <PoolCardImage
-                      name={card.name}
-                      scryfallId={card.scryfallId}
-                      imageUris={imageUris}
-                      preference={['small', 'normal', 'border_crop']}
-                      className="h-10 w-8 rounded border border-border object-cover"
-                      fallbackClassName="inline-flex h-10 w-8 items-center justify-center rounded border border-border bg-muted px-1 text-center text-[9px] text-muted-foreground"
-                    />
+                    {rotateLandscape ? (
+                      <div className="relative h-10 w-14 shrink-0 overflow-hidden rounded border border-border bg-muted/40">
+                        <PoolCardImage
+                          name={card.name}
+                          scryfallId={card.scryfallId}
+                          imageUris={imageUris}
+                          preference={['small', 'normal', 'border_crop']}
+                          className={cardImageLandscapeRotationClassName()}
+                          fallbackClassName="inline-flex h-full w-full items-center justify-center bg-muted px-1 text-center text-[9px] text-muted-foreground"
+                        />
+                      </div>
+                    ) : (
+                      <PoolCardImage
+                        name={card.name}
+                        scryfallId={card.scryfallId}
+                        imageUris={imageUris}
+                        preference={['small', 'normal', 'border_crop']}
+                        className="h-14 w-10 shrink-0 rounded border border-border object-cover"
+                        fallbackClassName="inline-flex h-14 w-10 shrink-0 items-center justify-center rounded border border-border bg-muted px-1 text-center text-[9px] text-muted-foreground"
+                      />
+                    )}
                     <div className="min-w-0">
                       <CardNameWithFlavorSubtitle
                         name={card.name}

@@ -180,4 +180,67 @@ describe('GridView', () => {
     const cardRow = screen.getByTestId('virtual-grid-card-row');
     expect(cardRow).toHaveStyle({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
   });
+
+  it('should_rotate_split_cards_in_grid', () => {
+    renderGridView({
+      cards: [
+        {
+          ...cards[0],
+          scryfallId: 'split-1',
+          name: 'Fire // Ice',
+          layout: 'split',
+        },
+      ],
+      sortKey: 'name',
+      groupMode: 'flat',
+      organizeBy: 'type',
+      cardWidth: 200,
+    });
+
+    expect(screen.getByRole('img', { name: 'Fire // Ice' })).toHaveClass('rotate-90', 'object-contain');
+  });
+
+  it('should_use_landscape_aspect_for_siege_battle_cards', () => {
+    renderGridView({
+      cards: [
+        {
+          ...cards[0],
+          scryfallId: 'siege-1',
+          name: 'Invasion of Ikoria // Zilortha, Apex of Ikoria',
+          layout: 'transform',
+          typeLine: 'Battle — Siege // Legendary Creature — Dinosaur',
+        },
+      ],
+      sortKey: 'name',
+      groupMode: 'flat',
+      organizeBy: 'type',
+      cardWidth: 200,
+    });
+
+    expect(
+      screen.getByRole('img', { name: 'Invasion of Ikoria // Zilortha, Apex of Ikoria' }),
+    ).toHaveClass('rotate-90', 'object-contain');
+  });
+
+  it('should_rotate_room_cards_in_grid', () => {
+    renderGridView({
+      cards: [
+        {
+          ...cards[0],
+          scryfallId: 'room-1',
+          name: "Dollmaker's Shop // Porcelain Gallery",
+          layout: 'split',
+          typeLine: 'Enchantment — Room',
+        },
+      ],
+      sortKey: 'name',
+      groupMode: 'flat',
+      organizeBy: 'type',
+      cardWidth: 200,
+    });
+
+    expect(
+      screen.getByRole('img', { name: "Dollmaker's Shop // Porcelain Gallery" }),
+    ).toHaveClass('rotate-90', 'object-contain');
+  });
 });

@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCardPreview } from '../../../components/cardpool/CardPreviewContext';
 import { clearCardImageCachesForTests } from '../../../lib/cardImage';
+import { clearCardHoverPreviewCachesForTests } from '../../../components/cardpool/CardHoverPreview';
 import { mockMatchMedia, restoreMatchMedia } from '../../helpers/matchMedia';
 import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
@@ -13,10 +14,29 @@ import { apiRequest } from '@/lib/api';
 
 const mockedApiRequest = vi.mocked(apiRequest);
 
+const SIEGE_ID = 'siege-ikoria-1';
+const siegeFacesResponse = {
+  data: {
+    faces: [
+      {
+        name: 'Invasion of Ikoria',
+        typeLine: 'Battle — Siege',
+        imageUris: { normal: 'https://example.com/siege-front.jpg' },
+      },
+      {
+        name: 'Zilortha, Apex of Ikoria',
+        typeLine: 'Legendary Creature — Dinosaur',
+        imageUris: { normal: 'https://example.com/siege-back.jpg' },
+      },
+    ],
+  },
+};
+
 function PreviewController({
   scryfallId = 'card-1',
   name = 'Lightning Bolt',
   layout = null,
+  typeLine = null,
   imageUrl,
   touchActions,
   isTouchMode,
@@ -24,6 +44,7 @@ function PreviewController({
   scryfallId?: string;
   name?: string;
   layout?: string | null;
+  typeLine?: string | null;
   imageUrl: string | null;
   touchActions?: { label: string; onAction: () => void }[];
   isTouchMode?: boolean;
@@ -35,7 +56,7 @@ function PreviewController({
       type="button"
       onClick={() => {
         const rect = new DOMRect(100, 100, 80, 24);
-        showPreview(scryfallId, name, layout, imageUrl, rect, { x: 140, y: 112 }, {
+        showPreview(scryfallId, name, layout, typeLine, imageUrl, rect, { x: 140, y: 112 }, {
           touchActions: touchActions ?? [],
           isTouchMode: isTouchMode ?? false,
         });
@@ -50,6 +71,7 @@ describe('CardHoverPreview', () => {
   beforeEach(() => {
     mockedApiRequest.mockReset();
     clearCardImageCachesForTests();
+    clearCardHoverPreviewCachesForTests();
   });
 
   afterEach(() => {
@@ -67,6 +89,211 @@ describe('CardHoverPreview', () => {
     const image = screen.getByAltText('Lightning Bolt');
     expect(image).toHaveAttribute('src', 'https://example.com/bolt.jpg');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('uses rotated landscape sizing for split card desktop hover preview', () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    renderWithAppProviders(
+      <PreviewController
+        name="Fire // Ice"
+        layout="split"
+        imageUrl="https://example.com/fire-ice.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    const image = screen.getByAltText('Fire');
+    expect(image).toHaveClass('rotate-90', 'object-contain');
+  });
+
+  it('uses rotated landscape sizing for room card desktop hover preview', () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    renderWithAppProviders(
+      <PreviewController
+        name="Dollmaker's Shop // Porcelain Gallery"
+        layout="split"
+        typeLine="Enchantment — Room"
+        imageUrl="https://example.com/dollmaker.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    const image = screen.getByAltText("Dollmaker's Shop");
+    expect(image).toHaveClass('rotate-90', 'object-contain');
+  });
+
+  it('uses landscape sizing for battle face on Siege desktop hover', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValueOnce(siegeFacesResponse);
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId={SIEGE_ID}
+        name="Invasion of Ikoria // Zilortha, Apex of Ikoria"
+        layout="transform"
+        typeLine="Battle — Siege // Legendary Creature — Dinosaur"
+        imageUrl="https://example.com/siege-front.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(mockedApiRequest).toHaveBeenCalledWith(`/api/cards/${SIEGE_ID}/faces`);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByAltText('Invasion of Ikoria')).toHaveClass('rotate-90', 'object-contain');
+    });
+
+    expect(screen.getByAltText('Zilortha, Apex of Ikoria')).toHaveClass('max-w-[360px]');
+  });
+
+  it('uses landscape battle face and portrait back on Siege touch modal', async () => {
+    mockMatchMedia({ '(hover: hover)': false, '(hover: none)': true });
+    mockedApiRequest.mockResolvedValueOnce(siegeFacesResponse);
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId={SIEGE_ID}
+        name="Invasion of Ikoria // Zilortha, Apex of Ikoria"
+        layout="transform"
+        typeLine="Battle — Siege // Legendary Creature — Dinosaur"
+        imageUrl="https://example.com/siege-front.jpg"
+        isTouchMode
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toHaveClass('max-w-2xl');
+    });
+
+    expect(screen.getByAltText('Invasion of Ikoria')).toHaveClass('rotate-90', 'object-contain');
+    expect(screen.getByAltText('Zilortha, Apex of Ikoria')).toHaveClass('max-w-[360px]');
+  });
+
+  it('infers battle face landscape sizing when faces API omits typeLine', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValueOnce({
+      data: {
+        faces: [
+          {
+            name: 'Invasion of Ikoria',
+            imageUris: { normal: 'https://example.com/siege-front.jpg' },
+          },
+          {
+            name: 'Zilortha, Apex of Ikoria',
+            imageUris: { normal: 'https://example.com/siege-back.jpg' },
+          },
+        ],
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId={SIEGE_ID}
+        name="Invasion of Ikoria // Zilortha, Apex of Ikoria"
+        layout="transform"
+        typeLine="Battle — Siege // Legendary Creature — Dinosaur"
+        imageUrl="https://example.com/siege-front.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(screen.getByAltText('Invasion of Ikoria')).toHaveClass('rotate-90');
+    });
+    expect(screen.getByAltText('Zilortha, Apex of Ikoria')).toHaveClass('max-w-[360px]');
+  });
+
+  it('uses portrait sizing for both faces on non-battle transform hover', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValueOnce({
+      data: {
+        faces: [
+          {
+            name: 'Delver of Secrets',
+            typeLine: 'Legendary Creature — Human',
+            imageUris: { normal: 'https://example.com/front.jpg' },
+          },
+          {
+            name: 'Insectile Aberration',
+            typeLine: 'Legendary Creature — Human',
+            imageUris: { normal: 'https://example.com/back.jpg' },
+          },
+        ],
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController
+        scryfallId="transform-portrait-1"
+        name="Delver of Secrets // Insectile Aberration"
+        layout="transform"
+        imageUrl="https://example.com/front.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(screen.getByAltText('Delver of Secrets')).toBeInTheDocument();
+    });
+
+    expect(screen.getByAltText('Delver of Secrets')).toHaveClass('max-w-[360px]');
+    expect(screen.getByAltText('Delver of Secrets')).not.toHaveClass('max-w-[min(92vw,640px)]');
+    expect(screen.getByAltText('Insectile Aberration')).toHaveClass('max-w-[360px]');
+    expect(screen.getByAltText('Insectile Aberration')).not.toHaveClass('max-w-[min(92vw,640px)]');
+  });
+
+  it('resolves landscape layout from API when hover target passes null layout', async () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+    mockedApiRequest.mockResolvedValue({
+      data: {
+        layout: 'split',
+        imageUris: { normal: 'https://example.com/fire-ice.jpg' },
+      },
+    });
+
+    renderWithAppProviders(
+      <PreviewController
+        name="Fire // Ice"
+        layout={null}
+        imageUrl="https://example.com/fire-ice.jpg"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    await waitFor(() => {
+      expect(mockedApiRequest).toHaveBeenCalledWith('/api/cards/card-1');
+    });
+
+    await waitFor(() => {
+      expect(screen.getByAltText('Fire')).toHaveClass('rotate-90', 'object-contain');
+    });
+  });
+
+  it('uses wider touch dialog and rotated landscape sizing for split cards', () => {
+    mockMatchMedia({ '(hover: hover)': false, '(hover: none)': true });
+    renderWithAppProviders(
+      <PreviewController
+        name="Fire // Ice"
+        layout="split"
+        imageUrl="https://example.com/fire-ice.jpg"
+        isTouchMode
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open preview' }));
+
+    expect(screen.getByRole('dialog')).toHaveClass('max-w-2xl');
+    expect(screen.getByAltText('Fire')).toHaveClass('rotate-90', 'object-contain');
   });
 
   it('renders touch modal with aria-modal, close, backdrop, and action buttons', () => {

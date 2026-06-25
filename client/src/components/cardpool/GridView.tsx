@@ -7,6 +7,15 @@ import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { PoolCardImage } from './PoolCardImage';
 import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import {
+  cardImageAspectClassName,
+  cardImageFallbackClassName,
+  cardImageLandscapeFrameClassName,
+  cardImageLandscapeRotationClassName,
+  cardThumbnailLayoutToken,
+  faceTypeLineFromCard,
+  needsImageRotation,
+} from '@/lib/cardLayout';
+import {
   GRID_GAP_PX,
   buildVirtualGridRows,
   computeGridColumnCount,
@@ -43,12 +52,18 @@ function CardCell({
   getTouchActions?: (card: PoolCard) => TouchAction[];
 }) {
   const image = getPrimaryCardImageUrl(card.imageUris, ['border_crop', 'normal', 'small']);
+  const thumbnailLayout = cardThumbnailLayoutToken(card.layout, card.typeLine);
+  const rotateLandscape = needsImageRotation(
+    card.layout,
+    faceTypeLineFromCard(card.typeLine, 0),
+  );
 
   return (
     <HoverTarget
       scryfallId={card.scryfallId}
       name={card.name}
       layout={card.layout}
+      typeLine={card.typeLine}
       imageUrl={image}
       touchActions={getTouchActions?.(card)}
       element="div"
@@ -59,14 +74,27 @@ function CardCell({
         onClick={onCardClick ? () => onCardClick(card) : undefined}
         onDoubleClick={onCardDoubleClick ? () => onCardDoubleClick(card) : undefined}
       >
-        <PoolCardImage
-          name={card.name}
-          scryfallId={card.scryfallId}
-          imageUris={card.imageUris}
-          preference={['border_crop', 'normal', 'small']}
-          className="aspect-[488/680] w-full rounded-md border border-border object-cover"
-          fallbackClassName="aspect-[488/680] w-full rounded-md border border-border bg-muted p-2 text-center text-xs text-muted-foreground"
-        />
+        {rotateLandscape ? (
+          <div className={cardImageLandscapeFrameClassName()}>
+            <PoolCardImage
+              name={card.name}
+              scryfallId={card.scryfallId}
+              imageUris={card.imageUris}
+              preference={['border_crop', 'normal', 'small']}
+              className={cardImageLandscapeRotationClassName()}
+              fallbackClassName="inline-flex h-full w-full items-center justify-center bg-muted p-2 text-center text-xs text-muted-foreground"
+            />
+          </div>
+        ) : (
+          <PoolCardImage
+            name={card.name}
+            scryfallId={card.scryfallId}
+            imageUris={card.imageUris}
+            preference={['border_crop', 'normal', 'small']}
+            className={cardImageAspectClassName(thumbnailLayout)}
+            fallbackClassName={cardImageFallbackClassName(thumbnailLayout)}
+          />
+        )}
         {card.quantity > 1 ? (
           <span className="absolute right-1 top-1 rounded-full bg-black/70 px-1.5 py-0.5 text-xs font-semibold text-white">
             x{card.quantity}
