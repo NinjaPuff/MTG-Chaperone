@@ -12,7 +12,13 @@ import { formatActiveRoundLabel, getUserActiveMatches } from '@/lib/activeMatche
 import { getBracketMatchInteraction, isBracketMatchClickable as canClickBracketMatch } from '@/lib/bracketMatchInteraction';
 import { confirmDisputeMatch } from '@/lib/matchDisputeConfirm';
 import { primaryName } from '@/lib/userDisplay';
-import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
+import { ReportMatchDialog } from '@/components/ReportMatchDialog';
+import {
+  type MatchInputCounts,
+  parseGameResultsToCounts,
+  toGameResultBody,
+  validateReportCounts,
+} from '@/lib/matchReporting';
 import { BracketView } from '@/components/bracket/BracketView';
 import type { BracketSlotView } from '@/components/bracket/types';
 import { fetchBracketState } from '@/lib/bracketApi';
@@ -116,42 +122,6 @@ type StandingRow = {
   points: number;
 };
 
-function countsFromGameResults(match: Match): MatchInputCounts {
-  let player1Wins = 0;
-  let player2Wins = 0;
-  let gameDraws = 0;
-
-  for (const game of match.gameResults) {
-    if (game.isDraw || !game.winnerId) {
-      gameDraws += 1;
-      continue;
-    }
-    if (game.winnerId === match.player1.id) {
-      player1Wins += 1;
-      continue;
-    }
-    if (game.winnerId === match.player2?.id) {
-      player2Wins += 1;
-    }
-  }
-
-  return { player1Wins, player2Wins, gameDraws };
-}
-
-function toGameResultBody(match: Match, counts: MatchInputCounts) {
-  const gameResults: Array<{ winnerId: string | null; isDraw: boolean }> = [];
-  for (let i = 0; i < counts.player1Wins; i += 1) {
-    gameResults.push({ winnerId: match.player1.id, isDraw: false });
-  }
-  for (let i = 0; i < counts.player2Wins; i += 1) {
-    gameResults.push({ winnerId: match.player2?.id ?? null, isDraw: false });
-  }
-  for (let i = 0; i < counts.gameDraws; i += 1) {
-    gameResults.push({ winnerId: null, isDraw: true });
-  }
-  return gameResults;
-}
-
 function matchResultSummary(match: Match) {
   const p1Name = primaryName(match.player1);
   if (match.isBye) {
@@ -172,8 +142,7 @@ function matchResultRecord(match: Match) {
   }
   const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
   const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
-  const draws = match.gameResults.filter((game) => game.isDraw || !game.winnerId).length;
-  return `${p1Wins}-${p2Wins}-${draws}`;
+  return `${p1Wins}-${p2Wins}`;
 }
 
 function matchResultVerdict(match: Match) {
@@ -183,7 +152,7 @@ function matchResultVerdict(match: Match) {
   const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
   const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
   if (p1Wins === p2Wins) {
-    return { text: 'Match Draw.', tone: 'draw' as const };
+    return { text: 'Match ended in a draw.', tone: 'draw' as const };
   }
   const winner = p1Wins > p2Wins ? primaryName(match.player1) : primaryName(match.player2);
   return { text: `${winner} won.`, tone: 'winner' as const };
@@ -206,7 +175,7 @@ export function EventDetailPage() {
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [selectedMatchMode, setSelectedMatchMode] = useState<'report' | 'resolve' | null>(null);
-  const [initialReportCounts, setInitialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+  const [initialReportCounts, setInitialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -229,7 +198,7 @@ export function EventDetailPage() {
 
   const leagueMembers = useMemo(() => event?.season.league.memberships ?? [], [event]);
   const eventRecords = useMemo(() => computeEventRecords(rounds), [rounds]);
-  const userActiveMatches = useMemo(() => getUserActiveMatches(rounds, user?.id), [rounds, user?.id]);
+  const userActiveMatches = useMemo(() => getUserActiveMatches<Match, Round>(rounds, user?.id), [rounds, user?.id]);
   const orderedRounds = useMemo(() => {
     const priority = (status: RoundStatus) => {
       if (status === 'in_progress') {
@@ -512,16 +481,16 @@ export function EventDetailPage() {
     setSelectedMatchId(match.id);
     setSelectedMatchMode(mode);
     if (mode === 'resolve') {
-      setInitialReportCounts(countsFromGameResults(match));
+      setInitialReportCounts(parseGameResultsToCounts(match.player1.id, match.gameResults));
       return;
     }
-    setInitialReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+    setInitialReportCounts({ player1Wins: 0, player2Wins: 0 });
   };
 
   const closeMatchForm = () => {
     setSelectedMatchId(null);
     setSelectedMatchMode(null);
-    setInitialReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+    setInitialReportCounts({ player1Wins: 0, player2Wins: 0 });
   };
 
   const submitMatchForm = async (reportCounts: MatchInputCounts) => {
@@ -529,29 +498,22 @@ export function EventDetailPage() {
       return;
     }
 
-    const payload = toGameResultBody(selectedMatch, reportCounts);
-    const winsTotal = reportCounts.player1Wins + reportCounts.player2Wins;
-    const requiredWins = Math.ceil(bestOfN / 2);
-    if (!Number.isInteger(reportCounts.player1Wins) || !Number.isInteger(reportCounts.player2Wins) || !Number.isInteger(reportCounts.gameDraws)) {
-      setError('Wins and draws must be whole numbers.');
+    const validationError = validateReportCounts(reportCounts, bestOfN);
+    if (validationError) {
+      setError(validationError);
       return;
     }
-    if (payload.length === 0) {
-      setError('Enter at least one game result before submitting.');
+
+    if (!selectedMatch.player2) {
+      setError('Both players are required to report a match.');
       return;
     }
-    if (winsTotal > bestOfN) {
-      setError(`Total wins cannot exceed best-of-${bestOfN}. Draws are tracked separately.`);
-      return;
-    }
-    if (reportCounts.player1Wins > requiredWins || reportCounts.player2Wins > requiredWins) {
-      setError(`A player cannot exceed ${requiredWins} wins in best-of-${bestOfN}.`);
-      return;
-    }
-    if (reportCounts.gameDraws > 5) {
-      setError('Game draws cannot exceed 5.');
-      return;
-    }
+
+    const payload = toGameResultBody(
+      selectedMatch.player1.id,
+      selectedMatch.player2.id,
+      reportCounts,
+    );
 
     const endpoint = selectedMatchMode === 'resolve' ? 'resolve' : 'report';
     await mutate(`Match ${endpoint}ed.`, async () => {

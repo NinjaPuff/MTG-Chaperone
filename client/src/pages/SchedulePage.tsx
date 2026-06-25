@@ -10,7 +10,12 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { computeEventRecords } from '@/lib/eventRecords';
 import { confirmDisputeMatch } from '@/lib/matchDisputeConfirm';
 import { primaryName } from '@/lib/userDisplay';
-import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
+import { ReportMatchDialog } from '@/components/ReportMatchDialog';
+import {
+  type MatchInputCounts,
+  toGameResultBody,
+  validateReportCounts,
+} from '@/lib/matchReporting';
 import { BracketView } from '@/components/bracket/BracketView';
 import type { BracketSlotView } from '@/components/bracket/types';
 import { fetchBracketState, reloadBracketEventViews } from '@/lib/bracketApi';
@@ -56,8 +61,7 @@ function matchResultRecord(match: Match) {
   }
   const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
   const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
-  const draws = match.gameResults.filter((game) => game.isDraw || !game.winnerId).length;
-  return `${p1Wins}-${p2Wins}-${draws}`;
+  return `${p1Wins}-${p2Wins}`;
 }
 
 export function SchedulePage() {
@@ -72,7 +76,7 @@ export function SchedulePage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [bracketSlots, setBracketSlots] = useState<BracketSlotView[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
-  const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+  const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0 });
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
   const [isMutatingRound, setIsMutatingRound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -196,31 +200,22 @@ export function SchedulePage() {
     }
 
     const bestOfN = selectedEvent?.config?.bestOfN ?? 3;
-    const requiredWins = Math.ceil(bestOfN / 2);
-    const totalWins = reportCounts.player1Wins + reportCounts.player2Wins;
-    if (totalWins > bestOfN) {
-      setError(`Total wins cannot exceed best-of-${bestOfN}. Draws are tracked separately.`);
-      return;
-    }
-    if (reportCounts.player1Wins > requiredWins || reportCounts.player2Wins > requiredWins) {
-      setError(`A player cannot exceed ${requiredWins} wins in best-of-${bestOfN}.`);
-      return;
-    }
-    if (reportCounts.gameDraws > 5) {
-      setError('Game draws cannot exceed 5.');
+    const validationError = validateReportCounts(reportCounts, bestOfN);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
-    const gameResults: Array<{ winnerId: string | null; isDraw: boolean }> = [];
-    for (let i = 0; i < reportCounts.player1Wins; i += 1) {
-      gameResults.push({ winnerId: selectedMatch.player1.id, isDraw: false });
+    if (!selectedMatch.player2) {
+      setError('Both players are required to report a match.');
+      return;
     }
-    for (let i = 0; i < reportCounts.player2Wins; i += 1) {
-      gameResults.push({ winnerId: selectedMatch.player2?.id ?? null, isDraw: false });
-    }
-    for (let i = 0; i < reportCounts.gameDraws; i += 1) {
-      gameResults.push({ winnerId: null, isDraw: true });
-    }
+
+    const gameResults = toGameResultBody(
+      selectedMatch.player1.id,
+      selectedMatch.player2.id,
+      reportCounts,
+    );
 
     try {
       await authApiRequest(`/api/matches/${selectedMatch.id}/report`, {
@@ -430,7 +425,7 @@ export function SchedulePage() {
                     const verdict =
                       ['reported', 'confirmed', 'resolved'].includes(match.status) && match.gameResults.length > 0
                         ? p1Wins === p2Wins
-                          ? { text: 'Match Draw.', tone: 'draw' as const }
+                          ? { text: 'Match ended in a draw.', tone: 'draw' as const }
                           : { text: `${p1Wins > p2Wins ? primaryName(match.player1) : primaryName(match.player2!)} won.`, tone: 'winner' as const }
                         : null;
                     return (
@@ -447,7 +442,17 @@ export function SchedulePage() {
                             <p className="text-xs text-muted-foreground capitalize">{match.status.replace('_', ' ')}</p>
                             {record ? <p className="text-xs text-muted-foreground">Result: {record}</p> : null}
                             {verdict ? (
-                              <p className={`text-xs font-medium ${verdict.tone === 'winner' ? 'text-emerald-600' : 'text-amber-600'}`}>{verdict.text}</p>
+                              <p
+                                className={`text-xs font-medium ${
+                                  verdict.tone === 'winner'
+                                    ? 'text-emerald-600'
+                                    : verdict.tone === 'draw'
+                                      ? 'text-amber-600'
+                                      : 'text-muted-foreground'
+                                }`}
+                              >
+                                {verdict.text}
+                              </p>
                             ) : null}
                           </div>
                         }

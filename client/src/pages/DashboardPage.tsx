@@ -11,7 +11,12 @@ import { getUserActiveMatches, formatActiveRoundLabel } from '@/lib/activeMatche
 import { computeMatchRecord, getMatchOutcome } from '@/lib/matchUtils';
 import { computeEventRecords } from '@/lib/eventRecords';
 import { primaryName } from '@/lib/userDisplay';
-import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
+import { ReportMatchDialog } from '@/components/ReportMatchDialog';
+import {
+  type MatchInputCounts,
+  toGameResultBody,
+  validateReportCounts,
+} from '@/lib/matchReporting';
 import { BracketView } from '@/components/bracket/BracketView';
 import type { BracketSlotView } from '@/components/bracket/types';
 import { fetchBracketState, reloadBracketEventViews } from '@/lib/bracketApi';
@@ -138,7 +143,7 @@ export function DashboardPage() {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [bracketSlots, setBracketSlots] = useState<BracketSlotView[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
-  const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+  const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0 });
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -273,31 +278,22 @@ export function DashboardPage() {
     }
 
     const bestOfN = activeEvent.config?.bestOfN ?? 3;
-    const requiredWins = Math.ceil(bestOfN / 2);
-    const totalWins = reportCounts.player1Wins + reportCounts.player2Wins;
-    if (totalWins > bestOfN) {
-      setActionError(`Total wins cannot exceed best-of-${bestOfN}. Draws are tracked separately.`);
-      return;
-    }
-    if (reportCounts.player1Wins > requiredWins || reportCounts.player2Wins > requiredWins) {
-      setActionError(`A player cannot exceed ${requiredWins} wins in best-of-${bestOfN}.`);
-      return;
-    }
-    if (reportCounts.gameDraws > 5) {
-      setActionError('Game draws cannot exceed 5.');
+    const validationError = validateReportCounts(reportCounts, bestOfN);
+    if (validationError) {
+      setActionError(validationError);
       return;
     }
 
-    const gameResults: Array<{ winnerId: string | null; isDraw: boolean }> = [];
-    for (let i = 0; i < reportCounts.player1Wins; i += 1) {
-      gameResults.push({ winnerId: selectedMatch.player1.id, isDraw: false });
+    if (!selectedMatch.player2) {
+      setActionError('Both players are required to report a match.');
+      return;
     }
-    for (let i = 0; i < reportCounts.player2Wins; i += 1) {
-      gameResults.push({ winnerId: selectedMatch.player2?.id ?? null, isDraw: false });
-    }
-    for (let i = 0; i < reportCounts.gameDraws; i += 1) {
-      gameResults.push({ winnerId: null, isDraw: true });
-    }
+
+    const gameResults = toGameResultBody(
+      selectedMatch.player1.id,
+      selectedMatch.player2.id,
+      reportCounts,
+    );
 
     try {
       await authApiRequest(`/api/matches/${selectedMatch.id}/report`, {
@@ -375,7 +371,7 @@ export function DashboardPage() {
                   <span className="truncate">{opponent ? primaryName(opponent) : 'BYE'}</span>
                   <div className="flex items-center gap-2 text-xs">
                     <span className="rounded border border-border px-2 py-0.5 text-muted-foreground">
-                      {record.wins}-{record.losses}-{record.draws}
+                      {record.wins}-{record.losses}
                     </span>
                     <span className="font-semibold">{verdict}</span>
                   </div>
@@ -390,7 +386,7 @@ export function DashboardPage() {
                   {primaryName(match.player1)} vs {match.player2 ? primaryName(match.player2) : 'BYE'}
                 </span>
                 <span className="rounded border border-border px-2 py-0.5 text-xs text-muted-foreground">
-                  {record.wins}-{record.losses}-{record.draws}
+                  {record.wins}-{record.losses}
                 </span>
               </div>
             );

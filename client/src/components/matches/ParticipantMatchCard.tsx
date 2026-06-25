@@ -42,8 +42,7 @@ function matchResultRecord(match: ParticipantMatch) {
   }
   const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
   const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
-  const draws = match.gameResults.filter((game) => game.isDraw || !game.winnerId).length;
-  return `${p1Wins}-${p2Wins}-${draws}`;
+  return `${p1Wins}-${p2Wins}`;
 }
 
 export function ParticipantMatchCard({
@@ -131,9 +130,11 @@ export function ParticipantMatchCard({
               className={`text-xs font-medium ${
                 verdict.tone === 'winner'
                   ? 'text-emerald-600'
-                  : verdict.tone === 'disputed'
-                    ? 'text-red-600'
-                    : 'text-amber-600'
+                  : verdict.tone === 'draw'
+                    ? 'text-amber-600'
+                    : verdict.tone === 'disputed'
+                      ? 'text-red-600'
+                      : 'text-muted-foreground'
               }`}
             >
               {verdict.text}

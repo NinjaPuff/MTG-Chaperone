@@ -44,4 +44,33 @@ describe('computeStandings', () => {
     expect(u1?.omwPercent).toBe(0.33);
     expect(u2?.omwPercent).toBe(1);
   });
+
+  it('awards draw stats on tied match', () => {
+    const rows = computeStandings(
+      'season-1',
+      ['u1', 'u2'],
+      [
+        {
+          isBye: false,
+          player1Id: 'u1',
+          player2Id: 'u2',
+          gameResults: [
+            { winnerId: 'u1', isDraw: false },
+            { winnerId: 'u2', isDraw: false },
+          ],
+          round: { event: { pointMultiplier: 1 } },
+        },
+      ],
+      { matchWinPoints: 3, matchDrawPoints: 5, matchLossPoints: 0 },
+    );
+
+    const u1 = rows.find((row) => row.userId === 'u1');
+    const u2 = rows.find((row) => row.userId === 'u2');
+    expect(u1?.matchDraws).toBe(1);
+    expect(u2?.matchDraws).toBe(1);
+    expect(u1?.points).toBe(5);
+    expect(u2?.points).toBe(5);
+    expect(u1?.matchWins).toBe(0);
+    expect(u2?.matchWins).toBe(0);
+  });
 });

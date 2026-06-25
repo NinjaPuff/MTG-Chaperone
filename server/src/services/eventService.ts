@@ -4,7 +4,7 @@ import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 import { assignRoundRobinPairings, generateSeededSwissPairings, generateSwissPairings } from './pairingService.js';
 import { resetRoundProgress } from './roundService.js';
 import { initializeBracket, resetBracketEvent, ensureBracketSeeds } from './bracketService.js';
-import { isBracketFormat } from '@mtg-league/shared';
+import { isBracketFormat, isPairingFormat, type PairingEventFormat } from '@mtg-league/shared';
 
 type EventConfigInput = {
   format: 'swiss' | 'seeded_swiss' | 'round_robin' | 'single_elimination' | 'double_elimination' | 'custom_10_player';
@@ -500,7 +500,7 @@ async function createMatchesForRound(roundId: string, pairs: Array<{ player1Id: 
   );
 }
 
-async function repopulatePairingsForRound(roundId: string, format: 'swiss' | 'seeded_swiss' | 'round_robin') {
+async function repopulatePairingsForRound(roundId: string, format: PairingEventFormat) {
   if (format === 'round_robin') {
     await assignRoundRobinPairings(roundId);
     return;
@@ -535,6 +535,10 @@ export async function resetEvent(eventId: string) {
     await resetBracketEvent(event.id);
     return getEvent(eventId);
   }
+  if (!isPairingFormat(event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Unsupported event format for reset');
+  }
+  const pairingFormat = event.config.format;
 
   const roundIdsToRepair: string[] = [];
   await prisma.$transaction(async (tx) => {
@@ -547,7 +551,9 @@ export async function resetEvent(eventId: string) {
       await resetRoundProgress(tx, {
         id: round.id,
         event: {
-          config: event.config,
+          config: {
+            format: pairingFormat,
+          },
         },
       });
       roundIdsToRepair.push(round.id);
@@ -563,7 +569,7 @@ export async function resetEvent(eventId: string) {
   });
 
   for (const roundId of roundIdsToRepair) {
-    await repopulatePairingsForRound(roundId, event.config.format);
+    await repopulatePairingsForRound(roundId, pairingFormat);
   }
 
   return getEvent(eventId);

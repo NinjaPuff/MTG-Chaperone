@@ -104,6 +104,51 @@ async function ensureParticipantOrSiteAdmin(match: Awaited<ReturnType<typeof get
   await ensureSiteAdmin(userId);
 }
 
+export function validateGameResults(
+  player1Id: string,
+  player2Id: string | null,
+  gameResults: GameInput[],
+) {
+  if (gameResults.length === 0) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'At least one game result is required');
+  }
+
+  for (const game of gameResults) {
+    if (game.isDraw) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Game draws are not supported');
+    }
+  }
+
+  if (!player2Id) {
+    return;
+  }
+}
+
+function assertBracketMatchHasWinner(
+  format: string | undefined,
+  player1Id: string,
+  player2Id: string | null,
+  gameResults: GameInput[],
+) {
+  if (!format || !player2Id || !isBracketFormat(format)) {
+    return;
+  }
+
+  let player1Wins = 0;
+  let player2Wins = 0;
+  for (const game of gameResults) {
+    if (game.winnerId === player1Id) {
+      player1Wins += 1;
+    } else if (game.winnerId === player2Id) {
+      player2Wins += 1;
+    }
+  }
+
+  if (player1Wins === player2Wins) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Bracket matches must produce a winner');
+  }
+}
+
 async function writeGameResults(matchId: string, gameResults: GameInput[]) {
   await prisma.gameResult.deleteMany({ where: { matchId } });
   await Promise.all(
@@ -176,26 +221,13 @@ export async function reportMatch(matchId: string, reporterId: string, gameResul
     throw new AppError(409, 'INVALID_ROUND_STATE', 'Round must be in progress to report matches');
   }
   validateMatchStateTransition(match.status, 'report', match.reportedById ?? null, reporterId);
-  if (gameResults.length === 0) {
-    throw new AppError(400, 'VALIDATION_ERROR', 'At least one game result is required');
-  }
-  if (match.round.event.config && isBracketFormat(match.round.event.config.format)) {
-    let player1Wins = 0;
-    let player2Wins = 0;
-    for (const game of gameResults) {
-      if (game.isDraw || !game.winnerId) {
-        continue;
-      }
-      if (game.winnerId === match.player1Id) {
-        player1Wins += 1;
-      } else if (game.winnerId === match.player2Id) {
-        player2Wins += 1;
-      }
-    }
-    if (player1Wins === player2Wins) {
-      throw new AppError(400, 'VALIDATION_ERROR', 'Bracket matches must produce a winner');
-    }
-  }
+  validateGameResults(match.player1Id, match.player2Id, gameResults);
+  assertBracketMatchHasWinner(
+    match.round.event.config?.format,
+    match.player1Id,
+    match.player2Id,
+    gameResults,
+  );
 
   await writeGameResults(matchId, gameResults);
 
@@ -269,6 +301,13 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
   await ensureSiteAdmin(adminId);
   const match = await getMatch(matchId);
   validateMatchStateTransition(match.status, 'resolve', match.reportedById ?? null, adminId);
+  validateGameResults(match.player1Id, match.player2Id, gameResults);
+  assertBracketMatchHasWinner(
+    match.round.event.config?.format,
+    match.player1Id,
+    match.player2Id,
+    gameResults,
+  );
 
   await writeGameResults(matchId, gameResults);
 
@@ -303,6 +342,7 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
 export function createMatchService() {
   return {
     validateMatchStateTransition,
+    validateGameResults,
     reportMatch,
     confirmMatch,
     disputeMatch,

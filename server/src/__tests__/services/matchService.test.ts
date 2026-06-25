@@ -11,7 +11,7 @@ vi.mock('../../lib/prisma.js', () => ({
 }));
 vi.mock('../../services/bracketService.js', () => bracketServiceMocks);
 
-import { confirmMatch, reportMatch, resolveMatch } from '../../services/matchService.js';
+import { confirmMatch, reportMatch, resolveMatch, validateGameResults } from '../../services/matchService.js';
 
 describe('matchService', () => {
   beforeEach(() => {
@@ -192,6 +192,149 @@ describe('matchService', () => {
     ).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
       message: 'Bracket matches must produce a winner',
+    });
+  });
+
+  it('rejects isDraw on round-robin report', async () => {
+    prismaMock.match.findUnique.mockResolvedValue({
+      id: 'm1',
+      status: 'pending',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      roundId: 'r1',
+      reportedById: null,
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'round_robin' } } },
+      gameResults: [],
+    });
+
+    await expect(
+      reportMatch('m1', 'u1', [{ winnerId: null, isDraw: true }]),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Game draws are not supported',
+    });
+    expect(prismaMock.match.update).not.toHaveBeenCalled();
+  });
+
+  it('accepts tied wins on round-robin report', async () => {
+    prismaMock.match.findUnique.mockResolvedValue({
+      id: 'm1',
+      status: 'pending',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      roundId: 'r1',
+      reportedById: null,
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'round_robin' } } },
+      gameResults: [],
+    });
+    prismaMock.match.update.mockResolvedValue({ id: 'm1', status: 'reported', gameResults: [] });
+
+    await reportMatch('m1', 'u1', [
+      { winnerId: 'u1', isDraw: false },
+      { winnerId: 'u2', isDraw: false },
+    ]);
+
+    expect(prismaMock.match.update).toHaveBeenCalled();
+  });
+
+  it('rejects tied wins on bracket resolve', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ role: 'admin' });
+    prismaMock.match.findUnique.mockResolvedValue({
+      id: 'm1',
+      status: 'disputed',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      roundId: 'r1',
+      reportedById: 'u1',
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'single_elimination' } } },
+      gameResults: [],
+    });
+
+    await expect(
+      resolveMatch('m1', 'admin-1', [
+        { winnerId: 'u1', isDraw: false },
+        { winnerId: 'u2', isDraw: false },
+      ]),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Bracket matches must produce a winner',
+    });
+    expect(prismaMock.match.update).not.toHaveBeenCalled();
+  });
+
+  it('accepts valid 2-1 on round-robin report', async () => {
+    prismaMock.match.findUnique.mockResolvedValue({
+      id: 'm1',
+      status: 'pending',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      roundId: 'r1',
+      reportedById: null,
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'round_robin' } } },
+      gameResults: [],
+    });
+    prismaMock.match.update.mockResolvedValue({ id: 'm1', status: 'reported', gameResults: [] });
+
+    await reportMatch('m1', 'u1', [
+      { winnerId: 'u1', isDraw: false },
+      { winnerId: 'u2', isDraw: false },
+      { winnerId: 'u1', isDraw: false },
+    ]);
+
+    expect(prismaMock.match.update).toHaveBeenCalled();
+  });
+
+  it('rejects isDraw on resolve', async () => {
+    prismaMock.user.findUnique.mockResolvedValue({ role: 'admin' });
+    prismaMock.match.findUnique.mockResolvedValue({
+      id: 'm1',
+      status: 'disputed',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      roundId: 'r1',
+      reportedById: 'u1',
+      round: { status: 'in_progress', event: { season: {}, config: { format: 'swiss' } } },
+      gameResults: [],
+    });
+
+    await expect(
+      resolveMatch('m1', 'admin-1', [{ winnerId: null, isDraw: true }]),
+    ).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Game draws are not supported',
+    });
+    expect(prismaMock.match.update).not.toHaveBeenCalled();
+  });
+
+  describe('validateGameResults', () => {
+    it('rejects game draws', () => {
+      expect(() =>
+        validateGameResults('u1', 'u2', [{ winnerId: null, isDraw: true }]),
+      ).toThrow(
+        expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          message: 'Game draws are not supported',
+        }),
+      );
+    });
+
+    it('accepts tied wins', () => {
+      expect(() =>
+        validateGameResults('u1', 'u2', [
+          { winnerId: 'u1', isDraw: false },
+          { winnerId: 'u2', isDraw: false },
+        ]),
+      ).not.toThrow();
+    });
+
+    it('accepts valid results', () => {
+      expect(() =>
+        validateGameResults('u1', 'u2', [
+          { winnerId: 'u1', isDraw: false },
+          { winnerId: 'u2', isDraw: false },
+          { winnerId: 'u1', isDraw: false },
+        ]),
+      ).not.toThrow();
     });
   });
 

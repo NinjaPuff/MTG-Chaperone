@@ -90,10 +90,8 @@ export function formatMatchScore(
 
   let viewerWins = 0;
   let opponentWins = 0;
-  let draws = 0;
   for (const game of match.gameResults) {
     if (game.isDraw || !game.winnerId) {
-      draws += 1;
       continue;
     }
     if (game.winnerId === viewerId) {
@@ -101,10 +99,6 @@ export function formatMatchScore(
     } else {
       opponentWins += 1;
     }
-  }
-
-  if (draws > 0 && viewerWins === 0 && opponentWins === 0) {
-    return `${draws} draw${draws === 1 ? '' : 's'}`;
   }
 
   return `${viewerWins}-${opponentWins}`;

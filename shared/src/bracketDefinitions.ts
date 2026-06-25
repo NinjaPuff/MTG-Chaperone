@@ -24,6 +24,10 @@ type DownstreamTarget = { slotKey: string; position: 1 | 2 };
 
 const BRACKET_FORMATS = new Set(['single_elimination', 'double_elimination', 'custom_10_player']);
 
+export type BracketEventFormat = 'single_elimination' | 'double_elimination' | 'custom_10_player';
+export type SwissEventFormat = 'swiss' | 'seeded_swiss';
+export type PairingEventFormat = SwissEventFormat | 'round_robin';
+
 function numericKey(slotKey: string) {
   return Number.parseInt(slotKey.replace(/^[A-Z]+/, ''), 10) || 0;
 }
@@ -386,8 +390,16 @@ export function createCustom10PlayerBracket(): BracketDefinition {
   };
 }
 
-export function isBracketFormat(format: string) {
+export function isBracketFormat(format: string): format is BracketEventFormat {
   return BRACKET_FORMATS.has(format);
+}
+
+export function isSwissFormat(format: string): format is SwissEventFormat {
+  return format === 'swiss' || format === 'seeded_swiss';
+}
+
+export function isPairingFormat(format: string): format is PairingEventFormat {
+  return isSwissFormat(format) || format === 'round_robin';
 }
 
 export function getBracketDefinition(format: string, playerCount: number): BracketDefinition {

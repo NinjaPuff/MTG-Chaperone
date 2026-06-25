@@ -69,7 +69,7 @@ type MatchHistoryRow = {
   event: { id: string; name: string };
   round: number;
   opponent: { slug: string; displayName: string; publicName: string | null } | null;
-  result: 'win' | 'loss' | 'draw';
+  result: 'win' | 'loss' | 'draw' | null;
   score: string;
   date: string;
 };
@@ -88,7 +88,8 @@ function formatWinRate(rate: number) {
 function formatResult(result: MatchHistoryRow['result']) {
   if (result === 'win') return 'Win';
   if (result === 'loss') return 'Loss';
-  return 'Draw';
+  if (result === 'draw') return 'Draw';
+  return '—';
 }
 
 function ProfileEditSection({

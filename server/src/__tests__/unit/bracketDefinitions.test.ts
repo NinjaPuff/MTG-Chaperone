@@ -7,6 +7,8 @@ import {
   getDownstreamSlots,
   getReadySlots,
   isBracketFormat,
+  isPairingFormat,
+  isSwissFormat,
 } from '@mtg-league/shared';
 
 function slotMap(definition: { slots: Array<{ slotKey: string }> }) {
@@ -118,5 +120,23 @@ describe('isBracketFormat', () => {
     expect(isBracketFormat('swiss')).toBe(false);
     expect(isBracketFormat('seeded_swiss')).toBe(false);
     expect(isBracketFormat('round_robin')).toBe(false);
+  });
+});
+
+describe('isSwissFormat', () => {
+  it('flags swiss formats only', () => {
+    expect(isSwissFormat('swiss')).toBe(true);
+    expect(isSwissFormat('seeded_swiss')).toBe(true);
+    expect(isSwissFormat('round_robin')).toBe(false);
+    expect(isSwissFormat('single_elimination')).toBe(false);
+  });
+});
+
+describe('isPairingFormat', () => {
+  it('flags pairing formats only', () => {
+    expect(isPairingFormat('swiss')).toBe(true);
+    expect(isPairingFormat('seeded_swiss')).toBe(true);
+    expect(isPairingFormat('round_robin')).toBe(true);
+    expect(isPairingFormat('single_elimination')).toBe(false);
   });
 });

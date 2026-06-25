@@ -139,28 +139,17 @@ function PlayerNameWithSets({
   );
 }
 
-function OutcomeWatermark({ variant }: { variant: 'winner' | 'draw' | 'disputed' }) {
+function OutcomeWatermark({ variant }: { variant: 'winner' | 'disputed' | 'draw' }) {
   const overlay =
-    variant === 'draw' ? 'bg-amber-500/10' : variant === 'disputed' ? 'bg-red-500/10' : 'bg-emerald-500/10';
+    variant === 'disputed'
+      ? 'bg-red-500/10'
+      : variant === 'draw'
+        ? 'bg-amber-500/10'
+        : 'bg-emerald-500/10';
 
   return (
     <div className={`absolute inset-0 pointer-events-none flex items-center justify-center ${overlay}`}>
-      {variant === 'draw' ? (
-        <svg
-          className="h-[58%] w-[58%] opacity-[0.18] text-amber-500"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <circle cx="12" cy="12" r="7.8" />
-          <line x1="8.5" y1="10.3" x2="15.5" y2="10.3" />
-          <line x1="8.5" y1="13.7" x2="15.5" y2="13.7" />
-        </svg>
-      ) : variant === 'disputed' ? (
+      {variant === 'disputed' ? (
         <svg
           className="h-[58%] w-[58%] opacity-[0.18] text-red-500"
           viewBox="0 0 24 24"
@@ -229,19 +218,19 @@ export function MatchCard({
   const p2Record = eventRecords.get(match.player2.id) ?? { wins: 0, losses: 0, draws: 0 };
   const p2Points = seasonPoints.get(match.player2.id) ?? 0;
   const isDisputed = match.status === 'disputed';
+  const isReportedDraw = !isDisputed && matchOutcome === 'draw';
   const p1IsReportedWinner = !isDisputed && matchOutcome === 'player1';
   const p2IsReportedWinner = !isDisputed && matchOutcome === 'player2';
-  const isReportedDraw = !isDisputed && matchOutcome === 'draw';
 
   const playerPanelClass = (isWinner: boolean, isDraw: boolean) => {
     if (isDisputed) {
       return 'border-red-500 bg-red-500/10 shadow-sm';
     }
-    if (isWinner) {
-      return 'border-emerald-500 bg-emerald-500/10 shadow-sm';
-    }
     if (isDraw) {
       return 'border-amber-500 bg-amber-500/10 shadow-sm';
+    }
+    if (isWinner) {
+      return 'border-emerald-500 bg-emerald-500/10 shadow-sm';
     }
     return 'border-border';
   };
@@ -250,8 +239,11 @@ export function MatchCard({
     if (isDisputed) {
       return <OutcomeWatermark variant="disputed" />;
     }
-    if (isWinner || isDraw) {
-      return <OutcomeWatermark variant={isDraw ? 'draw' : 'winner'} />;
+    if (isDraw) {
+      return <OutcomeWatermark variant="draw" />;
+    }
+    if (isWinner) {
+      return <OutcomeWatermark variant="winner" />;
     }
     return null;
   };
@@ -264,17 +256,17 @@ export function MatchCard({
         </span>
       );
     }
-    if (isWinner) {
-      return (
-        <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-          Winner
-        </span>
-      );
-    }
     if (isDraw) {
       return (
         <span className="rounded-full border border-amber-600 bg-amber-600/15 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
           Draw
+        </span>
+      );
+    }
+    if (isWinner) {
+      return (
+        <span className="rounded-full border border-emerald-600 bg-emerald-600/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+          Winner
         </span>
       );
     }

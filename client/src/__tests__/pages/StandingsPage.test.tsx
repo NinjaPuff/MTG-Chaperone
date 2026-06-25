@@ -104,5 +104,7 @@ describe('StandingsPage', () => {
     expect(screen.getByText('Bob')).toBeInTheDocument();
     expect(screen.getByText('league_player')).toBeInTheDocument();
     expect(screen.queryAllByTestId('set-symbol-DMU')).toHaveLength(1);
+    expect(screen.getByText('3-0-0')).toBeInTheDocument();
+    expect(screen.getByText('2-1-0')).toBeInTheDocument();
   });
 });

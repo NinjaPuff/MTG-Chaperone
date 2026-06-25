@@ -3,6 +3,14 @@ import { prisma } from '../lib/prisma.js';
 import { getBracketDefinition, getDownstreamSlots, isBracketFormat, type SlotSource } from '@mtg-league/shared';
 import { resolveSeededPlayerOrder } from './pairingService.js';
 
+function assertEventWithConfig<T extends { config: unknown }>(
+  event: T | null,
+): asserts event is T & { config: NonNullable<T['config']> } {
+  if (!event?.config) {
+    throw new AppError(404, 'NOT_FOUND', 'Event not found');
+  }
+}
+
 type ScoreWinner = { winnerId: string; loserId: string };
 
 type BracketSlotWithMatch = {
@@ -248,9 +256,7 @@ async function getEventWithSeeds(eventId: string) {
       },
     },
   });
-  if (!event || !event.config) {
-    throw new AppError(404, 'NOT_FOUND', 'Event not found');
-  }
+  assertEventWithConfig(event);
 
   const seeds = await prisma.eventSeed.findMany({
     where: { eventId },
