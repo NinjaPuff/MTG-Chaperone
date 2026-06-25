@@ -8,9 +8,21 @@ import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useSeasonPoolSets } from '@/hooks/useSeasonPoolSets';
 import { computeEventRecords } from '@/lib/eventRecords';
+import { formatActiveRoundLabel, getUserActiveMatches } from '@/lib/activeMatches';
+import { getBracketMatchInteraction, isBracketMatchClickable as canClickBracketMatch } from '@/lib/bracketMatchInteraction';
 import { confirmDisputeMatch } from '@/lib/matchDisputeConfirm';
 import { primaryName } from '@/lib/userDisplay';
-import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
+import { ReportMatchDialog } from '@/components/ReportMatchDialog';
+import {
+  type MatchInputCounts,
+  parseGameResultsToCounts,
+  toGameResultBody,
+  validateReportCounts,
+} from '@/lib/matchReporting';
+import { BracketView } from '@/components/bracket/BracketView';
+import type { BracketSlotView } from '@/components/bracket/types';
+import { fetchBracketState } from '@/lib/bracketApi';
+import { isBracketFormat } from '@mtg-league/shared';
 
 type ApiResponse<T> = { data: T };
 type ApiListResponse<T> = { data: T[] };
@@ -18,9 +30,9 @@ type ApiListResponse<T> = { data: T[] };
 type EventStatus = 'setup' | 'active' | 'completed';
 type RoundStatus = 'not_started' | 'in_progress' | 'completed';
 type MatchStatus = 'pending' | 'reported' | 'confirmed' | 'disputed' | 'resolved';
-type SeedingSource = 'previous_season' | 'previous_event' | 'manual' | null;
+type SeedingSource = 'previous_season' | 'previous_event' | 'current_season' | 'manual' | null;
 type EventConfig = {
-  format: 'swiss' | 'seeded_swiss' | 'round_robin';
+  format: 'swiss' | 'seeded_swiss' | 'round_robin' | 'single_elimination' | 'double_elimination' | 'custom_10_player';
   bestOfN: number;
   deckCount: number;
   minDeckSize: number;
@@ -28,6 +40,7 @@ type EventConfig = {
   schedulingType: 'fixed_deadlines' | 'open_window' | 'weekly_auto';
   deckLockingMode: 'required_before_round' | 'free_modification' | 'admin_locked';
   seedingSource: SeedingSource;
+  grandFinalsReset?: boolean;
 };
 
 const defaultEventConfig: EventConfig = {
@@ -39,6 +52,7 @@ const defaultEventConfig: EventConfig = {
   schedulingType: 'open_window',
   deckLockingMode: 'free_modification',
   seedingSource: null,
+  grandFinalsReset: false,
 };
 
 type UserSummary = {
@@ -108,42 +122,6 @@ type StandingRow = {
   points: number;
 };
 
-function countsFromGameResults(match: Match): MatchInputCounts {
-  let player1Wins = 0;
-  let player2Wins = 0;
-  let gameDraws = 0;
-
-  for (const game of match.gameResults) {
-    if (game.isDraw || !game.winnerId) {
-      gameDraws += 1;
-      continue;
-    }
-    if (game.winnerId === match.player1.id) {
-      player1Wins += 1;
-      continue;
-    }
-    if (game.winnerId === match.player2?.id) {
-      player2Wins += 1;
-    }
-  }
-
-  return { player1Wins, player2Wins, gameDraws };
-}
-
-function toGameResultBody(match: Match, counts: MatchInputCounts) {
-  const gameResults: Array<{ winnerId: string | null; isDraw: boolean }> = [];
-  for (let i = 0; i < counts.player1Wins; i += 1) {
-    gameResults.push({ winnerId: match.player1.id, isDraw: false });
-  }
-  for (let i = 0; i < counts.player2Wins; i += 1) {
-    gameResults.push({ winnerId: match.player2?.id ?? null, isDraw: false });
-  }
-  for (let i = 0; i < counts.gameDraws; i += 1) {
-    gameResults.push({ winnerId: null, isDraw: true });
-  }
-  return gameResults;
-}
-
 function matchResultSummary(match: Match) {
   const p1Name = primaryName(match.player1);
   if (match.isBye) {
@@ -164,8 +142,7 @@ function matchResultRecord(match: Match) {
   }
   const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
   const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
-  const draws = match.gameResults.filter((game) => game.isDraw || !game.winnerId).length;
-  return `${p1Wins}-${p2Wins}-${draws}`;
+  return `${p1Wins}-${p2Wins}`;
 }
 
 function matchResultVerdict(match: Match) {
@@ -175,7 +152,7 @@ function matchResultVerdict(match: Match) {
   const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
   const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
   if (p1Wins === p2Wins) {
-    return { text: 'Match Draw.', tone: 'draw' as const };
+    return { text: 'Match ended in a draw.', tone: 'draw' as const };
   }
   const winner = p1Wins > p2Wins ? primaryName(match.player1) : primaryName(match.player2);
   return { text: `${winner} won.`, tone: 'winner' as const };
@@ -192,12 +169,13 @@ export function EventDetailPage() {
 
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [rounds, setRounds] = useState<Round[]>([]);
+  const [bracketSlots, setBracketSlots] = useState<BracketSlotView[]>([]);
   const [seeds, setSeeds] = useState<EventSeed[]>([]);
   const [seedInputs, setSeedInputs] = useState<Record<string, number>>({});
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [selectedMatchMode, setSelectedMatchMode] = useState<'report' | 'resolve' | null>(null);
-  const [initialReportCounts, setInitialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+  const [initialReportCounts, setInitialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,6 +198,7 @@ export function EventDetailPage() {
 
   const leagueMembers = useMemo(() => event?.season.league.memberships ?? [], [event]);
   const eventRecords = useMemo(() => computeEventRecords(rounds), [rounds]);
+  const userActiveMatches = useMemo(() => getUserActiveMatches<Match, Round>(rounds, user?.id), [rounds, user?.id]);
   const orderedRounds = useMemo(() => {
     const priority = (status: RoundStatus) => {
       if (status === 'in_progress') {
@@ -259,6 +238,11 @@ export function EventDetailPage() {
     setEvent(eventResponse.data);
     setRounds(roundsResponse.data);
     setSeasonPoints(new Map(standingsResponse.data.map((standing) => [standing.userId, standing.points])));
+    if (eventResponse.data.config?.format && isBracketFormat(eventResponse.data.config.format)) {
+      setBracketSlots(await fetchBracketState(eventId));
+    } else {
+      setBracketSlots([]);
+    }
 
     if (eventResponse.data.config?.format === 'seeded_swiss' && eventResponse.data.config?.seedingSource === 'manual') {
       const seedResponse = await apiRequest<ApiListResponse<EventSeed>>(`/api/events/${eventId}/seeds`);
@@ -328,6 +312,7 @@ export function EventDetailPage() {
         schedulingType: event.config.schedulingType,
         deckLockingMode: event.config.deckLockingMode,
         seedingSource: event.config.seedingSource,
+        grandFinalsReset: event.config.grandFinalsReset ?? false,
       },
     });
   }, [event]);
@@ -496,16 +481,16 @@ export function EventDetailPage() {
     setSelectedMatchId(match.id);
     setSelectedMatchMode(mode);
     if (mode === 'resolve') {
-      setInitialReportCounts(countsFromGameResults(match));
+      setInitialReportCounts(parseGameResultsToCounts(match.player1.id, match.gameResults));
       return;
     }
-    setInitialReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+    setInitialReportCounts({ player1Wins: 0, player2Wins: 0 });
   };
 
   const closeMatchForm = () => {
     setSelectedMatchId(null);
     setSelectedMatchMode(null);
-    setInitialReportCounts({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+    setInitialReportCounts({ player1Wins: 0, player2Wins: 0 });
   };
 
   const submitMatchForm = async (reportCounts: MatchInputCounts) => {
@@ -513,29 +498,22 @@ export function EventDetailPage() {
       return;
     }
 
-    const payload = toGameResultBody(selectedMatch, reportCounts);
-    const winsTotal = reportCounts.player1Wins + reportCounts.player2Wins;
-    const requiredWins = Math.ceil(bestOfN / 2);
-    if (!Number.isInteger(reportCounts.player1Wins) || !Number.isInteger(reportCounts.player2Wins) || !Number.isInteger(reportCounts.gameDraws)) {
-      setError('Wins and draws must be whole numbers.');
+    const validationError = validateReportCounts(reportCounts, bestOfN);
+    if (validationError) {
+      setError(validationError);
       return;
     }
-    if (payload.length === 0) {
-      setError('Enter at least one game result before submitting.');
+
+    if (!selectedMatch.player2) {
+      setError('Both players are required to report a match.');
       return;
     }
-    if (winsTotal > bestOfN) {
-      setError(`Total wins cannot exceed best-of-${bestOfN}. Draws are tracked separately.`);
-      return;
-    }
-    if (reportCounts.player1Wins > requiredWins || reportCounts.player2Wins > requiredWins) {
-      setError(`A player cannot exceed ${requiredWins} wins in best-of-${bestOfN}.`);
-      return;
-    }
-    if (reportCounts.gameDraws > 5) {
-      setError('Game draws cannot exceed 5.');
-      return;
-    }
+
+    const payload = toGameResultBody(
+      selectedMatch.player1.id,
+      selectedMatch.player2.id,
+      reportCounts,
+    );
 
     const endpoint = selectedMatchMode === 'resolve' ? 'resolve' : 'report';
     await mutate(`Match ${endpoint}ed.`, async () => {
@@ -576,15 +554,27 @@ export function EventDetailPage() {
     return <p className="text-sm text-destructive">{error ?? 'Event not found.'}</p>;
   }
 
+  const isBracketEvent = Boolean(event.config?.format && isBracketFormat(event.config.format));
   const roundLimit =
     typeof event.totalRounds === 'number'
       ? event.totalRounds
       : event.config?.format === 'round_robin'
         ? rounds.length
         : null;
-  const hasRoundLimit = typeof roundLimit === 'number';
+  const hasRoundLimit = typeof roundLimit === 'number' && roundLimit > 0 && !isBracketEvent;
   const hasReachedRoundLimit = hasRoundLimit && rounds.length >= (roundLimit ?? 0);
   const allRoundsCompleted = rounds.length > 0 && rounds.every((round) => round.status === 'completed');
+  const showActiveMatchesSection = Boolean(
+    user && event.status === 'active' && isBracketEvent && userActiveMatches.length > 0,
+  );
+  const bracketMatchClickable = (matchId: string) => {
+    const round = rounds.find((candidate) => candidate.matches.some((match) => match.id === matchId));
+    const match = round?.matches.find((candidate) => candidate.id === matchId);
+    if (!match || !round) {
+      return false;
+    }
+    return canClickBracketMatch(match, round, user?.id, isAdmin);
+  };
 
   return (
     <div className="space-y-6">
@@ -651,7 +641,7 @@ export function EventDetailPage() {
             ) : null}
             {event.status === 'active' ? (
               <>
-                {event.config?.format !== 'round_robin' && !hasReachedRoundLimit ? (
+                {event.config?.format && !isBracketFormat(event.config.format) && event.config.format !== 'round_robin' && !hasReachedRoundLimit ? (
                   <button
                     type="button"
                     disabled={isMutating}
@@ -736,6 +726,9 @@ export function EventDetailPage() {
                   <option value="swiss">Swiss</option>
                   <option value="seeded_swiss">Seeded Swiss</option>
                   <option value="round_robin">Round Robin</option>
+                  <option value="single_elimination">Single Elimination</option>
+                  <option value="double_elimination">Double Elimination</option>
+                  <option value="custom_10_player">Custom 10 Player</option>
                 </select>
               </label>
               <label className="text-sm font-medium">
@@ -828,46 +821,50 @@ export function EventDetailPage() {
                   <option value="none">None</option>
                 </select>
               </label>
-              <label className="text-sm font-medium">
-                Scheduling Type
-                <select
-                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  value={editSettingsForm.config.schedulingType}
-                  onChange={(changeEvent) =>
-                    setEditSettingsForm((prev) => ({
-                      ...prev,
-                      config: {
-                        ...prev.config,
-                        schedulingType: changeEvent.target.value as EventConfig['schedulingType'],
-                      },
-                    }))
-                  }
-                >
-                  <option value="fixed_deadlines">Fixed Deadlines</option>
-                  <option value="open_window">Open Window</option>
-                  <option value="weekly_auto">Weekly Auto</option>
-                </select>
-              </label>
-              <label className="text-sm font-medium">
-                Deck Locking Mode
-                <select
-                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                  value={editSettingsForm.config.deckLockingMode}
-                  onChange={(changeEvent) =>
-                    setEditSettingsForm((prev) => ({
-                      ...prev,
-                      config: {
-                        ...prev.config,
-                        deckLockingMode: changeEvent.target.value as EventConfig['deckLockingMode'],
-                      },
-                    }))
-                  }
-                >
-                  <option value="required_before_round">Required Before Round</option>
-                  <option value="free_modification">Free Modification</option>
-                  <option value="admin_locked">Admin Locked</option>
-                </select>
-              </label>
+              {!isBracketFormat(editSettingsForm.config.format) ? (
+                <>
+                  <label className="text-sm font-medium">
+                    Scheduling Type
+                    <select
+                      className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      value={editSettingsForm.config.schedulingType}
+                      onChange={(changeEvent) =>
+                        setEditSettingsForm((prev) => ({
+                          ...prev,
+                          config: {
+                            ...prev.config,
+                            schedulingType: changeEvent.target.value as EventConfig['schedulingType'],
+                          },
+                        }))
+                      }
+                    >
+                      <option value="fixed_deadlines">Fixed Deadlines</option>
+                      <option value="open_window">Open Window</option>
+                      <option value="weekly_auto">Weekly Auto</option>
+                    </select>
+                  </label>
+                  <label className="text-sm font-medium">
+                    Deck Locking Mode
+                    <select
+                      className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                      value={editSettingsForm.config.deckLockingMode}
+                      onChange={(changeEvent) =>
+                        setEditSettingsForm((prev) => ({
+                          ...prev,
+                          config: {
+                            ...prev.config,
+                            deckLockingMode: changeEvent.target.value as EventConfig['deckLockingMode'],
+                          },
+                        }))
+                      }
+                    >
+                      <option value="required_before_round">Required Before Round</option>
+                      <option value="free_modification">Free Modification</option>
+                      <option value="admin_locked">Admin Locked</option>
+                    </select>
+                  </label>
+                </>
+              ) : null}
               <label className="text-sm font-medium">
                 Seeding Source
                 <select
@@ -884,11 +881,30 @@ export function EventDetailPage() {
                   }
                 >
                   <option value="">None</option>
-                  <option value="previous_season">Previous Season</option>
-                  <option value="previous_event">Previous Event</option>
+                  <option value="current_season">Current Season Standings</option>
+                  <option value="previous_season">Prior Season Standings</option>
+                  <option value="previous_event">Previous Event in This Season</option>
                   <option value="manual">Manual</option>
                 </select>
               </label>
+              {['double_elimination', 'custom_10_player'].includes(editSettingsForm.config.format) ? (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(editSettingsForm.config.grandFinalsReset)}
+                    onChange={(changeEvent) =>
+                      setEditSettingsForm((prev) => ({
+                        ...prev,
+                        config: {
+                          ...prev.config,
+                          grandFinalsReset: changeEvent.target.checked,
+                        },
+                      }))
+                    }
+                  />
+                  Grand Finals Reset
+                </label>
+              ) : null}
               <label className="flex items-center gap-2 text-sm md:col-span-3">
                 <input
                   type="checkbox"
@@ -971,6 +987,111 @@ export function EventDetailPage() {
         </div>
       ) : null}
 
+      {showActiveMatchesSection ? (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Your Active Matches</h2>
+            <p className="text-sm text-muted-foreground">Report or confirm bracket matches you can play now.</p>
+          </div>
+          <div className="space-y-4">
+            {userActiveMatches.map(({ match, round }) => {
+              const isParticipant = Boolean(user && (match.player1.id === user.id || match.player2?.id === user.id));
+              const canReport = (isParticipant || isAdmin) && match.status === 'pending' && round.status === 'in_progress';
+              const canConfirmOrDispute = isParticipant && match.status === 'reported' && match.reportedById !== user?.id;
+              const record = matchResultRecord(match);
+              const verdict = matchResultVerdict(match);
+
+              return (
+                <div key={match.id} className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {formatActiveRoundLabel(round.roundNumber, event.config?.format)}
+                  </p>
+                  <MatchCard
+                    match={match}
+                    eventRecords={eventRecords}
+                    seasonPoints={seasonPoints}
+                    poolSetsByUserId={poolSetsByUserId}
+                    poolSetsLoading={poolSetsLoading}
+                    getSet={getSet}
+                    footer={
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground capitalize">{match.status.replace('_', ' ')}</p>
+                        {record ? <p className="text-xs text-muted-foreground">Result: {record}</p> : null}
+                        <p className="text-xs text-muted-foreground">{matchResultSummary(match)}</p>
+                        {verdict ? (
+                          <p className={`text-xs font-medium ${verdict.tone === 'winner' ? 'text-emerald-600' : 'text-amber-600'}`}>{verdict.text}</p>
+                        ) : null}
+                      </div>
+                    }
+                    actions={
+                      <>
+                        {canReport ? (
+                          <button
+                            type="button"
+                            className="rounded-md border border-border px-2 py-1 text-xs"
+                            onClick={() => openMatchForm(match, 'report')}
+                          >
+                            Report
+                          </button>
+                        ) : null}
+                        {canConfirmOrDispute ? (
+                          <>
+                            <button
+                              type="button"
+                              className="rounded-md border border-border px-2 py-1 text-xs"
+                              onClick={() => void confirmOrDisputeMatch(match.id, 'confirm')}
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-md border border-border px-2 py-1 text-xs"
+                              onClick={() => void confirmOrDisputeMatch(match.id, 'dispute')}
+                            >
+                              Dispute
+                            </button>
+                          </>
+                        ) : null}
+                      </>
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {isBracketEvent ? (
+        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+          <h2 className="text-lg font-semibold">Bracket</h2>
+          {bracketSlots.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Bracket will appear after the event starts.</p>
+          ) : (
+            <BracketView
+              slots={bracketSlots}
+              isMatchClickable={bracketMatchClickable}
+              onMatchClick={(matchId) => {
+                const round = rounds.find((candidate) => candidate.matches.some((match) => match.id === matchId));
+                const match = round?.matches.find((candidate) => candidate.id === matchId);
+                if (!match || !round) {
+                  return;
+                }
+
+                const interaction = getBracketMatchInteraction(match, round, user?.id, isAdmin);
+                if (interaction === 'resolve') {
+                  openMatchForm(match, 'resolve');
+                  return;
+                }
+                if (interaction === 'report') {
+                  openMatchForm(match, 'report');
+                }
+              }}
+            />
+          )}
+        </div>
+      ) : null}
+
       <div className="rounded-lg border border-border bg-card p-4 space-y-3">
         <h2 className="text-lg font-semibold">Rounds</h2>
         {rounds.length === 0 ? (
@@ -1009,9 +1130,9 @@ export function EventDetailPage() {
                     <>
                 <summary className="cursor-pointer flex flex-wrap items-center justify-between gap-3">
                   <span className="font-medium">
-                    Round {round.roundNumber}
-                    {hasRoundLimit ? ` of ${roundLimit}` : ''}{' '}
-                    {hasRoundLimit && round.roundNumber === roundLimit ? (
+                    {formatActiveRoundLabel(round.roundNumber, event.config?.format)}
+                    {hasRoundLimit && !isBracketEvent ? ` of ${roundLimit}` : ''}{' '}
+                    {hasRoundLimit && !isBracketEvent && round.roundNumber === roundLimit ? (
                       <span className="ml-2 rounded-full bg-amber-500/15 border border-amber-600 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                         Last Round
                       </span>
@@ -1026,7 +1147,7 @@ export function EventDetailPage() {
                     >
                       Build Deck
                     </Link>
-                  {isAdmin ? (
+                  {isAdmin && !isBracketEvent ? (
                     <>
                       {round.status === 'not_started' ? (
                         <>
@@ -1107,7 +1228,7 @@ export function EventDetailPage() {
                 </summary>
 
                 <div className="mt-3 space-y-2">
-                  {isAdmin && round.status === 'in_progress' ? (
+                  {isAdmin && !isBracketEvent && round.status === 'in_progress' ? (
                     <div
                       className={`rounded-md border px-2 py-1 text-xs ${
                         canCompleteRound
@@ -1122,7 +1243,7 @@ export function EventDetailPage() {
                           : 'Ready to complete. All matches are already confirmed/resolved.'}
                     </div>
                   ) : null}
-                  {isAdmin && ['in_progress', 'completed'].includes(round.status) ? (
+                  {isAdmin && !isBracketEvent && ['in_progress', 'completed'].includes(round.status) ? (
                     <div className="flex justify-end">
                       <button
                         type="button"

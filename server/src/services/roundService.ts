@@ -9,6 +9,7 @@ import {
   regeneratePairings,
 } from './pairingService.js';
 import { unlockDecklistsForRound } from './decklistService.js';
+import { isBracketFormat, isPairingFormat, isSwissFormat, type PairingEventFormat } from '@mtg-league/shared';
 
 type RoundTransitionAction = 'start' | 'complete' | 'delete';
 
@@ -117,9 +118,16 @@ export async function createRound(eventId: string) {
   if (!event || !event.config) {
     throw new AppError(404, 'NOT_FOUND', 'Event not found');
   }
+  if (isBracketFormat(event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Bracket events do not support manual round creation');
+  }
   if (event.config.format === 'round_robin') {
     throw new AppError(409, 'INVALID_OPERATION', 'Round robin events do not support manual round creation');
   }
+  if (!isSwissFormat(event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Unsupported event format for manual round creation');
+  }
+  const swissFormat = event.config.format;
 
   const emptyRoundShell = await prisma.round.findFirst({
     where: {
@@ -134,7 +142,7 @@ export async function createRound(eventId: string) {
     },
   });
   if (emptyRoundShell) {
-    await pairRoundByFormat(emptyRoundShell.id, event.config.format);
+    await pairRoundByFormat(emptyRoundShell.id, swissFormat);
     return prisma.round.findUnique({
       where: { id: emptyRoundShell.id },
       include: { matches: true },
@@ -157,7 +165,7 @@ export async function createRound(eventId: string) {
     },
   });
 
-  await pairRoundByFormat(round.id, event.config.format);
+  await pairRoundByFormat(round.id, swissFormat);
 
   return prisma.round.findUnique({
     where: { id: round.id },
@@ -267,7 +275,7 @@ export async function resetRoundProgress(
     id: string;
     event: {
       config: {
-        format: 'swiss' | 'seeded_swiss' | 'round_robin';
+        format: PairingEventFormat;
       } | null;
     };
   },
@@ -312,12 +320,26 @@ export async function resetRound(roundId: string) {
   if (!round || !round.event.config) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
   }
+  if (isBracketFormat(round.event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Bracket rounds can only be reset by resetting the entire event');
+  }
+  if (!isPairingFormat(round.event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Unsupported event format for round reset');
+  }
+  const pairingFormat = round.event.config.format;
   if (round.status === 'not_started') {
     throw new AppError(409, 'INVALID_ROUND_STATE', 'Round is already not started. Use regenerate to reroll pairings');
   }
 
   await prisma.$transaction(async (tx) => {
-    await resetRoundProgress(tx, round);
+    await resetRoundProgress(tx, {
+      id: round.id,
+      event: {
+        config: {
+          format: pairingFormat,
+        },
+      },
+    });
     if (round.event.status === 'completed') {
       await tx.event.update({
         where: { id: round.eventId },
@@ -351,6 +373,9 @@ export async function deleteRound(roundId: string) {
   });
   if (!round) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
+  }
+  if (round.event.config?.format && isBracketFormat(round.event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Bracket rounds can only be deleted by resetting the entire event');
   }
   validateRoundTransition(round.status, 'delete');
 

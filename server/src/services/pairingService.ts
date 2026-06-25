@@ -154,7 +154,11 @@ export function rankPlayersByMatchResults(
     .map((entry) => entry.userId);
 }
 
-async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string[]) {
+export async function resolveSeededPlayerOrder(
+  eventId: string,
+  options: { strict?: boolean } = {},
+) {
+  const { playerIds: fallbackPlayerIds } = await getSeasonPlayerIdsForEvent(eventId);
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     include: {
@@ -168,6 +172,9 @@ async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string
 
   const source = event.config?.seedingSource ?? null;
   if (!source) {
+    if (options.strict) {
+      throw new AppError(409, 'SEEDING_SOURCE_REQUIRED', 'A seeding source must be configured before start');
+    }
     return fallbackPlayerIds;
   }
 
@@ -201,6 +208,13 @@ async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string
     });
 
     if (!previousEvent) {
+      if (options.strict) {
+        throw new AppError(
+          409,
+          'SEEDING_SOURCE_UNAVAILABLE',
+          'No completed previous event found in this season for seeding',
+        );
+      }
       return fallbackPlayerIds;
     }
 
@@ -220,6 +234,29 @@ async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string
     return mergeRankedWithFallback(ranked, fallbackPlayerIds);
   }
 
+  if (source === 'current_season') {
+    const currentStandings = await prisma.standing.findMany({
+      where: { seasonId: event.season.id },
+      orderBy: [{ points: 'desc' }, { omwPercent: 'desc' }, { gwPercent: 'desc' }, { ogwPercent: 'desc' }],
+      select: { userId: true },
+    });
+    if (currentStandings.length === 0) {
+      if (options.strict) {
+        throw new AppError(
+          409,
+          'SEEDING_SOURCE_UNAVAILABLE',
+          'No current season standings found for seeding',
+        );
+      }
+      return fallbackPlayerIds;
+    }
+
+    const ranked = currentStandings
+      .map((standing) => standing.userId)
+      .filter((userId) => fallbackPlayerIds.includes(userId));
+    return mergeRankedWithFallback(ranked, fallbackPlayerIds);
+  }
+
   if (source === 'previous_season') {
     const previousSeason = await prisma.season.findFirst({
       where: {
@@ -231,6 +268,13 @@ async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string
       orderBy: { number: 'desc' },
     });
     if (!previousSeason) {
+      if (options.strict) {
+        throw new AppError(
+          409,
+          'SEEDING_SOURCE_UNAVAILABLE',
+          'No previous inactive season found for seeding',
+        );
+      }
       return fallbackPlayerIds;
     }
 
@@ -246,6 +290,11 @@ async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string
   }
 
   return fallbackPlayerIds;
+}
+
+async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string[]) {
+  void fallbackPlayerIds;
+  return resolveSeededPlayerOrder(eventId);
 }
 
 export async function generateSwissPairings(roundId: string) {

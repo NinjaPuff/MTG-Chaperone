@@ -158,7 +158,7 @@ export async function getEventResults(eventId: string) {
   for (const stat of statEntries) {
     const totalMatches = stat.matchWins + stat.matchLosses + stat.matchDraws;
     const totalGames = stat.gameWins + stat.gameLosses;
-    const matchWinPercent = totalMatches === 0 ? 0 : (stat.matchWins + stat.matchDraws * 0.5) / totalMatches;
+    const matchWinPercent = totalMatches === 0 ? 0 : (stat.matchWins * 3 + stat.matchDraws) / (totalMatches * 3);
     const gameWinPercent = totalGames === 0 ? 0 : stat.gameWins / totalGames;
     matchWinPercentByUser.set(stat.userId, floorWinPercent(matchWinPercent));
     gameWinPercentByUser.set(stat.userId, floorWinPercent(gameWinPercent));

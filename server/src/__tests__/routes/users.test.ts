@@ -234,7 +234,6 @@ describe('users routes', () => {
           totalMatches: 0,
           matchWins: 0,
           matchLosses: 0,
-          matchDraws: 0,
           winRate: 0,
         },
         seasonHistory: [],

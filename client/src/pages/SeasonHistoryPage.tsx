@@ -110,7 +110,8 @@ export function SeasonHistoryPage() {
               {season.scheduleVisibility ? 'Visible' : 'Hidden'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Points: W {season.pointConfig?.matchWinPoints ?? 3}, D {season.pointConfig?.matchDrawPoints ?? 1}, L{' '}
+              Points: W {season.pointConfig?.matchWinPoints ?? 3}, D{' '}
+              {season.pointConfig?.matchDrawPoints ?? 1}, L{' '}
               {season.pointConfig?.matchLossPoints ?? 0}, Game Win {season.pointConfig?.gameWinPoints ?? 0}, Sweep{' '}
               {season.pointConfig?.sweepBonusPoints ?? 0}
             </p>

@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   updateEvent: vi.fn(),
   resetEvent: vi.fn(),
   recomputeStandings: vi.fn(),
+  getBracketState: vi.fn(),
 }));
 
 vi.mock('../../config/passport.js', () => ({
@@ -53,6 +54,9 @@ vi.mock('../../services/decklistService.js', () => ({
   listMyDecklistsForEvent: mocks.listMyDecklistsForEvent,
   listMyDecklistsForRound: mocks.listMyDecklistsForRound,
 }));
+vi.mock('../../services/bracketService.js', () => ({
+  getBracketState: mocks.getBracketState,
+}));
 
 import app from '../../index.js';
 
@@ -65,6 +69,7 @@ describe('events routes', () => {
     mocks.updateEvent.mockReset();
     mocks.resetEvent.mockReset();
     mocks.recomputeStandings.mockReset();
+    mocks.getBracketState.mockReset();
   });
 
   it('starts an event', async () => {
@@ -183,6 +188,16 @@ describe('events routes', () => {
       userId: 'user-1',
       matchPoints: 0,
     });
+  });
+
+  it('returns bracket state for an event', async () => {
+    mocks.getBracketState.mockResolvedValue([{ id: 'slot-1' }]);
+
+    const response = await request(app).get('/api/events/event-1/bracket');
+
+    expect(response.status).toBe(200);
+    expect(mocks.getBracketState).toHaveBeenCalledWith('event-1');
+    expect(response.body.data).toEqual([{ id: 'slot-1' }]);
   });
 
   it('returns current user round deckbuilder data', async () => {

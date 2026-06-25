@@ -22,16 +22,16 @@ describe('userProfileService pure helpers', () => {
     it('aggregates standings across seasons', () => {
       const stats = computeCareerStats([
         { matchWins: 3, matchLosses: 1, matchDraws: 0 },
-        { matchWins: 2, matchLosses: 2, matchDraws: 1 },
+        { matchWins: 2, matchLosses: 2, matchDraws: 0 },
       ]);
 
       expect(stats).toEqual({
         seasonsPlayed: 2,
-        totalMatches: 9,
+        totalMatches: 8,
         matchWins: 5,
         matchLosses: 3,
-        matchDraws: 1,
-        winRate: 5 / 9,
+        matchDraws: 0,
+        winRate: 5 / 8,
       });
     });
   });

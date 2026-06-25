@@ -2,6 +2,7 @@ import { parseBulkDecklistText } from '@mtg-league/shared';
 import { FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, apiRequest, authApiRequest, getStoredToken } from '@/lib/api';
+import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import { useAuth } from '@/context/AuthContext';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
@@ -20,7 +21,7 @@ import { useScryfallSets } from '@/hooks/useScryfallSets';
 import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import type { GroupMode, PoolCard, SearchResult, SortKey, StacksOrganizeBy, ViewMode } from '@/components/cardpool/types';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
-import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
+import { flattenEntries, sortCards } from '@/lib/cardPoolSort';
 import {
   buildApplyStagedRemovalsConfirmMessage,
   countStagedAddCardTotal,
@@ -158,7 +159,6 @@ function getSmallImage(imageUris: unknown): string | null {
 }
 
 const VIEW_PREFERENCES_KEY = 'cardpool-view-prefs';
-const VISUAL_VIEW_MAX_CARDS = 180;
 const STACKS_ORGANIZE_DEFAULT: StacksOrganizeBy = 'type';
 function parseViewPreferences(rawValue: string | null): { viewMode: ViewMode; sortKey: SortKey; groupMode: GroupMode } {
   if (!rawValue) {
@@ -427,13 +427,6 @@ export function CardPoolDetailPage() {
     () => countStagedAddCardTotal(stagedCards, stagedPoolChanges),
     [stagedCards, stagedPoolChanges],
   );
-  const disableVisualViews = totalCards > VISUAL_VIEW_MAX_CARDS;
-
-  useEffect(() => {
-    if (disableVisualViews && viewMode !== 'list') {
-      setViewMode('list');
-    }
-  }, [disableVisualViews, viewMode]);
 
   const addSearchResultToStage = (card: SearchResult) => {
     setSuccess(null);
@@ -689,8 +682,7 @@ export function CardPoolDetailPage() {
       return;
     }
 
-    const stagedImageUri =
-      getImageUrl(adminContextMenu.card, 'small') ?? getImageUrl(adminContextMenu.card, 'normal');
+    const stagedImageUri = getPrimaryCardImageUrl(adminContextMenu.card.imageUris, ['small', 'normal', 'border_crop']);
 
     if (action !== 'add') {
       const existingRemovalIndex = stagedPoolChanges.findIndex(
@@ -1122,7 +1114,6 @@ export function CardPoolDetailPage() {
           stacksOrganizeBy={stacksOrganizeBy}
           visibleCardCount={visibleCardCount}
           poolCardCount={totalCards}
-          disableVisualViews={disableVisualViews}
           selectedColorFilters={selectedColorFilters}
           selectedTypeFilters={selectedTypeFilters}
           showBasicLands={showBasicLands}
@@ -1167,7 +1158,7 @@ export function CardPoolDetailPage() {
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
-        {viewMode === 'grid' && !disableVisualViews ? (
+        {viewMode === 'grid' ? (
           <GridView
             cards={visibleCards}
             sortKey={sortKey}
@@ -1177,7 +1168,7 @@ export function CardPoolDetailPage() {
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
-        {viewMode === 'stacks' && !disableVisualViews ? (
+        {viewMode === 'stacks' ? (
           <StacksView
             cards={visibleCards}
             sortKey={sortKey}
@@ -1187,7 +1178,7 @@ export function CardPoolDetailPage() {
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
-        {viewMode === 'curve' && !disableVisualViews ? (
+        {viewMode === 'curve' ? (
           <CurveView
             cards={visibleCards}
             sortKey={sortKey}

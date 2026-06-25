@@ -54,6 +54,14 @@ export const prismaMock = {
     deleteMany: vi.fn(),
     createMany: vi.fn(),
   },
+  bracketSlot: {
+    findUnique: vi.fn(),
+    findMany: vi.fn(),
+    createMany: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+    deleteMany: vi.fn(),
+  },
   round: {
     create: vi.fn(),
     findUnique: vi.fn(),
@@ -61,6 +69,7 @@ export const prismaMock = {
     count: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+    deleteMany: vi.fn(),
     findMany: vi.fn(),
   },
   roundRobinSchedule: {

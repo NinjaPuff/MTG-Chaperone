@@ -73,6 +73,7 @@ export function DeckCardList({
                       scryfallId={card.cachedCardId}
                       name={displayName}
                       layout={card.layout}
+                      typeLine={card.typeLine}
                       imageUrl={card.imageUrl ?? null}
                     >
                       <span className="cursor-default">{displayName}</span>

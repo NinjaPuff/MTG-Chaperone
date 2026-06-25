@@ -10,7 +10,18 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { computeEventRecords } from '@/lib/eventRecords';
 import { confirmDisputeMatch } from '@/lib/matchDisputeConfirm';
 import { primaryName } from '@/lib/userDisplay';
-import { MatchInputCounts, ReportMatchDialog } from '@/components/ReportMatchDialog';
+import { ReportMatchDialog } from '@/components/ReportMatchDialog';
+import {
+  type MatchInputCounts,
+  toGameResultBody,
+  validateReportCounts,
+} from '@/lib/matchReporting';
+import { BracketView } from '@/components/bracket/BracketView';
+import type { BracketSlotView } from '@/components/bracket/types';
+import { fetchBracketState, reloadBracketEventViews } from '@/lib/bracketApi';
+import { getUserActiveMatches, formatActiveRoundLabel } from '@/lib/activeMatches';
+import { ParticipantMatchCard } from '@/components/matches/ParticipantMatchCard';
+import { isBracketFormat } from '@mtg-league/shared';
 
 type Event = {
   id: string;
@@ -50,8 +61,7 @@ function matchResultRecord(match: Match) {
   }
   const p1Wins = match.gameResults.filter((game) => game.winnerId === match.player1.id).length;
   const p2Wins = match.gameResults.filter((game) => game.winnerId && game.winnerId === match.player2?.id).length;
-  const draws = match.gameResults.filter((game) => game.isDraw || !game.winnerId).length;
-  return `${p1Wins}-${p2Wins}-${draws}`;
+  return `${p1Wins}-${p2Wins}`;
 }
 
 export function SchedulePage() {
@@ -64,8 +74,9 @@ export function SchedulePage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [rounds, setRounds] = useState<Round[]>([]);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [bracketSlots, setBracketSlots] = useState<BracketSlotView[]>([]);
   const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
-  const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0, gameDraws: 0 });
+  const [initialReportCounts] = useState<MatchInputCounts>({ player1Wins: 0, player2Wins: 0 });
   const [seasonPoints, setSeasonPoints] = useState<Map<string, number>>(new Map());
   const [isMutatingRound, setIsMutatingRound] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,12 +114,17 @@ export function SchedulePage() {
       try {
         const response = await apiRequest<ApiListResponse<Round>>(`/api/events/${selectedEventId}/rounds`);
         setRounds(response.data);
+        if (selectedEvent?.config?.format && isBracketFormat(selectedEvent.config.format)) {
+          setBracketSlots(await fetchBracketState(selectedEventId));
+        } else {
+          setBracketSlots([]);
+        }
       } catch (loadError) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load rounds');
       }
     };
     void loadRounds();
-  }, [selectedEventId]);
+  }, [selectedEventId, selectedEvent?.config?.format]);
 
   const selectedMatch = useMemo(
     () => rounds.flatMap((round) => round.matches).find((match) => match.id === selectedMatchId) ?? null,
@@ -132,7 +148,27 @@ export function SchedulePage() {
       return a.roundNumber - b.roundNumber;
     });
   }, [rounds]);
+  const reloadEventViews = async () => {
+    if (!selectedEventId || !selectedEvent) {
+      return;
+    }
+    const isBracketEvent = Boolean(selectedEvent.config?.format && isBracketFormat(selectedEvent.config.format));
+    const { rounds: nextRounds, bracketSlots: nextBracketSlots } = await reloadBracketEventViews<Round>(
+      selectedEventId,
+      isBracketEvent,
+    );
+    setRounds(nextRounds);
+    setBracketSlots(nextBracketSlots);
+  };
+
+  const userActiveMatches = useMemo(
+    () => getUserActiveMatches<Match, Round>(rounds, user?.id),
+    [rounds, user?.id],
+  );
   const eventRecords = useMemo(() => computeEventRecords(rounds), [rounds]);
+  const showActiveMatchesSection = Boolean(
+    user && selectedEvent?.status === 'active' && userActiveMatches.length > 0,
+  );
   const roundLimit =
     selectedEvent && typeof selectedEvent.totalRounds === 'number'
       ? selectedEvent.totalRounds
@@ -164,31 +200,22 @@ export function SchedulePage() {
     }
 
     const bestOfN = selectedEvent?.config?.bestOfN ?? 3;
-    const requiredWins = Math.ceil(bestOfN / 2);
-    const totalWins = reportCounts.player1Wins + reportCounts.player2Wins;
-    if (totalWins > bestOfN) {
-      setError(`Total wins cannot exceed best-of-${bestOfN}. Draws are tracked separately.`);
-      return;
-    }
-    if (reportCounts.player1Wins > requiredWins || reportCounts.player2Wins > requiredWins) {
-      setError(`A player cannot exceed ${requiredWins} wins in best-of-${bestOfN}.`);
-      return;
-    }
-    if (reportCounts.gameDraws > 5) {
-      setError('Game draws cannot exceed 5.');
+    const validationError = validateReportCounts(reportCounts, bestOfN);
+    if (validationError) {
+      setError(validationError);
       return;
     }
 
-    const gameResults: Array<{ winnerId: string | null; isDraw: boolean }> = [];
-    for (let i = 0; i < reportCounts.player1Wins; i += 1) {
-      gameResults.push({ winnerId: selectedMatch.player1.id, isDraw: false });
+    if (!selectedMatch.player2) {
+      setError('Both players are required to report a match.');
+      return;
     }
-    for (let i = 0; i < reportCounts.player2Wins; i += 1) {
-      gameResults.push({ winnerId: selectedMatch.player2?.id ?? null, isDraw: false });
-    }
-    for (let i = 0; i < reportCounts.gameDraws; i += 1) {
-      gameResults.push({ winnerId: null, isDraw: true });
-    }
+
+    const gameResults = toGameResultBody(
+      selectedMatch.player1.id,
+      selectedMatch.player2.id,
+      reportCounts,
+    );
 
     try {
       await authApiRequest(`/api/matches/${selectedMatch.id}/report`, {
@@ -199,8 +226,7 @@ export function SchedulePage() {
       });
       setSelectedMatchId(null);
       if (selectedEventId) {
-        const response = await apiRequest<ApiListResponse<Round>>(`/api/events/${selectedEventId}/rounds`);
-        setRounds(response.data);
+        await reloadEventViews();
       }
     } catch (reportError) {
       setError(reportError instanceof ApiError ? reportError.message : 'Unable to report match');
@@ -214,8 +240,7 @@ export function SchedulePage() {
     try {
       await authApiRequest(`/api/matches/${matchId}/${action}`, { method: 'POST' });
       if (selectedEventId) {
-        const response = await apiRequest<ApiListResponse<Round>>(`/api/events/${selectedEventId}/rounds`);
-        setRounds(response.data);
+        await reloadEventViews();
       }
     } catch (matchError) {
       setError(matchError instanceof ApiError ? matchError.message : `Unable to ${action} match`);
@@ -232,8 +257,7 @@ export function SchedulePage() {
     try {
       await authApiRequest(`/api/rounds/${roundId}/${action}`, { method: 'POST' });
       if (selectedEventId) {
-        const response = await apiRequest<ApiListResponse<Round>>(`/api/events/${selectedEventId}/rounds`);
-        setRounds(response.data);
+        await reloadEventViews();
       }
     } catch (roundError) {
       setError(roundError instanceof ApiError ? roundError.message : `Unable to ${action} round`);
@@ -278,6 +302,42 @@ export function SchedulePage() {
               </select>
             </div>
 
+            {showActiveMatchesSection ? (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Your Active Matches</h2>
+                  <p className="text-sm text-muted-foreground">Report or confirm bracket matches you can play now.</p>
+                </div>
+                <div className="space-y-4">
+                  {userActiveMatches.map(({ match, round }) => (
+                    <div key={match.id} className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {formatActiveRoundLabel(round.roundNumber, selectedEvent.config?.format)}
+                      </p>
+                      <ParticipantMatchCard
+                        match={match}
+                        round={round}
+                        user={user}
+                        isAdmin={isAdmin}
+                        eventRecords={eventRecords}
+                        seasonPoints={seasonPoints}
+                        poolSetsByUserId={poolSetsByUserId}
+                        poolSetsLoading={poolSetsLoading}
+                        getSet={getSet}
+                        onReport={setSelectedMatchId}
+                        onConfirm={(matchId) => void confirmOrDispute(matchId, 'confirm')}
+                        onDispute={(matchId) => void confirmOrDispute(matchId, 'dispute')}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {selectedEvent.config?.format && isBracketFormat(selectedEvent.config.format) ? (
+              <BracketView slots={bracketSlots} />
+            ) : null}
+
             {orderedRounds.map((round) => {
               const pendingCount = round.matches.filter((match) => match.status === 'pending').length;
               const disputedCount = round.matches.filter((match) => match.status === 'disputed').length;
@@ -294,16 +354,21 @@ export function SchedulePage() {
               <div key={round.id} className="rounded-md border border-border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium">
-                    Round {round.roundNumber}
-                    {typeof roundLimit === 'number' ? ` of ${roundLimit}` : ''}{' '}
-                    {typeof roundLimit === 'number' && round.roundNumber === roundLimit ? (
+                    {formatActiveRoundLabel(round.roundNumber, selectedEvent.config?.format)}
+                    {typeof roundLimit === 'number' &&
+                    !(selectedEvent.config?.format && isBracketFormat(selectedEvent.config.format))
+                      ? ` of ${roundLimit}`
+                      : ''}{' '}
+                    {typeof roundLimit === 'number' &&
+                    !(selectedEvent.config?.format && isBracketFormat(selectedEvent.config.format)) &&
+                    round.roundNumber === roundLimit ? (
                       <span className="ml-2 rounded-full bg-amber-500/15 border border-amber-600 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
                         Last Round
                       </span>
                     ) : null}{' '}
                     <span className="text-xs text-muted-foreground">({round.status})</span>
                   </p>
-                  {isAdmin && selectedEvent.status === 'active' ? (
+                  {isAdmin && selectedEvent.status === 'active' && !(selectedEvent.config?.format && isBracketFormat(selectedEvent.config.format)) ? (
                     <div className="flex items-center gap-2">
                       {round.status === 'not_started' ? (
                         <button
@@ -360,7 +425,7 @@ export function SchedulePage() {
                     const verdict =
                       ['reported', 'confirmed', 'resolved'].includes(match.status) && match.gameResults.length > 0
                         ? p1Wins === p2Wins
-                          ? { text: 'Match Draw.', tone: 'draw' as const }
+                          ? { text: 'Match ended in a draw.', tone: 'draw' as const }
                           : { text: `${p1Wins > p2Wins ? primaryName(match.player1) : primaryName(match.player2!)} won.`, tone: 'winner' as const }
                         : null;
                     return (
@@ -377,7 +442,17 @@ export function SchedulePage() {
                             <p className="text-xs text-muted-foreground capitalize">{match.status.replace('_', ' ')}</p>
                             {record ? <p className="text-xs text-muted-foreground">Result: {record}</p> : null}
                             {verdict ? (
-                              <p className={`text-xs font-medium ${verdict.tone === 'winner' ? 'text-emerald-600' : 'text-amber-600'}`}>{verdict.text}</p>
+                              <p
+                                className={`text-xs font-medium ${
+                                  verdict.tone === 'winner'
+                                    ? 'text-emerald-600'
+                                    : verdict.tone === 'draw'
+                                      ? 'text-amber-600'
+                                      : 'text-muted-foreground'
+                                }`}
+                              >
+                                {verdict.text}
+                              </p>
                             ) : null}
                           </div>
                         }

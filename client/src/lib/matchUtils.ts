@@ -41,14 +41,9 @@ export function getMatchOutcome(
 export function computeMatchRecord(playerId: string, gameResults: GameResult[]) {
   let wins = 0;
   let losses = 0;
-  let draws = 0;
 
   for (const game of gameResults) {
-    if (game.isDraw) {
-      draws += 1;
-      continue;
-    }
-    if (!game.winnerId) {
+    if (game.isDraw || !game.winnerId) {
       continue;
     }
     if (game.winnerId === playerId) {
@@ -58,5 +53,5 @@ export function computeMatchRecord(playerId: string, gameResults: GameResult[]) 
     losses += 1;
   }
 
-  return { wins, losses, draws };
+  return { wins, losses };
 }

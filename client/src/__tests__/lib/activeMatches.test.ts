@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getUserActiveMatches } from '@/lib/activeMatches';
+import { formatActiveRoundLabel, getUserActiveMatches } from '@/lib/activeMatches';
 import { makeMatch, makeRound } from '../helpers/matchFixtures';
 
 describe('getUserActiveMatches', () => {
@@ -73,5 +73,17 @@ describe('getUserActiveMatches', () => {
     });
     const round = makeRound({ matches: [match] });
     expect(getUserActiveMatches([round], 'u1')).toEqual([]);
+  });
+});
+
+describe('formatActiveRoundLabel', () => {
+  it('labels bracket rounds by bracket side', () => {
+    expect(formatActiveRoundLabel(1, 'custom_10_player')).toBe('Top 1');
+    expect(formatActiveRoundLabel(22, 'double_elimination')).toBe('Bottom 2');
+    expect(formatActiveRoundLabel(41, 'single_elimination')).toBe('Finals 1');
+  });
+
+  it('keeps swiss-style round labels for non-bracket formats', () => {
+    expect(formatActiveRoundLabel(3, 'swiss')).toBe('Round 3');
   });
 });

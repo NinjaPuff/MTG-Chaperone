@@ -69,6 +69,7 @@ function OrganizeSections({
                       scryfallId={card.scryfallId}
                       name={displayName}
                       layout={card.layout}
+                      typeLine={card.typeLine}
                       imageUrl={getImageUrl(card, 'normal')}
                       touchActions={getTouchActions?.(card)}
                     >

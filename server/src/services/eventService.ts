@@ -3,16 +3,19 @@ import { prisma } from '../lib/prisma.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 import { assignRoundRobinPairings, generateSeededSwissPairings, generateSwissPairings } from './pairingService.js';
 import { resetRoundProgress } from './roundService.js';
+import { initializeBracket, resetBracketEvent, ensureBracketSeeds } from './bracketService.js';
+import { isBracketFormat, isPairingFormat, type PairingEventFormat } from '@mtg-league/shared';
 
 type EventConfigInput = {
-  format: 'swiss' | 'seeded_swiss' | 'round_robin';
+  format: 'swiss' | 'seeded_swiss' | 'round_robin' | 'single_elimination' | 'double_elimination' | 'custom_10_player';
   bestOfN?: number;
   deckCount?: number;
   minDeckSize?: number;
   sideboardRule?: 'entire_pool' | 'fixed_15' | 'none';
   schedulingType?: 'fixed_deadlines' | 'open_window' | 'weekly_auto';
   deckLockingMode?: 'required_before_round' | 'free_modification' | 'admin_locked';
-  seedingSource?: 'previous_season' | 'previous_event' | 'manual' | null;
+  seedingSource?: 'previous_season' | 'previous_event' | 'current_season' | 'manual' | null;
+  grandFinalsReset?: boolean;
 };
 
 type CreateEventInput = {
@@ -131,6 +134,16 @@ export async function createEvent(payload: CreateEventInput) {
   if (!season) {
     throw new AppError(404, 'NOT_FOUND', 'Season not found');
   }
+  if (
+    payload.config.grandFinalsReset &&
+    !['double_elimination', 'custom_10_player'].includes(payload.config.format)
+  ) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'Grand finals reset is only supported for double elimination and custom 10-player formats',
+    );
+  }
 
   const lastEvent = await prisma.event.findFirst({
     where: { seasonId: payload.seasonId },
@@ -156,6 +169,7 @@ export async function createEvent(payload: CreateEventInput) {
           schedulingType: payload.config.schedulingType ?? 'open_window',
           deckLockingMode: payload.config.deckLockingMode ?? 'free_modification',
           seedingSource: payload.config.seedingSource ?? null,
+          grandFinalsReset: payload.config.grandFinalsReset ?? false,
         },
       },
     },
@@ -300,6 +314,20 @@ export async function updateEvent(eventId: string, updates: Partial<CreateEventI
     throw new AppError(409, 'INVALID_EVENT_STATE', 'Only setup events can be edited');
   }
 
+  const targetFormat = updates.config?.format ?? event.config?.format;
+  const targetGrandFinalsReset = updates.config?.grandFinalsReset ?? event.config?.grandFinalsReset ?? false;
+  if (
+    targetGrandFinalsReset &&
+    targetFormat &&
+    !['double_elimination', 'custom_10_player'].includes(targetFormat)
+  ) {
+    throw new AppError(
+      400,
+      'VALIDATION_ERROR',
+      'Grand finals reset is only supported for double elimination and custom 10-player formats',
+    );
+  }
+
   if (updates.config?.format && updates.config.format !== event.config?.format) {
     const roundWithMatches = await prisma.round.findFirst({
       where: {
@@ -368,6 +396,7 @@ export async function updateEvent(eventId: string, updates: Partial<CreateEventI
         schedulingType: updates.config.schedulingType ?? event.config.schedulingType,
         deckLockingMode: updates.config.deckLockingMode ?? event.config.deckLockingMode,
         seedingSource: updates.config.seedingSource ?? event.config.seedingSource,
+        grandFinalsReset: updates.config.grandFinalsReset ?? event.config.grandFinalsReset,
       },
     });
   }
@@ -411,11 +440,30 @@ export async function startEvent(eventId: string) {
       ? Math.max(1, Math.ceil(Math.log2(playerCount)))
       : event.totalRounds ?? roundCount;
 
-  return prisma.event.update({
+  const isBracket = Boolean(event.config && isBracketFormat(event.config.format));
+  if (isBracket) {
+    await ensureBracketSeeds(eventId);
+  }
+
+  const updated = await prisma.event.update({
     where: { id: event.id },
     data: { status: 'active', totalRounds },
     include: { config: true },
   });
+
+  if (isBracket) {
+    try {
+      await initializeBracket(event.id);
+    } catch (error) {
+      await prisma.event.update({
+        where: { id: event.id },
+        data: { status: 'setup', totalRounds: event.totalRounds },
+      });
+      throw error;
+    }
+  }
+
+  return updated;
 }
 
 export async function completeEvent(eventId: string) {
@@ -452,7 +500,7 @@ async function createMatchesForRound(roundId: string, pairs: Array<{ player1Id: 
   );
 }
 
-async function repopulatePairingsForRound(roundId: string, format: 'swiss' | 'seeded_swiss' | 'round_robin') {
+async function repopulatePairingsForRound(roundId: string, format: PairingEventFormat) {
   if (format === 'round_robin') {
     await assignRoundRobinPairings(roundId);
     return;
@@ -483,6 +531,15 @@ export async function resetEvent(eventId: string) {
     throw new AppError(409, 'INVALID_EVENT_STATE', 'Only active or completed events can be reset');
   }
 
+  if (isBracketFormat(event.config.format)) {
+    await resetBracketEvent(event.id);
+    return getEvent(eventId);
+  }
+  if (!isPairingFormat(event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Unsupported event format for reset');
+  }
+  const pairingFormat = event.config.format;
+
   const roundIdsToRepair: string[] = [];
   await prisma.$transaction(async (tx) => {
     for (const round of event.rounds) {
@@ -494,7 +551,9 @@ export async function resetEvent(eventId: string) {
       await resetRoundProgress(tx, {
         id: round.id,
         event: {
-          config: event.config,
+          config: {
+            format: pairingFormat,
+          },
         },
       });
       roundIdsToRepair.push(round.id);
@@ -510,7 +569,7 @@ export async function resetEvent(eventId: string) {
   });
 
   for (const roundId of roundIdsToRepair) {
-    await repopulatePairingsForRound(roundId, event.config.format);
+    await repopulatePairingsForRound(roundId, pairingFormat);
   }
 
   return getEvent(eventId);

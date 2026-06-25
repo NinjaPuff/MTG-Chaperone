@@ -9,6 +9,7 @@ type PreviewState = {
   scryfallId: string;
   name: string;
   layout: string | null;
+  typeLine: string | null;
   imageUrl: string | null;
   anchorRect: DOMRect;
   anchorPoint: { x: number; y: number };
@@ -27,6 +28,7 @@ type CardPreviewContextValue = {
     scryfallId: string,
     name: string,
     layout: string | null,
+    typeLine: string | null,
     imageUrl: string | null,
     anchorRect: DOMRect,
     anchorPoint: { x: number; y: number },
@@ -84,11 +86,12 @@ export function CardPreviewProvider({ children }: CardPreviewProviderProps) {
   const value = useMemo<CardPreviewContextValue>(
     () => ({
       preview,
-      showPreview: (scryfallId, name, layout, imageUrl, anchorRect, anchorPoint, options) =>
+      showPreview: (scryfallId, name, layout, typeLine, imageUrl, anchorRect, anchorPoint, options) =>
         setPreview({
           scryfallId,
           name,
           layout,
+          typeLine,
           imageUrl,
           anchorRect,
           anchorPoint,
@@ -119,6 +122,7 @@ type HoverTargetProps = {
   scryfallId: string;
   name: string;
   layout: string | null;
+  typeLine?: string | null;
   imageUrl: string | null;
   touchActions?: TouchAction[];
   className?: string;
@@ -130,6 +134,7 @@ export function HoverTarget({
   scryfallId,
   name,
   layout,
+  typeLine = null,
   imageUrl,
   touchActions,
   className,
@@ -160,7 +165,7 @@ export function HoverTarget({
         const mouseX = event.clientX;
         const mouseY = event.clientY;
         hoverTimerRef.current = window.setTimeout(() => {
-          showPreview(scryfallId, name, layout, imageUrl, target.getBoundingClientRect(), { x: mouseX, y: mouseY });
+          showPreview(scryfallId, name, layout, typeLine, imageUrl, target.getBoundingClientRect(), { x: mouseX, y: mouseY });
         }, 200);
       }}
       onMouseLeave={() => {
@@ -186,6 +191,7 @@ export function HoverTarget({
           scryfallId,
           name,
           layout,
+          typeLine,
           imageUrl,
           rect,
           { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },

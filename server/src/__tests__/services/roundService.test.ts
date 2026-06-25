@@ -15,7 +15,7 @@ vi.mock('../../lib/prisma.js', () => ({
 
 vi.mock('../../services/pairingService.js', () => pairingMocks);
 
-import { completeRound, createRound, deleteRound, startRound } from '../../services/roundService.js';
+import { completeRound, createRound, deleteRound, resetRound, startRound } from '../../services/roundService.js';
 
 describe('roundService', () => {
   beforeEach(() => {
@@ -128,6 +128,46 @@ describe('roundService', () => {
     await expect(createRound('e1')).rejects.toMatchObject({
       code: 'INVALID_OPERATION',
       message: 'Round robin events do not support manual round creation',
+    });
+  });
+
+  it('rejects manual round creation for bracket events', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'e1',
+      totalRounds: null,
+      config: { format: 'single_elimination' },
+      rounds: [],
+      season: { league: { memberships: [] } },
+    });
+
+    await expect(createRound('e1')).rejects.toMatchObject({
+      code: 'INVALID_OPERATION',
+      message: 'Bracket events do not support manual round creation',
+    });
+  });
+
+  it('blocks resetting bracket rounds', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      eventId: 'e1',
+      status: 'completed',
+      event: { status: 'active', config: { format: 'double_elimination' } },
+    });
+
+    await expect(resetRound('r1')).rejects.toMatchObject({
+      code: 'INVALID_OPERATION',
+    });
+  });
+
+  it('blocks deleting bracket rounds', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      status: 'completed',
+      event: { seasonId: 's1', config: { format: 'custom_10_player' } },
+    });
+
+    await expect(deleteRound('r1')).rejects.toMatchObject({
+      code: 'INVALID_OPERATION',
     });
   });
 

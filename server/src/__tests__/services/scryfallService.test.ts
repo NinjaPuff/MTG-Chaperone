@@ -1259,3 +1259,75 @@ describe('scryfallService paper-only filtering', () => {
     expect(upsert).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('scryfallService getCardFaces', () => {
+  it('returns typeLine for each face on multi-face Siege cards', async () => {
+    const fetchMock = createFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: {
+          id: 'siege-1',
+          name: 'Invasion of Ikoria // Zilortha, Apex of Ikoria',
+          layout: 'transform',
+          type_line: 'Battle — Siege // Legendary Creature — Dinosaur',
+          rarity: 'rare',
+          set: 'mom',
+          card_faces: [
+            {
+              name: 'Invasion of Ikoria',
+              type_line: 'Battle — Siege',
+              image_uris: { normal: 'https://example.com/siege-front.jpg' },
+            },
+            {
+              name: 'Zilortha, Apex of Ikoria',
+              type_line: 'Legendary Creature — Dinosaur',
+              image_uris: { normal: 'https://example.com/siege-back.jpg' },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert: vi.fn() } } as never,
+    });
+
+    const faces = await service.getCardFaces('siege-1');
+
+    expect(faces).toHaveLength(2);
+    expect(faces[0].typeLine).toBe('Battle — Siege');
+    expect(faces[1].typeLine).toBe('Legendary Creature — Dinosaur');
+  });
+
+  it('returns typeLine from root type_line for single-face fallback', async () => {
+    const fetchMock = createFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: {
+          id: 'bolt-1',
+          name: 'Lightning Bolt',
+          layout: 'normal',
+          type_line: 'Instant',
+          rarity: 'common',
+          set: 'lea',
+          image_uris: { normal: 'https://example.com/bolt.jpg' },
+        },
+      },
+    ]);
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert: vi.fn() } } as never,
+    });
+
+    const faces = await service.getCardFaces('bolt-1');
+
+    expect(faces).toHaveLength(1);
+    expect(faces[0].typeLine).toBe('Instant');
+  });
+});

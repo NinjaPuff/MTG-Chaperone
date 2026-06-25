@@ -11,26 +11,46 @@ import { recomputeStandings } from '../services/standingsService.js';
 import { getEventResults } from '../services/eventRankingService.js';
 import { listMyDecklistsForEvent, listMyDecklistsForRound } from '../services/decklistService.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
+import { getBracketState } from '../services/bracketService.js';
 
 const router = Router();
+const EVENT_FORMATS = [
+  'swiss',
+  'seeded_swiss',
+  'round_robin',
+  'single_elimination',
+  'double_elimination',
+  'custom_10_player',
+] as const;
+const GRAND_FINALS_FORMATS = new Set(['double_elimination', 'custom_10_player']);
+const eventConfigSchema = z
+  .object({
+    format: z.enum(EVENT_FORMATS).optional(),
+    bestOfN: z.number().int().positive().optional(),
+    deckCount: z.number().int().positive().optional(),
+    minDeckSize: z.number().int().positive().optional(),
+    sideboardRule: z.enum(['entire_pool', 'fixed_15', 'none']).optional(),
+    schedulingType: z.enum(['fixed_deadlines', 'open_window', 'weekly_auto']).optional(),
+    deckLockingMode: z.enum(['required_before_round', 'free_modification', 'admin_locked']).optional(),
+    seedingSource: z.enum(['previous_season', 'previous_event', 'current_season', 'manual']).nullable().optional(),
+    grandFinalsReset: z.boolean().optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.grandFinalsReset && value.format && !GRAND_FINALS_FORMATS.has(value.format)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'grandFinalsReset is only valid for double_elimination and custom_10_player formats',
+        path: ['grandFinalsReset'],
+      });
+    }
+  });
 
 const eventSchema = z.object({
   seasonId: z.string().uuid().optional(),
   name: z.string().min(2).optional(),
   pointMultiplier: z.number().positive().optional(),
   standingsOverride: z.boolean().optional(),
-  config: z
-    .object({
-      format: z.enum(['swiss', 'seeded_swiss', 'round_robin']).optional(),
-      bestOfN: z.number().int().positive().optional(),
-      deckCount: z.number().int().positive().optional(),
-      minDeckSize: z.number().int().positive().optional(),
-      sideboardRule: z.enum(['entire_pool', 'fixed_15', 'none']).optional(),
-      schedulingType: z.enum(['fixed_deadlines', 'open_window', 'weekly_auto']).optional(),
-      deckLockingMode: z.enum(['required_before_round', 'free_modification', 'admin_locked']).optional(),
-      seedingSource: z.enum(['previous_season', 'previous_event', 'manual']).nullable().optional(),
-    })
-    .optional(),
+  config: eventConfigSchema.optional(),
 });
 
 const eventSeedsSchema = z.object({
@@ -57,6 +77,15 @@ router.get('/:eventId/results', async (req, res, next) => {
   try {
     const results = await getEventResults(req.params.eventId);
     res.json({ data: results });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:eventId/bracket', async (req, res, next) => {
+  try {
+    const data = await getBracketState(req.params.eventId);
+    res.json({ data });
   } catch (error) {
     next(error);
   }

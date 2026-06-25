@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import { ApiError, authApiRequest } from '@/lib/api';
+import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import { useConfirm } from '@/context/ConfirmContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { CARD_TYPE_FILTERS, COLOR_FILTERS, filterPoolCards } from '@/lib/cardPoolFilters';
-import { flattenEntries, getImageUrl, sortCards } from '@/lib/cardPoolSort';
+import { flattenEntries, sortCards } from '@/lib/cardPoolSort';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
 import { ListView } from '@/components/cardpool/ListView';
@@ -185,6 +186,7 @@ export function DeckBuilderPage() {
   const [groupMode, setGroupMode] = useState<GroupMode>('flat');
   const [stacksOrganizeBy, setStacksOrganizeBy] = useState<StacksOrganizeBy>('type');
   const { cardImageWidth, setCardImageWidth } = useCardImageWidth();
+  const poolScrollRef = useRef<HTMLDivElement>(null);
   const [minDeckSize, setMinDeckSize] = useState(40);
   const [requiredDeckCount, setRequiredDeckCount] = useState(1);
   const [registeredDeckCount, setRegisteredDeckCount] = useState(0);
@@ -836,7 +838,7 @@ export function DeckBuilderPage() {
   const poolImageByCardId = useMemo(() => {
     const map = new Map<string, string>();
     for (const card of poolCards) {
-      const url = getImageUrl(card, 'normal') ?? getImageUrl(card, 'border_crop');
+      const url = getPrimaryCardImageUrl(card.imageUris, ['normal', 'border_crop', 'small']);
       if (url) {
         map.set(card.scryfallId, url);
       }
@@ -1131,6 +1133,7 @@ export function DeckBuilderPage() {
               </div>
 
               <div
+                ref={poolScrollRef}
                 className="min-h-0 flex-1 overflow-y-auto pt-2"
                 data-testid="deckbuilder-pool-scroll"
               >
@@ -1164,6 +1167,7 @@ export function DeckBuilderPage() {
                     groupMode={groupMode}
                     organizeBy={stacksOrganizeBy}
                     cardWidth={cardImageWidth}
+                    scrollElementRef={poolScrollRef}
                     onCardClick={(card) => addCardToActiveDeck(card, 'main')}
                     onCardContextMenu={handlePoolCardContextMenu}
                     getTouchActions={poolTouchActions}

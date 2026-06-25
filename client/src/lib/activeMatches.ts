@@ -18,6 +18,19 @@ export type ActiveRoundLike = {
 
 const FINISHED_STATUSES = new Set(['confirmed', 'resolved']);
 
+export function formatActiveRoundLabel(roundNumber: number, eventFormat?: string) {
+  if (eventFormat === 'single_elimination' || eventFormat === 'double_elimination' || eventFormat === 'custom_10_player') {
+    if (roundNumber > 40) {
+      return `Finals ${roundNumber - 40}`;
+    }
+    if (roundNumber > 20) {
+      return `Bottom ${roundNumber - 20}`;
+    }
+    return `Top ${roundNumber}`;
+  }
+  return `Round ${roundNumber}`;
+}
+
 export function getUserActiveMatches<TMatch extends ActiveMatchLike, TRound extends ActiveRoundLike & { matches: TMatch[] }>(
   rounds: TRound[],
   userId: string | undefined,

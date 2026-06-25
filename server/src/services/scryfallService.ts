@@ -387,6 +387,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     if (card.card_faces && card.card_faces.length > 1) {
       return card.card_faces.map((face) => ({
         name: face.name ?? card.name,
+        typeLine: face.type_line ?? null,
         layout: card.layout ?? null,
         imageUris: face.image_uris ?? null,
       }));
@@ -395,6 +396,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     return [
       {
         name: card.name,
+        typeLine: card.type_line ?? null,
         layout: card.layout ?? null,
         imageUris: card.image_uris ?? null,
       },

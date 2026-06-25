@@ -31,6 +31,9 @@ enum EventFormat {
   swiss
   seeded_swiss
   round_robin
+  single_elimination
+  double_elimination
+  custom_10_player
 }
 
 enum SideboardRule {
@@ -54,6 +57,7 @@ enum DeckLockingMode {
 enum SeedingSource {
   previous_season
   previous_event
+  current_season
   manual
 }
 
@@ -130,6 +134,10 @@ model User {
   scheduledAs1     ScheduledPairing[] @relation("ScheduledPlayer1")
   scheduledAs2     ScheduledPairing[] @relation("ScheduledPlayer2")
   eventSeeds       EventSeed[]
+  bracketSlotsAsPlayer1 BracketSlot[] @relation("BracketSlotP1")
+  bracketSlotsAsPlayer2 BracketSlot[] @relation("BracketSlotP2")
+  bracketSlotsAsWinner  BracketSlot[] @relation("BracketSlotWinner")
+  bracketSlotsAsLoser   BracketSlot[] @relation("BracketSlotLoser")
 }
 
 model League {
@@ -260,6 +268,7 @@ model Event {
   decklists          Decklist[]
   deckUniquenessRule DeckUniquenessRule?
   seeds              EventSeed[]
+  bracketSlots       BracketSlot[]
 }
 
 model EventConfig {
@@ -273,6 +282,7 @@ model EventConfig {
   schedulingType  SchedulingType  @default(open_window)
   deckLockingMode DeckLockingMode @default(free_modification)
   seedingSource   SeedingSource?
+  grandFinalsReset Boolean        @default(false)
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 }
@@ -345,11 +355,36 @@ model Match {
   player2    User?        @relation("MatchPlayer2", fields: [player2Id], references: [id])
   reportedBy User?        @relation("MatchReporter", fields: [reportedById], references: [id])
   gameResults GameResult[]
+  bracketSlot BracketSlot?
 
   @@index([roundId])
   @@index([player1Id])
   @@index([player2Id])
   @@index([status])
+}
+
+model BracketSlot {
+  id           String  @id @default(uuid())
+  eventId      String
+  slotKey      String
+  bracketSide  String
+  bracketRound Int
+  player1Id    String?
+  player2Id    String?
+  matchId      String? @unique
+  winnerId     String?
+  loserId      String?
+
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  match   Match? @relation(fields: [matchId], references: [id])
+  player1 User?  @relation("BracketSlotP1", fields: [player1Id], references: [id])
+  player2 User?  @relation("BracketSlotP2", fields: [player2Id], references: [id])
+  winner  User?  @relation("BracketSlotWinner", fields: [winnerId], references: [id])
+  loser   User?  @relation("BracketSlotLoser", fields: [loserId], references: [id])
+
+  @@unique([eventId, slotKey])
+  @@index([eventId, bracketRound])
+  @@index([matchId])
 }
 
 model GameResult {
