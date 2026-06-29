@@ -109,7 +109,7 @@ describe('cardPoolSort helpers', () => {
     const cards = flattenEntries(acquisitions, 'flat');
     expect(cards).toHaveLength(1);
     expect(cards[0].quantity).toBe(3);
-    expect(cards[0].phaseQuantities).toEqual({ 'Initial Pool': 1, 'After Round 1': 2 });
+    expect(cards[0].phaseQuantities).toEqual({ 'Phase 1': 1, 'Phase 2': 2 });
   });
 
   it('keeps separate phase rows in phase mode', () => {
@@ -158,7 +158,7 @@ describe('cardPoolSort helpers', () => {
 
     const cards = flattenEntries(acquisitions, 'phase');
     expect(cards).toHaveLength(2);
-    expect(cards.map((card) => card.phaseLabel)).toEqual(['Initial Pool', 'After Round 1']);
+    expect(cards.map((card) => card.phaseLabel)).toEqual(['Phase 1', 'Phase 2']);
   });
 
   it('returns null when requested image size is unavailable', () => {

@@ -4,6 +4,7 @@ import { requireAuth, optionalAuth } from '../middleware/auth.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { validateBody } from '../lib/validate.js';
 import { canViewPool } from '../lib/visibilityRules.js';
+import { assertOwnerPhaseAllowed, isSeasonLocked } from '../lib/poolRules.js';
 import {
   adjustCardQuantityInPhase,
   bulkResolveAcquisitionItems,
@@ -42,11 +43,28 @@ const bulkAcquisitionSchema = z.object({
     .min(1),
 });
 
-async function assertCanModifyPool(poolId: string, userId: string, userRole: 'admin' | 'user') {
+async function assertCanModifyPool(
+  poolId: string,
+  userId: string,
+  userRole: 'admin' | 'user',
+  options?: { phaseLabel?: string },
+) {
   const pool = await getPoolDetail(poolId);
   const isAdmin = userRole === 'admin';
   if (!isAdmin && pool.user.id !== userId) {
     throw new AppError(403, 'FORBIDDEN', 'Only the pool owner can modify this pool');
+  }
+  if (!isAdmin) {
+    const events = await prisma.event.findMany({
+      where: { seasonId: pool.seasonId },
+      select: { status: true },
+    });
+    if (isSeasonLocked(events)) {
+      throw new AppError(403, 'SEASON_LOCKED', 'Pool modifications are locked -- all events have been completed');
+    }
+    if (options?.phaseLabel !== undefined) {
+      assertOwnerPhaseAllowed(options.phaseLabel, events);
+    }
   }
   return pool;
 }
@@ -138,7 +156,9 @@ router.post(
   validateBody(createAcquisitionSchema),
   async (req, res, next) => {
     try {
-      await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
+      await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role, {
+        phaseLabel: req.body.phaseLabel,
+      });
       const acquisition = await createAcquisition(req.params.poolId, req.body.phaseLabel, req.body.cards);
       res.status(201).json({ data: acquisition });
     } catch (error) {
@@ -188,7 +208,9 @@ router.patch(
   validateBody(adjustCardQuantitySchema),
   async (req, res, next) => {
     try {
-      await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role);
+      await assertCanModifyPool(req.params.poolId, req.user!.id, req.user!.role, {
+        phaseLabel: req.body.phaseLabel,
+      });
       await adjustCardQuantityInPhase(req.params.poolId, req.body.phaseLabel, req.body.cachedCardId, req.body.action);
       res.status(204).send();
     } catch (error) {

@@ -1,4 +1,5 @@
 import type { GroupMode, PoolCard, SortKey, StacksOrganizeBy } from '@/components/cardpool/types';
+import { normalizePhaseLabel } from '@/lib/poolPhase';
 
 type AcquisitionEntryLike = {
   quantity: number;
@@ -377,6 +378,7 @@ export function flattenEntries(acquisitions: AcquisitionLike[], groupMode: Group
   const byKey = new Map<string, PoolCard>();
 
   for (const acquisition of acquisitions) {
+    const phase = normalizePhaseLabel(acquisition.phaseLabel);
     for (const entry of acquisition.entries) {
       const card = entry.cachedCard;
       const scryfallId = card.scryfallId;
@@ -384,11 +386,11 @@ export function flattenEntries(acquisitions: AcquisitionLike[], groupMode: Group
         continue;
       }
 
-      const key = groupMode === 'flat' ? scryfallId : `${acquisition.phaseLabel}::${scryfallId}`;
+      const key = groupMode === 'flat' ? scryfallId : `${phase}::${scryfallId}`;
       const existing = byKey.get(key);
       if (existing) {
         existing.quantity += entry.quantity;
-        existing.phaseQuantities[acquisition.phaseLabel] = (existing.phaseQuantities[acquisition.phaseLabel] ?? 0) + entry.quantity;
+        existing.phaseQuantities[phase] = (existing.phaseQuantities[phase] ?? 0) + entry.quantity;
         continue;
       }
 
@@ -405,9 +407,9 @@ export function flattenEntries(acquisitions: AcquisitionLike[], groupMode: Group
         colors: card.colors ?? [],
         colorIdentity: card.colorIdentity ?? card.colors ?? [],
         quantity: entry.quantity,
-        phaseLabel: acquisition.phaseLabel,
+        phaseLabel: phase,
         phaseQuantities: {
-          [acquisition.phaseLabel]: entry.quantity,
+          [phase]: entry.quantity,
         },
       });
     }

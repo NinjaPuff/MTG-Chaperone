@@ -97,17 +97,21 @@ export function CardPoolSearchPanel({
 
       <label className="block text-sm font-medium">
         Phase Label
-        <select
-          className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          value={phaseLabel}
-          onChange={(event) => onPhaseLabelChange(event.target.value)}
-        >
-          {phaseOptions.map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+        {phaseOptions.length > 1 ? (
+          <select
+            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            value={phaseLabel}
+            onChange={(event) => onPhaseLabelChange(event.target.value)}
+          >
+            {phaseOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <p className="mt-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">{phaseLabel}</p>
+        )}
       </label>
 
       <label className="block text-sm font-medium">

@@ -42,6 +42,7 @@ export const prismaMock = {
   event: {
     findUnique: vi.fn(),
     findFirst: vi.fn(),
+    findMany: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
@@ -127,6 +128,9 @@ export const prismaMock = {
   cardPool: {
     findUnique: vi.fn(),
     deleteMany: vi.fn(),
+  },
+  poolAcquisition: {
+    findUnique: vi.fn(),
   },
   boosterProduct: {
     findMany: vi.fn(),

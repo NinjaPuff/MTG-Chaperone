@@ -8,6 +8,13 @@ import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
 import { primaryName, profileSubtitle } from '@/lib/userDisplay';
 import { copyTextToClipboard } from '@/lib/inviteLink';
+import {
+  buildSeasonPhaseOptions,
+  computeDefaultPhase,
+  computeOwnerAddPhaseOptions,
+  formatPhaseLabel,
+  normalizePhaseLabel,
+} from '@/lib/poolPhase';
 import { CardPoolSearchPanel } from '@/components/cardpool/CardPoolSearchPanel';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
@@ -137,6 +144,7 @@ type StagedPoolChange = {
 
 type SeasonEvent = {
   id: string;
+  status: 'setup' | 'active' | 'completed';
 };
 
 type SeasonEventsResponse = {
@@ -204,7 +212,7 @@ export function CardPoolDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [phaseLabel, setPhaseLabel] = useState('Initial Pool');
+  const [phaseLabel, setPhaseLabel] = useState(formatPhaseLabel(1));
   const [seasonEvents, setSeasonEvents] = useState<SeasonEvent[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -212,11 +220,11 @@ export function CardPoolDetailPage() {
   const [stagedCards, setStagedCards] = useState<StagedCardLike[]>([]);
 
   const [bulkText, setBulkText] = useState('');
-  const [bulkPhaseLabel, setBulkPhaseLabel] = useState('Initial Pool');
+  const [bulkPhaseLabel, setBulkPhaseLabel] = useState(formatPhaseLabel(1));
   const [bulkUnresolved, setBulkUnresolved] = useState<string[]>([]);
   const [bulkAdding, setBulkAdding] = useState(false);
   const [isBulkAddOpen, setIsBulkAddOpen] = useState(false);
-  const [clearPhaseLabel, setClearPhaseLabel] = useState('Initial Pool');
+  const [clearPhaseLabel, setClearPhaseLabel] = useState(formatPhaseLabel(1));
   const [clearingPhase, setClearingPhase] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [sortKey, setSortKey] = useState<SortKey>('type');
@@ -230,6 +238,7 @@ export function CardPoolDetailPage() {
   const [stagedPoolChanges, setStagedPoolChanges] = useState<StagedPoolChange[]>([]);
   const [applyingStagedChanges, setApplyingStagedChanges] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const phaseDefaultApplied = useRef(false);
   const loadPool = async () => {
     if (!poolId) {
       setError('Missing pool id.');
@@ -258,6 +267,16 @@ export function CardPoolDetailPage() {
   const isOwner = Boolean(user && pool && user.id === pool.user.id);
   const isAdmin = user?.role === 'admin';
 
+  const completedEventCount = useMemo(
+    () => seasonEvents.filter(e => e.status === 'completed').length,
+    [seasonEvents],
+  );
+  const allEventsCompleted = useMemo(
+    () => seasonEvents.length > 0 && completedEventCount === seasonEvents.length,
+    [seasonEvents.length, completedEventCount],
+  );
+  const canModifyPool = (isOwner && !allEventsCompleted) || isAdmin;
+
   useEffect(() => {
     const loadSeasonEvents = async () => {
       if (!pool?.season.id) {
@@ -276,39 +295,59 @@ export function CardPoolDetailPage() {
     void loadSeasonEvents();
   }, [pool?.season.id]);
 
-  const phaseOptions = useMemo(() => {
-    const options = ['Initial Pool'];
-    for (let round = 1; round <= seasonEvents.length; round += 1) {
-      options.push(`After Round ${round}`);
+  const phaseOptions = useMemo(
+    () => buildSeasonPhaseOptions(seasonEvents.length),
+    [seasonEvents.length],
+  );
+
+  const addPhaseOptions = useMemo(() => {
+    if (isAdmin) {
+      return phaseOptions;
     }
-    return options;
-  }, [seasonEvents.length]);
+    return computeOwnerAddPhaseOptions(completedEventCount, seasonEvents.length);
+  }, [isAdmin, phaseOptions, completedEventCount, seasonEvents.length]);
 
   const availablePhaseOptions = useMemo(() => {
     const ordered = [...phaseOptions];
     for (const acquisition of acquisitions) {
-      if (!ordered.includes(acquisition.phaseLabel)) {
-        ordered.push(acquisition.phaseLabel);
+      const label = normalizePhaseLabel(acquisition.phaseLabel);
+      if (!ordered.includes(label)) {
+        ordered.push(label);
       }
     }
     return ordered;
   }, [acquisitions, phaseOptions]);
 
   useEffect(() => {
-    if (!phaseOptions.includes(phaseLabel)) {
-      setPhaseLabel(phaseOptions[0]);
-    }
-  }, [phaseLabel, phaseOptions]);
+    phaseDefaultApplied.current = false;
+  }, [poolId]);
 
   useEffect(() => {
-    if (!phaseOptions.includes(bulkPhaseLabel)) {
-      setBulkPhaseLabel(phaseOptions[0]);
+    if (seasonEvents.length > 0 && !phaseDefaultApplied.current) {
+      phaseDefaultApplied.current = true;
+      const defaultPhase = computeDefaultPhase(completedEventCount);
+      if (addPhaseOptions.includes(defaultPhase)) {
+        setPhaseLabel(defaultPhase);
+        setBulkPhaseLabel(defaultPhase);
+      }
     }
-  }, [bulkPhaseLabel, phaseOptions]);
+  }, [seasonEvents, completedEventCount, addPhaseOptions]);
+
+  useEffect(() => {
+    if (!addPhaseOptions.includes(phaseLabel)) {
+      setPhaseLabel(addPhaseOptions[0] ?? formatPhaseLabel(1));
+    }
+  }, [phaseLabel, addPhaseOptions]);
+
+  useEffect(() => {
+    if (!addPhaseOptions.includes(bulkPhaseLabel)) {
+      setBulkPhaseLabel(addPhaseOptions[0] ?? formatPhaseLabel(1));
+    }
+  }, [bulkPhaseLabel, addPhaseOptions]);
 
   useEffect(() => {
     if (!availablePhaseOptions.includes(clearPhaseLabel)) {
-      setClearPhaseLabel(availablePhaseOptions[0] ?? 'Initial Pool');
+      setClearPhaseLabel(availablePhaseOptions[0] ?? formatPhaseLabel(1));
     }
   }, [availablePhaseOptions, clearPhaseLabel]);
 
@@ -627,7 +666,7 @@ export function CardPoolDetailPage() {
     event.preventDefault();
     event.stopPropagation();
     const matchingPhases = Object.keys(card.phaseQuantities);
-    const defaultPhase = matchingPhases[0] ?? card.phaseLabel ?? availablePhaseOptions[0] ?? 'Initial Pool';
+    const defaultPhase = matchingPhases[0] ?? card.phaseLabel ?? availablePhaseOptions[0] ?? formatPhaseLabel(1);
     setAdminContextMenu({
       pageX: event.pageX,
       pageY: event.pageY,
@@ -948,7 +987,7 @@ export function CardPoolDetailPage() {
             </button>
             <p className="text-xs text-muted-foreground">Includes set and collector number per printing.</p>
           </div>
-          {isOwner ? (
+          {canModifyPool ? (
             <button
               type="button"
               onClick={() => {
@@ -986,6 +1025,11 @@ export function CardPoolDetailPage() {
           <p className="text-sm text-muted-foreground">Total Cards</p>
           <p className="text-2xl font-bold">{totalCards}</p>
         </div>
+        {allEventsCompleted && isOwner && !isAdmin ? (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-100">
+            All events have been completed. Pool modifications are locked. Contact an admin for changes.
+          </div>
+        ) : null}
         {isAdmin ? (
           <div className="space-y-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
             <p className="text-sm font-medium text-destructive">Admin: Clear Entire Phase</p>
@@ -1015,10 +1059,10 @@ export function CardPoolDetailPage() {
         ) : null}
       </div>
 
-      {isOwner ? (
+      {canModifyPool ? (
         <CardPoolSearchPanel
           phaseLabel={phaseLabel}
-          phaseOptions={phaseOptions}
+          phaseOptions={addPhaseOptions}
           onPhaseLabelChange={setPhaseLabel}
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
@@ -1030,7 +1074,7 @@ export function CardPoolDetailPage() {
         />
       ) : null}
 
-      {isOwner || isAdmin ? (
+      {canModifyPool || isAdmin ? (
         <div className="rounded-md border border-border/70 bg-card px-3 py-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-medium">
@@ -1254,7 +1298,7 @@ export function CardPoolDetailPage() {
         ) : null}
       </div>
 
-      {isOwner && isBulkAddOpen ? (
+      {canModifyPool && isBulkAddOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           onClick={() => setIsBulkAddOpen(false)}
@@ -1282,17 +1326,21 @@ export function CardPoolDetailPage() {
 
             <label className="block text-sm font-medium">
               Phase Label
-              <select
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                value={bulkPhaseLabel}
-                onChange={(event) => setBulkPhaseLabel(event.target.value)}
-              >
-                {phaseOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
+              {addPhaseOptions.length > 1 ? (
+                <select
+                  className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                  value={bulkPhaseLabel}
+                  onChange={(event) => setBulkPhaseLabel(event.target.value)}
+                >
+                  {addPhaseOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="mt-1 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">{bulkPhaseLabel}</p>
+              )}
             </label>
 
             <textarea
