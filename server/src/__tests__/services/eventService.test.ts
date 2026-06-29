@@ -445,13 +445,19 @@ describe('eventService', () => {
     expect(pairingMocks.generateSeededSwissPairings).toHaveBeenCalledWith('r1');
   });
 
-  it('resets round robin events by assigning round robin pairings', async () => {
+  it('preserves round robin pairings when resetting an event', async () => {
     prismaMock.event.findUnique
       .mockResolvedValueOnce({
         id: 'e1',
         status: 'active',
         config: { format: 'round_robin' },
-        rounds: [{ id: 'r1', status: 'completed', matches: [{ id: 'm1' }] }],
+        rounds: [
+          {
+            id: 'r1',
+            status: 'completed',
+            matches: [{ id: 'm1', player1Id: 'u1', player2Id: 'u2', isBye: false }],
+          },
+        ],
       })
       .mockResolvedValueOnce({
         id: 'e1',
@@ -468,12 +474,84 @@ describe('eventService', () => {
         },
       });
     prismaMock.event.update.mockResolvedValue({ id: 'e1', status: 'setup' });
-    pairingMocks.assignRoundRobinPairings.mockResolvedValue([]);
+    prismaMock.match.create.mockResolvedValue({ id: 'm1' });
 
     await resetEvent('e1');
 
-    expect(pairingMocks.assignRoundRobinPairings).toHaveBeenCalledWith('r1');
+    expect(pairingMocks.assignRoundRobinPairings).not.toHaveBeenCalled();
     expect(pairingMocks.generateSwissPairings).not.toHaveBeenCalled();
+    expect(prismaMock.match.create).toHaveBeenCalledWith({
+      data: {
+        roundId: 'r1',
+        player1Id: 'u1',
+        player2Id: 'u2',
+        isBye: false,
+        status: 'pending',
+        confirmedAt: null,
+      },
+    });
+  });
+
+  it('preserves per-round pairings across multiple rounds when resetting a round robin event', async () => {
+    prismaMock.event.findUnique
+      .mockResolvedValueOnce({
+        id: 'e1',
+        status: 'active',
+        config: { format: 'round_robin' },
+        rounds: [
+          {
+            id: 'r1',
+            status: 'completed',
+            matches: [{ id: 'm1', player1Id: 'u1', player2Id: 'u2', isBye: false }],
+          },
+          {
+            id: 'r2',
+            status: 'completed',
+            matches: [{ id: 'm2', player1Id: 'u3', player2Id: 'u4', isBye: false }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        id: 'e1',
+        status: 'setup',
+        config: { format: 'round_robin', deckCount: 1, minDeckSize: 40, sideboardRule: 'entire_pool', deckLockingMode: 'free_modification' },
+        rounds: [],
+        season: {
+          id: 's1',
+          league: {
+            id: 'l1',
+            slug: 'league',
+            memberships: [],
+          },
+        },
+      });
+    prismaMock.event.update.mockResolvedValue({ id: 'e1', status: 'setup' });
+    prismaMock.match.create.mockResolvedValue({ id: 'm-new' });
+
+    await resetEvent('e1');
+
+    expect(pairingMocks.assignRoundRobinPairings).not.toHaveBeenCalled();
+    expect(prismaMock.match.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.match.create).toHaveBeenNthCalledWith(1, {
+      data: {
+        roundId: 'r1',
+        player1Id: 'u1',
+        player2Id: 'u2',
+        isBye: false,
+        status: 'pending',
+        confirmedAt: null,
+      },
+    });
+    expect(prismaMock.match.create).toHaveBeenNthCalledWith(2, {
+      data: {
+        roundId: 'r2',
+        player1Id: 'u3',
+        player2Id: 'u4',
+        isBye: false,
+        status: 'pending',
+        confirmedAt: null,
+      },
+    });
   });
 
   it('blocks resetting setup events', async () => {

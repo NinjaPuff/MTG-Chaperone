@@ -280,13 +280,6 @@ export async function resetRoundProgress(
     };
   },
 ) {
-  if (round.event.config?.format === 'round_robin') {
-    await tx.scheduledPairing.updateMany({
-      where: { roundId: round.id },
-      data: { roundId: null },
-    });
-  }
-
   await tx.gameResult.deleteMany({
     where: {
       match: {
@@ -310,6 +303,9 @@ export async function resetRound(roundId: string) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     include: {
+      matches: {
+        select: { player1Id: true, player2Id: true, isBye: true },
+      },
       event: {
         include: {
           config: true,
@@ -330,6 +326,12 @@ export async function resetRound(roundId: string) {
   if (round.status === 'not_started') {
     throw new AppError(409, 'INVALID_ROUND_STATE', 'Round is already not started. Use regenerate to reroll pairings');
   }
+
+  const savedPairs = (round.matches ?? []).map((match) => ({
+    player1Id: match.player1Id,
+    player2Id: match.player2Id,
+    isBye: match.isBye,
+  }));
 
   await prisma.$transaction(async (tx) => {
     await resetRoundProgress(tx, {
@@ -353,7 +355,7 @@ export async function resetRound(roundId: string) {
   } else if (round.event.config.format === 'seeded_swiss') {
     await pairRoundByFormat(roundId, 'seeded_swiss');
   } else {
-    await assignRoundRobinPairings(roundId);
+    await createMatchesForRound(roundId, savedPairs);
   }
 
   return prisma.round.findUnique({
