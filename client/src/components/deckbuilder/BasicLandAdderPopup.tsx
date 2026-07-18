@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { BasicLandAdder } from './BasicLandAdder';
 import type { BasicLandSuggestion, SuggestBasicLandCard } from '@/lib/suggestBasicLands';
 
-const LAND_ORDER: Array<keyof BasicLandSuggestion> = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Wastes'];
+const LAND_ORDER: Array<keyof BasicLandSuggestion> = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
 
 type BasicLandZoneTab = 'main' | 'sideboard';
 

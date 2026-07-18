@@ -1034,7 +1034,7 @@ export function DeckBuilderPage() {
           </div>
         ) : (
           <div
-            className={`grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,24vw)] lg:overflow-hidden ${DECKBUILDER_WORK_AREA_HEIGHT_CLASS}`}
+            className={`grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,24vw)] lg:overflow-hidden ${DECKBUILDER_WORK_AREA_HEIGHT_CLASS}`}
             data-testid="deckbuilder-work-area"
           >
             <div
@@ -1196,7 +1196,10 @@ export function DeckBuilderPage() {
               </div>
             </div>
 
-            <div className="min-h-0 h-full">
+            <div
+              className="flex min-h-0 h-full flex-col overflow-hidden"
+              data-testid="deckbuilder-sidebar-column"
+            >
               <DeckSidebar
                 decks={decks}
                 activeDeckId={activeDeckId ?? ''}

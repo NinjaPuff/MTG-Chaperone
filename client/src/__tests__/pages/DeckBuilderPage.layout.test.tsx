@@ -140,7 +140,7 @@ describe('DeckBuilderPage layout', () => {
     configureApi();
   });
 
-  it('should_render_work_area_with_viewport_height_class_on_large_screens', async () => {
+  it('should_render_work_area_with_flex_height_on_large_screens', async () => {
     renderPage();
 
     await waitFor(() => {
@@ -151,7 +151,9 @@ describe('DeckBuilderPage layout', () => {
     expect(pageRoot.className).toMatch(/lg:overflow-hidden/);
 
     const workArea = screen.getByTestId('deckbuilder-work-area');
-    expect(workArea.className).toMatch(/lg:h-\[calc\(100dvh-9rem\)\]/);
+    expect(workArea.className).toMatch(/lg:min-h-0/);
+    expect(workArea.className).not.toMatch(/lg:h-\[calc\(100dvh/);
+    expect(workArea.className).toMatch(/flex-1/);
     expect(workArea.className).toMatch(/lg:overflow-hidden/);
     expect(workArea.className).toMatch(/lg:grid-cols-\[minmax\(0,1fr\)_minmax\(300px,24vw\)\]/);
   });
@@ -167,16 +169,27 @@ describe('DeckBuilderPage layout', () => {
     expect(pageWrapper.className).toMatch(/lg:overflow-hidden/);
   });
 
-  it('should_use_tighter_viewport_height_on_work_area', async () => {
+  it('should_constrain_sidebar_column_for_viewport_filling_layout', async () => {
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByTestId('deckbuilder-work-area')).toBeInTheDocument();
+      expect(screen.getByTestId('deckbuilder-sidebar-column')).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId('deckbuilder-work-area').className).toMatch(
-      /lg:h-\[calc\(100dvh-9rem\)\]/,
-    );
+    const sidebarColumn = screen.getByTestId('deckbuilder-sidebar-column');
+    expect(sidebarColumn.className).toMatch(/min-h-0/);
+    expect(sidebarColumn.className).toMatch(/h-full/);
+    expect(sidebarColumn.className).toMatch(/overflow-hidden/);
+
+    const sidebar = document.querySelector('aside')!;
+    expect(sidebar.className).toMatch(/h-full/);
+    expect(sidebar.className).toMatch(/min-h-0/);
+    expect(sidebar.className).toMatch(/flex-col/);
+
+    expect(within(sidebar).getByTestId('deck-sidebar-main-scroll')).toHaveClass('overflow-y-auto');
+    expect(within(sidebar).getByTestId('deck-sidebar-main-scroll')).toHaveClass('flex-1');
+    expect(within(sidebar).getByRole('button', { name: 'Basic Lands' })).toBeInTheDocument();
+    expect(within(sidebar).getByRole('button', { name: /Sideboard/i })).toBeInTheDocument();
   });
 
   it('should_pin_pool_toolbar_above_scrollable_card_list', async () => {
