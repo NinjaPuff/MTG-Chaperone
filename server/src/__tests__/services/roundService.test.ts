@@ -3,7 +3,6 @@ import { prismaMock, resetPrismaMock } from '../helpers/prismaMock.js';
 
 const pairingMocks = vi.hoisted(() => ({
   assignRoundRobinPairings: vi.fn(),
-  generateRoundRobinSchedule: vi.fn(),
   generateSeededSwissPairings: vi.fn(),
   generateSwissPairings: vi.fn(),
   regeneratePairings: vi.fn(),
@@ -15,13 +14,12 @@ vi.mock('../../lib/prisma.js', () => ({
 
 vi.mock('../../services/pairingService.js', () => pairingMocks);
 
-import { completeRound, createRound, deleteRound, resetRound, startRound } from '../../services/roundService.js';
+import { completeRound, createRound, deleteRound, regenerateRoundPairings, resetRound, startRound } from '../../services/roundService.js';
 
 describe('roundService', () => {
   beforeEach(() => {
     resetPrismaMock();
     pairingMocks.assignRoundRobinPairings.mockReset();
-    pairingMocks.generateRoundRobinSchedule.mockReset();
     pairingMocks.generateSeededSwissPairings.mockReset();
     pairingMocks.generateSwissPairings.mockReset();
     pairingMocks.regeneratePairings.mockReset();
@@ -237,5 +235,76 @@ describe('roundService', () => {
       },
     });
     expect(result).toEqual({ id: 'r2', matches: [{ id: 'm1' }] });
+  });
+
+  it('regenerates swiss pairings for not_started swiss rounds', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      status: 'not_started',
+      event: { config: { format: 'swiss' } },
+    });
+    pairingMocks.generateSwissPairings.mockResolvedValue([{ player1Id: 'u1', player2Id: 'u2', isBye: false }]);
+    prismaMock.match.create.mockResolvedValue({ id: 'm1' });
+
+    await regenerateRoundPairings('r1');
+
+    expect(pairingMocks.regeneratePairings).toHaveBeenCalledWith('r1');
+    expect(pairingMocks.generateSwissPairings).toHaveBeenCalledWith('r1');
+  });
+
+  it('regenerates seeded swiss pairings for not_started seeded swiss rounds', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      status: 'not_started',
+      event: { config: { format: 'seeded_swiss' } },
+    });
+    pairingMocks.generateSeededSwissPairings.mockResolvedValue([{ player1Id: 'u1', player2Id: 'u2', isBye: false }]);
+    prismaMock.match.create.mockResolvedValue({ id: 'm1' });
+
+    await regenerateRoundPairings('r1');
+
+    expect(pairingMocks.regeneratePairings).toHaveBeenCalledWith('r1');
+    expect(pairingMocks.generateSeededSwissPairings).toHaveBeenCalledWith('r1');
+    expect(pairingMocks.generateSwissPairings).not.toHaveBeenCalled();
+  });
+
+  it('rejects regenerate for round robin events', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      status: 'not_started',
+      event: { config: { format: 'round_robin' } },
+    });
+
+    await expect(regenerateRoundPairings('r1')).rejects.toMatchObject({
+      code: 'INVALID_OPERATION',
+    });
+    expect(pairingMocks.regeneratePairings).not.toHaveBeenCalled();
+    expect(pairingMocks.generateSwissPairings).not.toHaveBeenCalled();
+  });
+
+  it('rejects regenerate for bracket events', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      status: 'not_started',
+      event: { config: { format: 'custom_10_player' } },
+    });
+
+    await expect(regenerateRoundPairings('r1')).rejects.toMatchObject({
+      code: 'INVALID_OPERATION',
+    });
+    expect(pairingMocks.regeneratePairings).not.toHaveBeenCalled();
+  });
+
+  it('rejects regenerate when round is not not_started', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      status: 'in_progress',
+      event: { config: { format: 'swiss' } },
+    });
+
+    await expect(regenerateRoundPairings('r1')).rejects.toMatchObject({
+      code: 'INVALID_ROUND_STATE',
+    });
+    expect(pairingMocks.regeneratePairings).not.toHaveBeenCalled();
   });
 });

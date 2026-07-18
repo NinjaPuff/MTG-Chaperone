@@ -2,14 +2,12 @@ import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 import type { Prisma } from '@prisma/client';
 import {
-  assignRoundRobinPairings,
-  generateRoundRobinSchedule,
   generateSeededSwissPairings,
   generateSwissPairings,
   regeneratePairings,
 } from './pairingService.js';
 import { unlockDecklistsForRound } from './decklistService.js';
-import { isBracketFormat, isPairingFormat, isSwissFormat, type PairingEventFormat } from '@mtg-league/shared';
+import { isBracketFormat, isPairingFormat, isSwissFormat, supportsRegeneratePairings, type PairingEventFormat } from '@mtg-league/shared';
 
 type RoundTransitionAction = 'start' | 'complete' | 'delete';
 
@@ -257,15 +255,16 @@ export async function regenerateRoundPairings(roundId: string) {
   if (round.status !== 'not_started') {
     throw new AppError(409, 'INVALID_ROUND_STATE', 'Only not started rounds can regenerate pairings');
   }
+  if (!supportsRegeneratePairings(round.event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Regenerate pairings is only supported for swiss events');
+  }
 
   await regeneratePairings(roundId);
 
   if (round.event.config.format === 'swiss') {
     await pairRoundByFormat(roundId, 'swiss');
-  } else if (round.event.config.format === 'seeded_swiss') {
-    await pairRoundByFormat(roundId, 'seeded_swiss');
   } else {
-    await assignRoundRobinPairings(roundId);
+    await pairRoundByFormat(roundId, 'seeded_swiss');
   }
 }
 

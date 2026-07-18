@@ -281,7 +281,7 @@ export function DeckSidebar({
         <BasicLandAdderPopup
           counts={activeDeck.basicLands}
           minDeckSize={minDeckSize}
-          deckCards={toSuggestionCards(activeDeck.cards)}
+          deckCards={toSuggestionCards(activeDeck.cards.filter((c) => c.zone === 'main'))}
           onChange={(next) => onBasicLandsChange(activeDeck.id, next)}
           disabled={disabled}
         />

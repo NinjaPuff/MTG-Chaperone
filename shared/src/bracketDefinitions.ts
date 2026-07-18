@@ -402,6 +402,10 @@ export function isPairingFormat(format: string): format is PairingEventFormat {
   return isSwissFormat(format) || format === 'round_robin';
 }
 
+export function supportsRegeneratePairings(format: string): boolean {
+  return isSwissFormat(format);
+}
+
 export function getBracketDefinition(format: string, playerCount: number): BracketDefinition {
   if (format === 'single_elimination') {
     return createSingleElimBracket(playerCount);

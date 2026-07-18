@@ -11,7 +11,7 @@ vi.mock('../../lib/prisma.js', () => ({
 }));
 vi.mock('../../services/bracketService.js', () => bracketServiceMocks);
 
-import { confirmMatch, reportMatch, resolveMatch, validateGameResults } from '../../services/matchService.js';
+import { confirmMatch, reportMatch, resolveMatch, updateMatchPlayers, updateRoundPairings, validateGameResults } from '../../services/matchService.js';
 
 describe('matchService', () => {
   beforeEach(() => {
@@ -385,5 +385,526 @@ describe('matchService', () => {
     await resolveMatch('m1', 'admin-1', [{ winnerId: 'u1', isDraw: false }]);
 
     expect(bracketServiceMocks.advanceBracket).toHaveBeenCalledWith('m1');
+  });
+
+  describe('updateMatchPlayers', () => {
+    const baseMatch = {
+      id: 'm1',
+      status: 'pending',
+      player1Id: 'u1',
+      player2Id: 'u2',
+      isBye: false,
+      roundId: 'r1',
+      round: {
+        id: 'r1',
+        status: 'not_started',
+        event: {
+          season: { leagueId: 'league-1' },
+          config: { format: 'swiss' },
+        },
+      },
+      gameResults: [],
+    };
+
+    beforeEach(() => {
+      prismaMock.leagueMembership.findMany.mockResolvedValue([
+        { userId: 'u1' },
+        { userId: 'u2' },
+        { userId: 'u3' },
+      ]);
+      prismaMock.match.findMany.mockResolvedValue([]);
+      prismaMock.scheduledPairing.updateMany.mockResolvedValue({ count: 1 });
+    });
+
+    it('swaps player1 on a not_started round', async () => {
+      prismaMock.match.findUnique.mockResolvedValue(baseMatch);
+      prismaMock.match.update.mockResolvedValue({ ...baseMatch, player1Id: 'u3' });
+
+      await updateMatchPlayers('m1', { player1Id: 'u3' });
+
+      expect(prismaMock.match.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: {
+          player1: { connect: { id: 'u3' } },
+        },
+        include: {
+          player1: true,
+          player2: true,
+          gameResults: true,
+        },
+      });
+    });
+
+    it('swaps player2', async () => {
+      prismaMock.match.findUnique.mockResolvedValue(baseMatch);
+      prismaMock.match.update.mockResolvedValue({ ...baseMatch, player2Id: 'u3' });
+
+      await updateMatchPlayers('m1', { player2Id: 'u3' });
+
+      expect(prismaMock.match.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: {
+          player2: { connect: { id: 'u3' } },
+        },
+        include: {
+          player1: true,
+          player2: true,
+          gameResults: true,
+        },
+      });
+    });
+
+    it('converts match to bye when player2 is null', async () => {
+      prismaMock.match.findUnique.mockResolvedValue(baseMatch);
+      prismaMock.match.update.mockResolvedValue({ ...baseMatch, player2Id: null, isBye: true, status: 'confirmed' });
+
+      await updateMatchPlayers('m1', { player2Id: null });
+
+      expect(prismaMock.match.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: {
+          player2: { disconnect: true },
+          isBye: true,
+          status: 'confirmed',
+          confirmedAt: expect.any(Date),
+        },
+        include: {
+          player1: true,
+          player2: true,
+          gameResults: true,
+        },
+      });
+      expect(prismaMock.scheduledPairing.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('converts bye to match when player2 is set', async () => {
+      prismaMock.match.findUnique.mockResolvedValue({
+        ...baseMatch,
+        player2Id: null,
+        isBye: true,
+        status: 'confirmed',
+      });
+      prismaMock.match.update.mockResolvedValue({ ...baseMatch, player2Id: 'u3', isBye: false, status: 'pending' });
+
+      await updateMatchPlayers('m1', { player2Id: 'u3' });
+
+      expect(prismaMock.match.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: {
+          player2: { connect: { id: 'u3' } },
+          isBye: false,
+          status: 'pending',
+          confirmedAt: null,
+        },
+        include: {
+          player1: true,
+          player2: true,
+          gameResults: true,
+        },
+      });
+    });
+
+    it('rejects in_progress round', async () => {
+      prismaMock.match.findUnique.mockResolvedValue({
+        ...baseMatch,
+        round: {
+          ...baseMatch.round,
+          status: 'in_progress',
+        },
+      });
+
+      await expect(updateMatchPlayers('m1', { player1Id: 'u3' })).rejects.toMatchObject({
+        code: 'INVALID_ROUND_STATE',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects bracket format', async () => {
+      prismaMock.match.findUnique.mockResolvedValue({
+        ...baseMatch,
+        round: {
+          ...baseMatch.round,
+          event: {
+            season: { leagueId: 'league-1' },
+            config: { format: 'single_elimination' },
+          },
+        },
+      });
+
+      await expect(updateMatchPlayers('m1', { player1Id: 'u3' })).rejects.toMatchObject({
+        code: 'INVALID_OPERATION',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-league-member', async () => {
+      prismaMock.match.findUnique.mockResolvedValue(baseMatch);
+
+      await expect(updateMatchPlayers('m1', { player1Id: 'u99' })).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'All players must be league members',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects same player1 and player2', async () => {
+      prismaMock.match.findUnique.mockResolvedValue(baseMatch);
+
+      await expect(updateMatchPlayers('m1', { player2Id: 'u1' })).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'Player 1 and player 2 must be different',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate player in round', async () => {
+      prismaMock.match.findUnique.mockResolvedValue(baseMatch);
+      prismaMock.match.findMany.mockResolvedValue([
+        { player1Id: 'u3', player2Id: 'u4' },
+      ]);
+
+      await expect(updateMatchPlayers('m1', { player1Id: 'u3' })).rejects.toMatchObject({
+        code: 'DUPLICATE_PLAYER',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('updates scheduledPairing for round robin', async () => {
+      prismaMock.match.findUnique.mockResolvedValue({
+        ...baseMatch,
+        round: {
+          ...baseMatch.round,
+          event: {
+            season: { leagueId: 'league-1' },
+            config: { format: 'round_robin' },
+          },
+        },
+      });
+      prismaMock.match.update.mockResolvedValue({ ...baseMatch, player1Id: 'u3' });
+
+      await updateMatchPlayers('m1', { player1Id: 'u3' });
+
+      expect(prismaMock.scheduledPairing.updateMany).toHaveBeenCalledWith({
+        where: {
+          roundId: 'r1',
+          OR: [
+            { player1Id: 'u1', player2Id: 'u2' },
+            { player1Id: 'u2', player2Id: 'u1' },
+          ],
+        },
+        data: {
+          player1Id: 'u3',
+          player2Id: 'u2',
+        },
+      });
+    });
+  });
+
+  describe('updateRoundPairings', () => {
+    const baseRound = {
+      id: 'r1',
+      status: 'not_started',
+      matches: [
+        { id: 'm1', player1Id: 'u1', player2Id: 'u2', isBye: false },
+        { id: 'm2', player1Id: 'u3', player2Id: 'u4', isBye: false },
+      ],
+      event: {
+        season: { leagueId: 'league-1' },
+        config: { format: 'swiss' },
+      },
+    };
+
+    beforeEach(() => {
+      prismaMock.leagueMembership.findMany.mockResolvedValue([
+        { userId: 'u1' },
+        { userId: 'u2' },
+        { userId: 'u3' },
+        { userId: 'u4' },
+        { userId: 'u5' },
+      ]);
+      prismaMock.scheduledPairing.updateMany.mockResolvedValue({ count: 1 });
+    });
+
+    it('updates all changed matches in a not_started round', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u5', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ]);
+
+      expect(prismaMock.match.update).toHaveBeenCalledTimes(1);
+      expect(prismaMock.match.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: {
+          player1: { connect: { id: 'u5' } },
+        },
+      });
+    });
+
+    it('skips unchanged matches', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u1', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ]);
+
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects in_progress round', async () => {
+      prismaMock.round.findUnique.mockResolvedValue({
+        ...baseRound,
+        status: 'in_progress',
+      });
+
+      await expect(updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u5', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ])).rejects.toMatchObject({
+        code: 'INVALID_ROUND_STATE',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects bracket format', async () => {
+      prismaMock.round.findUnique.mockResolvedValue({
+        ...baseRound,
+        event: {
+          season: { leagueId: 'league-1' },
+          config: { format: 'single_elimination' },
+        },
+      });
+
+      await expect(updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u5', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ])).rejects.toMatchObject({
+        code: 'INVALID_OPERATION',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate player across pairings', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await expect(updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u5', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u5', player2Id: 'u4' },
+      ])).rejects.toMatchObject({
+        code: 'DUPLICATE_PLAYER',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects same player1 and player2', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await expect(updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u5', player2Id: 'u5' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ])).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects non-league-member', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await expect(updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u99', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ])).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+      });
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects when matchId not in round', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await expect(updateRoundPairings('r1', [
+        { matchId: 'm99', player1Id: 'u5', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ])).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'Match does not belong to this round',
+      });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate matchId in payload', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await expect(updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u1', player2Id: 'u2' },
+        { matchId: 'm1', player1Id: 'u3', player2Id: 'u4' },
+      ])).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'Duplicate match in pairings payload',
+      });
+      expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('creates a match on an empty round when matchId is omitted', async () => {
+      prismaMock.round.findUnique.mockResolvedValue({
+        ...baseRound,
+        matches: [],
+      });
+
+      await updateRoundPairings('r1', [{ player1Id: 'u1', player2Id: 'u2' }]);
+
+      expect(prismaMock.match.create).toHaveBeenCalledWith({
+        data: {
+          roundId: 'r1',
+          player1Id: 'u1',
+          player2Id: 'u2',
+          isBye: false,
+          status: 'pending',
+          confirmedAt: null,
+        },
+      });
+      expect(prismaMock.match.delete).not.toHaveBeenCalled();
+    });
+
+    it('deletes matches omitted from payload', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await updateRoundPairings('r1', [{ matchId: 'm1', player1Id: 'u1', player2Id: 'u2' }]);
+
+      expect(prismaMock.gameResult.deleteMany).toHaveBeenCalledWith({
+        where: { matchId: 'm2' },
+      });
+      expect(prismaMock.match.delete).toHaveBeenCalledWith({
+        where: { id: 'm2' },
+      });
+      expect(prismaMock.match.create).not.toHaveBeenCalled();
+    });
+
+    it('handles add, remove, and update in one save', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u5', player2Id: 'u2' },
+        { player1Id: 'u3', player2Id: 'u4' },
+      ]);
+
+      expect(prismaMock.match.delete).toHaveBeenCalledWith({ where: { id: 'm2' } });
+      expect(prismaMock.match.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          roundId: 'r1',
+          player1Id: 'u3',
+          player2Id: 'u4',
+        }),
+      });
+      expect(prismaMock.match.update).toHaveBeenCalledWith({
+        where: { id: 'm1' },
+        data: { player1: { connect: { id: 'u5' } } },
+      });
+    });
+
+    it('deletes all matches when payload is empty', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(baseRound);
+
+      await updateRoundPairings('r1', []);
+
+      expect(prismaMock.match.delete).toHaveBeenCalledTimes(2);
+      expect(prismaMock.match.create).not.toHaveBeenCalled();
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+    });
+
+    it('creates a bye match when player2Id is null', async () => {
+      prismaMock.round.findUnique.mockResolvedValue({
+        ...baseRound,
+        matches: [],
+      });
+
+      await updateRoundPairings('r1', [{ player1Id: 'u5', player2Id: null }]);
+
+      expect(prismaMock.match.create).toHaveBeenCalledWith({
+        data: {
+          roundId: 'r1',
+          player1Id: 'u5',
+          player2Id: null,
+          isBye: true,
+          status: 'confirmed',
+          confirmedAt: expect.any(Date),
+        },
+      });
+    });
+
+    it('releases scheduledPairings when deleting round robin matches', async () => {
+      prismaMock.round.findUnique.mockResolvedValue({
+        ...baseRound,
+        event: {
+          season: { leagueId: 'league-1' },
+          config: { format: 'round_robin' },
+        },
+      });
+
+      await updateRoundPairings('r1', [{ matchId: 'm1', player1Id: 'u1', player2Id: 'u2' }]);
+
+      expect(prismaMock.scheduledPairing.updateMany).toHaveBeenCalledWith({
+        where: {
+          roundId: 'r1',
+          OR: [
+            { player1Id: 'u3', player2Id: 'u4' },
+            { player1Id: 'u4', player2Id: 'u3' },
+          ],
+        },
+        data: { roundId: null },
+      });
+    });
+
+    it('allows saving when some league members are unpaired', async () => {
+      prismaMock.round.findUnique.mockResolvedValue({
+        ...baseRound,
+        matches: [
+          { id: 'm1', player1Id: 'u1', player2Id: 'u2', isBye: false },
+          { id: 'm2', player1Id: 'u3', player2Id: 'u4', isBye: false },
+        ],
+      });
+
+      await updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u1', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ]);
+
+      expect(prismaMock.$transaction).toHaveBeenCalled();
+      expect(prismaMock.match.update).not.toHaveBeenCalled();
+      expect(prismaMock.match.delete).not.toHaveBeenCalled();
+      expect(prismaMock.match.create).not.toHaveBeenCalled();
+    });
+
+    it('updates scheduledPairings for round robin', async () => {
+      prismaMock.round.findUnique.mockResolvedValue({
+        ...baseRound,
+        event: {
+          season: { leagueId: 'league-1' },
+          config: { format: 'round_robin' },
+        },
+      });
+
+      await updateRoundPairings('r1', [
+        { matchId: 'm1', player1Id: 'u5', player2Id: 'u2' },
+        { matchId: 'm2', player1Id: 'u3', player2Id: 'u4' },
+      ]);
+
+      expect(prismaMock.scheduledPairing.updateMany).toHaveBeenCalledWith({
+        where: {
+          roundId: 'r1',
+          OR: [
+            { player1Id: 'u1', player2Id: 'u2' },
+            { player1Id: 'u2', player2Id: 'u1' },
+          ],
+        },
+        data: {
+          player1Id: 'u5',
+          player2Id: 'u2',
+        },
+      });
+    });
   });
 });

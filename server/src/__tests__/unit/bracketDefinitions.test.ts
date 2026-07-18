@@ -9,6 +9,7 @@ import {
   isBracketFormat,
   isPairingFormat,
   isSwissFormat,
+  supportsRegeneratePairings,
 } from '@mtg-league/shared';
 
 function slotMap(definition: { slots: Array<{ slotKey: string }> }) {
@@ -138,5 +139,15 @@ describe('isPairingFormat', () => {
     expect(isPairingFormat('seeded_swiss')).toBe(true);
     expect(isPairingFormat('round_robin')).toBe(true);
     expect(isPairingFormat('single_elimination')).toBe(false);
+  });
+});
+
+describe('supportsRegeneratePairings', () => {
+  it('allows regenerate only for swiss formats', () => {
+    expect(supportsRegeneratePairings('swiss')).toBe(true);
+    expect(supportsRegeneratePairings('seeded_swiss')).toBe(true);
+    expect(supportsRegeneratePairings('round_robin')).toBe(false);
+    expect(supportsRegeneratePairings('single_elimination')).toBe(false);
+    expect(supportsRegeneratePairings('custom_10_player')).toBe(false);
   });
 });
