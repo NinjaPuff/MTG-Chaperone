@@ -356,22 +356,26 @@ export function groupByOrganize(cards: PoolCard[], organizeBy: StacksOrganizeBy)
     return buckets;
   }
 
-  const groups = new Map<string, PoolCard[]>([
-    ['Creatures', []],
-    ['Non-Creatures', []],
-  ]);
-  for (const card of sorted) {
-    const target = getPrimaryType(card.typeLine) === 'Creature' ? 'Creatures' : 'Non-Creatures';
-    const bucket = groups.get(target) ?? [];
-    bucket.push(card);
-    groups.set(target, bucket);
-  }
-  for (const [key, bucket] of [...groups.entries()]) {
-    if (bucket.length === 0) {
-      groups.delete(key);
+  if (organizeBy === 'creature_split') {
+    const groups = new Map<string, PoolCard[]>([
+      ['Creatures', []],
+      ['Non-Creatures', []],
+    ]);
+    for (const card of sorted) {
+      const target = getPrimaryType(card.typeLine) === 'Creature' ? 'Creatures' : 'Non-Creatures';
+      const bucket = groups.get(target) ?? [];
+      bucket.push(card);
+      groups.set(target, bucket);
     }
+    for (const [key, bucket] of [...groups.entries()]) {
+      if (bucket.length === 0) {
+        groups.delete(key);
+      }
+    }
+    return groups;
   }
-  return groups;
+
+  return new Map<string, PoolCard[]>();
 }
 
 export function flattenEntries(acquisitions: AcquisitionLike[], groupMode: GroupMode): PoolCard[] {

@@ -37,6 +37,7 @@ function toPoolCards(deck: BuilderDeck, poolImageByCardId?: Map<string, string>)
 
 export function DeckAnalyticsView({ deck, poolImageByCardId }: DeckAnalyticsViewProps) {
   const [viewMode, setViewMode] = useState<'curve' | 'stacks'>('curve');
+  const [splitCreatureRows, setSplitCreatureRows] = useState(true);
   const { cardImageWidth } = useCardImageWidth();
   const cards = useMemo(() => toPoolCards(deck, poolImageByCardId), [deck, poolImageByCardId]);
   const mainCards = cards.filter((card) => card.phaseLabel === 'Main Deck');
@@ -141,10 +142,27 @@ export function DeckAnalyticsView({ deck, poolImageByCardId }: DeckAnalyticsView
         >
           Stacks
         </button>
+        {viewMode === 'curve' ? (
+          <label className="ml-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              data-testid="deck-analytics-combined-curve"
+              checked={!splitCreatureRows}
+              onChange={(event) => setSplitCreatureRows(!event.target.checked)}
+            />
+            Combined curve
+          </label>
+        ) : null}
       </div>
 
       {viewMode === 'curve' ? (
-        <CurveView cards={cards} sortKey="cmc" groupMode="phase" organizeBy="cmc" cardWidth={cardImageWidth} />
+        <CurveView
+          cards={cards}
+          sortKey="cmc"
+          groupMode="phase"
+          organizeBy={splitCreatureRows ? 'creature_split' : 'cmc'}
+          cardWidth={cardImageWidth}
+        />
       ) : (
         <StacksView cards={cards} sortKey="type" groupMode="phase" organizeBy="type" cardWidth={cardImageWidth} />
       )}

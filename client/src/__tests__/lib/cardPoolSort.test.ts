@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { PoolCard } from '../../components/cardpool/types';
-import { flattenEntries, getImageUrl, getPrimaryType, groupByCmc, groupByType, sortCards } from '../../lib/cardPoolSort';
+import {
+  flattenEntries,
+  getImageUrl,
+  getPrimaryType,
+  groupByCmc,
+  groupByOrganize,
+  groupByType,
+  sortCards,
+} from '../../lib/cardPoolSort';
 
 function makeCard(overrides: Partial<PoolCard> = {}): PoolCard {
   return {
@@ -159,6 +167,27 @@ describe('cardPoolSort helpers', () => {
     const cards = flattenEntries(acquisitions, 'phase');
     expect(cards).toHaveLength(2);
     expect(cards.map((card) => card.phaseLabel)).toEqual(['Phase 1', 'Phase 2']);
+  });
+
+  it('groups creature_split into Creatures and Non-Creatures buckets', () => {
+    const cards = [
+      makeCard({ name: 'Bear', typeLine: 'Creature — Bear', cmc: 3, quantity: 2 }),
+      makeCard({ name: 'Shock', typeLine: 'Sorcery', cmc: 3, quantity: 1 }),
+    ];
+    const groups = groupByOrganize(cards, 'creature_split');
+
+    expect(groups.get('Creatures')).toHaveLength(1);
+    expect(groups.get('Creatures')?.reduce((sum, card) => sum + card.quantity, 0)).toBe(2);
+    expect(groups.get('Non-Creatures')).toHaveLength(1);
+    expect(groups.get('Non-Creatures')?.reduce((sum, card) => sum + card.quantity, 0)).toBe(1);
+  });
+
+  it('classifies Artifact Creature as Creatures in creature_split', () => {
+    const cards = [makeCard({ name: 'Golem', typeLine: 'Artifact Creature — Golem', cmc: 4, quantity: 1 })];
+    const groups = groupByOrganize(cards, 'creature_split');
+
+    expect(groups.get('Creatures')).toHaveLength(1);
+    expect(groups.get('Non-Creatures')).toBeUndefined();
   });
 
   it('returns null when requested image size is unavailable', () => {

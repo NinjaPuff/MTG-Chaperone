@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { CardPreviewProvider } from '../../../components/cardpool/CardPreviewContext';
 import { CurveView } from '../../../components/cardpool/CurveView';
@@ -110,6 +110,67 @@ describe('CurveView', () => {
     );
 
     expect(screen.getByTestId('curve-columns-scroll')).toHaveClass('overflow-x-auto');
+  });
+
+  it('renders creature and non-creature split rows with scoped bucket counts', () => {
+    render(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[
+            makeCard({ scryfallId: 'c1', name: 'Bear', typeLine: 'Creature — Bear', cmc: 2, quantity: 2 }),
+            makeCard({ scryfallId: 'c2', name: 'Bolt', typeLine: 'Instant', cmc: 2, quantity: 1 }),
+            makeCard({ scryfallId: 'c3', name: 'Elf', typeLine: 'Creature — Elf', cmc: 1, quantity: 3 }),
+          ]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="creature_split"
+          cardWidth={180}
+        />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.getByText(/Creatures \(5\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Non-Creatures \(1\)/)).toBeInTheDocument();
+
+    const creaturesHeading = screen.getByRole('heading', { name: /Creatures \(5\)/ });
+    const creaturesSection = creaturesHeading.parentElement!;
+    expect(within(creaturesSection).getByText('2')).toBeInTheDocument();
+    expect(within(creaturesSection).getByText('(2)')).toBeInTheDocument();
+
+    const nonCreaturesHeading = screen.getByRole('heading', { name: /Non-Creatures \(1\)/ });
+    const nonCreaturesSection = nonCreaturesHeading.parentElement!;
+    expect(within(nonCreaturesSection).getByText('2')).toBeInTheDocument();
+    expect(within(nonCreaturesSection).getByText('(1)')).toBeInTheDocument();
+  });
+
+  it('omits empty creature_split groups', () => {
+    const { rerender } = render(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[makeCard({ scryfallId: 'c1', name: 'Bear', typeLine: 'Creature — Bear', cmc: 2, quantity: 2 })]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="creature_split"
+          cardWidth={180}
+        />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.queryByText(/Non-Creatures/)).not.toBeInTheDocument();
+
+    rerender(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[makeCard({ scryfallId: 'c2', name: 'Bolt', typeLine: 'Instant', cmc: 2, quantity: 1 })]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="creature_split"
+          cardWidth={180}
+        />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.queryByText(/^Creatures \(/)).not.toBeInTheDocument();
   });
 
   it('renders column-level badges in curve stacks instead of bottom-left card badges', () => {
