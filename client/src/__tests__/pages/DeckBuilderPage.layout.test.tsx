@@ -147,10 +147,24 @@ describe('DeckBuilderPage layout', () => {
       expect(screen.getByText('Lightning Bolt')).toBeInTheDocument();
     });
 
+    const pageRoot = screen.getByTestId('deckbuilder-page-root');
+    expect(pageRoot.className).toMatch(/lg:overflow-hidden/);
+
     const workArea = screen.getByTestId('deckbuilder-work-area');
     expect(workArea.className).toMatch(/lg:h-\[calc\(100dvh-9rem\)\]/);
     expect(workArea.className).toMatch(/lg:overflow-hidden/);
     expect(workArea.className).toMatch(/lg:grid-cols-\[minmax\(0,1fr\)_minmax\(300px,24vw\)\]/);
+  });
+
+  it('should_prevent_page_level_scroll_with_overflow_hidden_on_large_screens', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deckbuilder-work-area')).toBeInTheDocument();
+    });
+
+    const pageWrapper = screen.getByTestId('deckbuilder-page-root');
+    expect(pageWrapper.className).toMatch(/lg:overflow-hidden/);
   });
 
   it('should_use_tighter_viewport_height_on_work_area', async () => {

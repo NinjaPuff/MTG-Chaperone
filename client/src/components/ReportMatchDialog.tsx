@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { deviceHasHover } from '@/components/cardpool/CardPreviewContext';
 import { primaryName } from '@/lib/userDisplay';
 import {
   type MatchInputCounts,
@@ -64,7 +65,9 @@ export function ReportMatchDialog({ match, bestOfN, mode, initialCounts, isMutat
     if (step !== 'entry') {
       return;
     }
-    firstInputRef.current?.focus();
+    if (deviceHasHover()) {
+      firstInputRef.current?.focus();
+    }
   }, [step]);
 
   const totalWins = counts.player1Wins + counts.player2Wins;

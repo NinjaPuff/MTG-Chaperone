@@ -49,6 +49,7 @@ const defaultSidebarProps = {
   onDeckNameChange: vi.fn(),
   onCardClick: vi.fn(),
   onBasicLandsChange: vi.fn(),
+  onSideboardBasicLandsChange: vi.fn(),
 };
 
 describe('DeckSidebar', () => {

@@ -4,12 +4,16 @@ import type { BasicLandSuggestion, SuggestBasicLandCard } from '@/lib/suggestBas
 
 const LAND_ORDER: Array<keyof BasicLandSuggestion> = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Wastes'];
 
+type BasicLandZoneTab = 'main' | 'sideboard';
+
 type BasicLandAdderPopupProps = {
-  counts: BasicLandSuggestion;
+  mainCounts: BasicLandSuggestion;
+  sideboardCounts: BasicLandSuggestion;
   minDeckSize: number;
-  deckCards: SuggestBasicLandCard[];
+  mainDeckCards: SuggestBasicLandCard[];
   disabled?: boolean;
-  onChange: (next: BasicLandSuggestion) => void;
+  onMainChange: (next: BasicLandSuggestion) => void;
+  onSideboardChange: (next: BasicLandSuggestion) => void;
 };
 
 function sumBasicLands(counts: BasicLandSuggestion) {
@@ -17,14 +21,17 @@ function sumBasicLands(counts: BasicLandSuggestion) {
 }
 
 export function BasicLandAdderPopup({
-  counts,
+  mainCounts,
+  sideboardCounts,
   minDeckSize,
-  deckCards,
+  mainDeckCards,
   disabled = false,
-  onChange,
+  onMainChange,
+  onSideboardChange,
 }: BasicLandAdderPopupProps) {
   const [open, setOpen] = useState(false);
-  const totalLands = sumBasicLands(counts);
+  const [activeTab, setActiveTab] = useState<BasicLandZoneTab>('main');
+  const totalLands = sumBasicLands(mainCounts) + sumBasicLands(sideboardCounts);
 
   useEffect(() => {
     if (!open) {
@@ -41,7 +48,15 @@ export function BasicLandAdderPopup({
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) {
+      setActiveTab('main');
+    }
+  }, [open]);
+
   const label = totalLands > 0 ? `Basic Lands (${totalLands})` : 'Basic Lands';
+  const activeCounts = activeTab === 'main' ? mainCounts : sideboardCounts;
+  const activeOnChange = activeTab === 'main' ? onMainChange : onSideboardChange;
 
   return (
     <>
@@ -82,13 +97,38 @@ export function BasicLandAdderPopup({
                 Close
               </button>
             </div>
+            <div className="mb-2 flex gap-1 rounded-md border border-border/70 p-0.5" role="tablist" aria-label="Basic land zones">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'main'}
+                className={`flex-1 rounded px-2 py-1 text-xs font-medium ${
+                  activeTab === 'main' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'
+                }`}
+                onClick={() => setActiveTab('main')}
+              >
+                Main Deck
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'sideboard'}
+                className={`flex-1 rounded px-2 py-1 text-xs font-medium ${
+                  activeTab === 'sideboard' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50'
+                }`}
+                onClick={() => setActiveTab('sideboard')}
+              >
+                Sideboard
+              </button>
+            </div>
             <BasicLandAdder
-              counts={counts}
+              counts={activeCounts}
               minDeckSize={minDeckSize}
-              deckCards={deckCards}
-              onChange={onChange}
+              deckCards={mainDeckCards}
+              onChange={activeOnChange}
               disabled={disabled}
               showHeader={false}
+              showSuggestLands={activeTab === 'main'}
             />
           </div>
         </div>

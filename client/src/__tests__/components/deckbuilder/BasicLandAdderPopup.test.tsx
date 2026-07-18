@@ -5,7 +5,15 @@ import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
 
 describe('BasicLandAdderPopup', () => {
   const defaultProps = {
-    counts: {
+    mainCounts: {
+      Plains: 0,
+      Island: 0,
+      Swamp: 0,
+      Mountain: 0,
+      Forest: 0,
+      Wastes: 0,
+    },
+    sideboardCounts: {
       Plains: 0,
       Island: 0,
       Swamp: 0,
@@ -14,19 +22,21 @@ describe('BasicLandAdderPopup', () => {
       Wastes: 0,
     },
     minDeckSize: 40,
-    deckCards: [],
-    onChange: vi.fn(),
+    mainDeckCards: [],
+    onMainChange: vi.fn(),
+    onSideboardChange: vi.fn(),
   };
 
   it('shows compact trigger button with total count', () => {
     renderWithAppProviders(
       <BasicLandAdderPopup
         {...defaultProps}
-        counts={{ ...defaultProps.counts, Forest: 8, Island: 4 }}
+        mainCounts={{ ...defaultProps.mainCounts, Forest: 8, Island: 4 }}
+        sideboardCounts={{ ...defaultProps.sideboardCounts, Mountain: 2 }}
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Basic Lands (12)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Basic Lands (14)' })).toBeInTheDocument();
   });
 
   it('opens dialog with land controls on click', () => {
@@ -36,6 +46,37 @@ describe('BasicLandAdderPopup', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Suggest Lands' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Main Deck' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('hides suggest lands on the sideboard tab', () => {
+    renderWithAppProviders(<BasicLandAdderPopup {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Basic Lands' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Sideboard' }));
+
+    expect(screen.queryByRole('button', { name: 'Suggest Lands' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Sideboard' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('routes sideboard changes through onSideboardChange', () => {
+    const onSideboardChange = vi.fn();
+    renderWithAppProviders(
+      <BasicLandAdderPopup {...defaultProps} onSideboardChange={onSideboardChange} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Basic Lands' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Sideboard' }));
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+
+    expect(onSideboardChange).toHaveBeenCalledWith({
+      Plains: 1,
+      Island: 0,
+      Swamp: 0,
+      Mountain: 0,
+      Forest: 0,
+      Wastes: 0,
+    });
   });
 
   it('closes dialog when backdrop is clicked', () => {

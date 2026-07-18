@@ -4,7 +4,8 @@ import { BasicLandAdderPopup } from './BasicLandAdderPopup';
 import { DeckCardList, type DeckCardListItem } from './DeckCardList';
 import { MiniManaCurve } from './MiniManaCurve';
 import type { BuilderDeck, DeckBuilderCard } from './types';
-import type { SuggestBasicLandCard } from '@/lib/suggestBasicLands';
+import { extractSideboardBasicCounts } from '@/lib/deckBasicLands';
+import type { BasicLandSuggestion, SuggestBasicLandCard } from '@/lib/suggestBasicLands';
 
 type DeckSidebarProps = {
   decks: BuilderDeck[];
@@ -16,6 +17,7 @@ type DeckSidebarProps = {
   onCardClick: (card: DeckBuilderCard, deckId: string) => void;
   onCardContextMenu?: (event: MouseEvent, card: DeckBuilderCard, deckId: string) => void;
   onBasicLandsChange: (deckId: string, next: BuilderDeck['basicLands']) => void;
+  onSideboardBasicLandsChange: (deckId: string, next: BasicLandSuggestion) => void;
   onMainDeckDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
   onSideboardDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
   poolImageByCardId?: Map<string, string>;
@@ -64,6 +66,7 @@ export function DeckSidebar({
   onCardClick,
   onCardContextMenu,
   onBasicLandsChange,
+  onSideboardBasicLandsChange,
   onMainDeckDrop,
   onSideboardDrop,
   poolImageByCardId,
@@ -88,6 +91,10 @@ export function DeckSidebar({
   );
   const mainCount = mainCards.reduce((sum, card) => sum + card.quantity, 0);
   const sideboardCount = sideboardCards.reduce((sum, card) => sum + card.quantity, 0);
+  const sideboardBasicCounts = useMemo(
+    () => extractSideboardBasicCounts(activeDeck?.cards ?? []),
+    [activeDeck?.cards],
+  );
   const curveCards = useMemo(
     () =>
       (activeDeck?.cards ?? [])
@@ -279,10 +286,12 @@ export function DeckSidebar({
 
       <div className="mt-2 shrink-0">
         <BasicLandAdderPopup
-          counts={activeDeck.basicLands}
+          mainCounts={activeDeck.basicLands}
+          sideboardCounts={sideboardBasicCounts}
           minDeckSize={minDeckSize}
-          deckCards={toSuggestionCards(activeDeck.cards.filter((c) => c.zone === 'main'))}
-          onChange={(next) => onBasicLandsChange(activeDeck.id, next)}
+          mainDeckCards={toSuggestionCards(activeDeck.cards.filter((c) => c.zone === 'main'))}
+          onMainChange={(next) => onBasicLandsChange(activeDeck.id, next)}
+          onSideboardChange={(next) => onSideboardBasicLandsChange(activeDeck.id, next)}
           disabled={disabled}
         />
       </div>
