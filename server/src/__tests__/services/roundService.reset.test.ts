@@ -40,6 +40,7 @@ describe('roundService resetRound', () => {
         id: 'r1',
         eventId: 'e1',
         status: 'in_progress',
+        matches: [],
         event: { status: 'active', config: { format: 'swiss' } },
       })
       .mockResolvedValueOnce({ id: 'r1', status: 'not_started', matches: [{ id: 'm1' }] });
@@ -72,6 +73,7 @@ describe('roundService resetRound', () => {
         id: 'r1',
         eventId: 'e1',
         status: 'completed',
+        matches: [],
         event: { status: 'completed', config: { format: 'swiss' } },
       })
       .mockResolvedValueOnce({ id: 'r1', status: 'not_started', matches: [] });
@@ -94,6 +96,7 @@ describe('roundService resetRound', () => {
       id: 'r1',
       eventId: 'e1',
       status: 'not_started',
+      matches: [],
       event: { status: 'active', config: { format: 'swiss' } },
     });
 
@@ -103,28 +106,81 @@ describe('roundService resetRound', () => {
     expect(prismaMock.gameResult.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('clears scheduled pairings and reassigns for round robin', async () => {
+  it('preserves pairings when resetting a round robin round', async () => {
+    const originalMatches = [
+      { player1Id: 'u1', player2Id: 'u2', isBye: false },
+      { player1Id: 'u3', player2Id: 'u4', isBye: false },
+    ];
     prismaMock.round.findUnique
       .mockResolvedValueOnce({
         id: 'r1',
         eventId: 'e1',
         status: 'completed',
+        matches: originalMatches,
         event: { status: 'active', config: { format: 'round_robin' } },
       })
       .mockResolvedValueOnce({ id: 'r1', status: 'not_started', matches: [] });
-    prismaMock.scheduledPairing.updateMany.mockResolvedValue({ count: 4 });
     prismaMock.gameResult.deleteMany.mockResolvedValue({ count: 4 });
     prismaMock.match.deleteMany.mockResolvedValue({ count: 4 });
     prismaMock.round.update.mockResolvedValue({ id: 'r1', status: 'not_started' });
-    pairingMocks.assignRoundRobinPairings.mockResolvedValue([]);
+    prismaMock.match.create.mockResolvedValue({ id: 'm1' });
 
     await resetRound('r1');
 
-    expect(prismaMock.scheduledPairing.updateMany).toHaveBeenCalledWith({
-      where: { roundId: 'r1' },
-      data: { roundId: null },
-    });
-    expect(pairingMocks.assignRoundRobinPairings).toHaveBeenCalledWith('r1');
+    expect(prismaMock.scheduledPairing.updateMany).not.toHaveBeenCalled();
+    expect(pairingMocks.assignRoundRobinPairings).not.toHaveBeenCalled();
     expect(pairingMocks.generateSwissPairings).not.toHaveBeenCalled();
+    expect(prismaMock.match.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.match.create).toHaveBeenNthCalledWith(1, {
+      data: {
+        roundId: 'r1',
+        player1Id: 'u1',
+        player2Id: 'u2',
+        isBye: false,
+        status: 'pending',
+        confirmedAt: null,
+      },
+    });
+    expect(prismaMock.match.create).toHaveBeenNthCalledWith(2, {
+      data: {
+        roundId: 'r1',
+        player1Id: 'u3',
+        player2Id: 'u4',
+        isBye: false,
+        status: 'pending',
+        confirmedAt: null,
+      },
+    });
+  });
+
+  it('preserves pairings for round robin with no scheduledPairings', async () => {
+    const originalMatches = [{ player1Id: 'u1', player2Id: 'u2', isBye: false }];
+    prismaMock.round.findUnique
+      .mockResolvedValueOnce({
+        id: 'r1',
+        eventId: 'e1',
+        status: 'in_progress',
+        matches: originalMatches,
+        event: { status: 'active', config: { format: 'round_robin' } },
+      })
+      .mockResolvedValueOnce({ id: 'r1', status: 'not_started', matches: [{ id: 'm1' }] });
+    prismaMock.gameResult.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.match.deleteMany.mockResolvedValue({ count: 1 });
+    prismaMock.round.update.mockResolvedValue({ id: 'r1', status: 'not_started' });
+    prismaMock.match.create.mockResolvedValue({ id: 'm1' });
+
+    await resetRound('r1');
+
+    expect(pairingMocks.assignRoundRobinPairings).not.toHaveBeenCalled();
+    expect(prismaMock.match.create).toHaveBeenCalledWith({
+      data: {
+        roundId: 'r1',
+        player1Id: 'u1',
+        player2Id: 'u2',
+        isBye: false,
+        status: 'pending',
+        confirmedAt: null,
+      },
+    });
   });
 });

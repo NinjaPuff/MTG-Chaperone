@@ -77,9 +77,10 @@ export function cardHoverPreviewLandscapeFrameClassName(
 ): string {
   const size =
     variant === 'touch'
-      ? 'h-[min(55vh,400px)] w-[min(92vw,660px)]'
+      ? 'h-[min(55vh,400px)] w-full'
       : 'h-[min(60vh,440px)] w-[min(92vw,660px)]';
-  return `relative ${size} max-w-full shrink-0 overflow-hidden rounded-md border border-border bg-muted/40`;
+  const base = `relative ${size} max-w-full overflow-hidden rounded-md border border-border bg-muted/40`;
+  return variant === 'desktop' ? `${base} shrink-0` : base;
 }
 
 /** Portrait-oriented Scryfall scan; rotate 90° clockwise to read as a landscape card. */

@@ -1,12 +1,23 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 import { requireAdmin, requireAuth } from '../middleware/auth.js';
+import { validateBody } from '../lib/validate.js';
 import { recomputeStandings } from '../services/standingsService.js';
 import { completeRound, deleteRound, regenerateRoundPairings, resetRound, startRound } from '../services/roundService.js';
+import { updateRoundPairings } from '../services/matchService.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 
 const router = Router();
+
+const updateRoundPairingsSchema = z.object({
+  pairings: z.array(z.object({
+    matchId: z.string().uuid().optional(),
+    player1Id: z.string().uuid(),
+    player2Id: z.string().uuid().nullable(),
+  })),
+});
 
 router.get('/:roundId', async (req, res, next) => {
   try {
@@ -131,6 +142,30 @@ router.get('/:roundId/matches', async (req, res, next) => {
       },
     });
     res.json({ data: matches });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:roundId/pairings', requireAuth, requireAdmin, validateBody(updateRoundPairingsSchema), async (req, res, next) => {
+  try {
+    await updateRoundPairings(req.params.roundId, req.body.pairings);
+    const round = await prisma.round.findUnique({
+      where: { id: req.params.roundId },
+      include: {
+        matches: {
+          include: {
+            player1: { select: USER_PUBLIC_SELECT },
+            player2: { select: USER_PUBLIC_SELECT },
+            gameResults: true,
+          },
+        },
+      },
+    });
+    if (!round) {
+      throw new AppError(404, 'NOT_FOUND', 'Round not found');
+    }
+    res.json({ data: round });
   } catch (error) {
     next(error);
   }

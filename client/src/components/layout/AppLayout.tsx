@@ -16,14 +16,14 @@ export function AppLayout() {
     <ToastProvider>
       <ConfirmProvider>
         <CardPreviewProvider>
-          <div className="flex min-h-screen flex-col bg-background text-foreground">
+          <div className={`flex flex-col bg-background text-foreground ${isDeckBuilder ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
             <Navbar />
-            <main className={isDeckBuilder ? 'flex min-h-0 flex-1 flex-col' : 'flex-1'}>
+            <main className={isDeckBuilder ? 'flex min-h-0 flex-1 flex-col overflow-hidden' : 'flex-1'}>
               <ErrorBoundary>
                 <div
                   className={
                     isDeckBuilder
-                      ? 'flex min-h-0 flex-1 flex-col w-full px-2 py-3 sm:px-3 xl:px-4'
+                      ? 'flex min-h-0 flex-1 flex-col w-full overflow-hidden px-2 py-3 sm:px-3 xl:px-4'
                       : 'container mx-auto px-4 py-6'
                   }
                 >

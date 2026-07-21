@@ -339,6 +339,304 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
   return updated;
 }
 
+export async function updateMatchPlayers(
+  matchId: string,
+  updates: { player1Id?: string; player2Id?: string | null },
+) {
+  const match = await getMatch(matchId);
+
+  if (match.round.status !== 'not_started') {
+    throw new AppError(409, 'INVALID_ROUND_STATE', 'Pairings can only be edited before the round starts');
+  }
+
+  if (match.round.event.config && isBracketFormat(match.round.event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Bracket pairings cannot be manually edited');
+  }
+
+  const nextPlayer1Id = updates.player1Id ?? match.player1Id;
+  const nextPlayer2Id = updates.player2Id !== undefined ? updates.player2Id : match.player2Id;
+  const nextIsBye = nextPlayer2Id === null;
+
+  if (!nextIsBye && nextPlayer1Id === nextPlayer2Id) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Player 1 and player 2 must be different');
+  }
+
+  const leagueId = match.round.event.season.leagueId;
+  const memberships = await prisma.leagueMembership.findMany({
+    where: { leagueId },
+    select: { userId: true },
+  });
+  const memberIds = new Set(memberships.map((membership) => membership.userId));
+
+  const submittedPlayerIds = [updates.player1Id, updates.player2Id]
+    .filter((playerId): playerId is string => typeof playerId === 'string');
+
+  for (const playerId of submittedPlayerIds) {
+    if (!memberIds.has(playerId)) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'All players must be league members');
+    }
+  }
+
+  const siblingMatches = await prisma.match.findMany({
+    where: { roundId: match.roundId, id: { not: matchId } },
+    select: { player1Id: true, player2Id: true },
+  });
+
+  for (const playerId of submittedPlayerIds) {
+    const duplicate = siblingMatches.some(
+      (sibling) => sibling.player1Id === playerId || sibling.player2Id === playerId,
+    );
+    if (duplicate) {
+      throw new AppError(409, 'DUPLICATE_PLAYER', 'Player is already paired in another match this round');
+    }
+  }
+
+  const updateData: Prisma.MatchUpdateInput = {};
+
+  if (updates.player1Id !== undefined) {
+    updateData.player1 = { connect: { id: updates.player1Id } };
+  }
+
+  if (updates.player2Id !== undefined) {
+    if (updates.player2Id === null) {
+      updateData.player2 = { disconnect: true };
+      updateData.isBye = true;
+      updateData.status = 'confirmed';
+      updateData.confirmedAt = new Date();
+    } else {
+      updateData.player2 = { connect: { id: updates.player2Id } };
+      if (match.isBye || match.player2Id === null) {
+        updateData.isBye = false;
+        updateData.status = 'pending';
+        updateData.confirmedAt = null;
+      }
+    }
+  }
+
+  const oldPlayer1Id = match.player1Id;
+  const oldPlayer2Id = match.player2Id;
+  const shouldSyncScheduledPairing = !nextIsBye && nextPlayer2Id !== null;
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.match.update({
+      where: { id: matchId },
+      data: updateData,
+      include: {
+        player1: true,
+        player2: true,
+        gameResults: true,
+      },
+    });
+
+    if (shouldSyncScheduledPairing && oldPlayer2Id) {
+      await tx.scheduledPairing.updateMany({
+        where: {
+          roundId: match.roundId,
+          OR: [
+            { player1Id: oldPlayer1Id, player2Id: oldPlayer2Id },
+            { player1Id: oldPlayer2Id, player2Id: oldPlayer1Id },
+          ],
+        },
+        data: {
+          player1Id: nextPlayer1Id,
+          player2Id: nextPlayer2Id,
+        },
+      });
+    }
+
+    return updated;
+  });
+}
+
+type RoundPairingInput = { matchId?: string; player1Id: string; player2Id: string | null };
+
+function buildMatchPairingUpdateData(
+  current: { player1Id: string; player2Id: string | null; isBye: boolean },
+  next: { player1Id: string; player2Id: string | null },
+): Prisma.MatchUpdateInput | null {
+  const player1Changed = next.player1Id !== current.player1Id;
+  const player2Changed = next.player2Id !== current.player2Id;
+  if (!player1Changed && !player2Changed) {
+    return null;
+  }
+
+  const updateData: Prisma.MatchUpdateInput = {};
+
+  if (player1Changed) {
+    updateData.player1 = { connect: { id: next.player1Id } };
+  }
+
+  if (player2Changed) {
+    if (next.player2Id === null) {
+      updateData.player2 = { disconnect: true };
+      updateData.isBye = true;
+      updateData.status = 'confirmed';
+      updateData.confirmedAt = new Date();
+    } else {
+      updateData.player2 = { connect: { id: next.player2Id } };
+      if (current.isBye || current.player2Id === null) {
+        updateData.isBye = false;
+        updateData.status = 'pending';
+        updateData.confirmedAt = null;
+      }
+    }
+  }
+
+  return updateData;
+}
+
+export async function updateRoundPairings(roundId: string, pairings: RoundPairingInput[]) {
+  const round = await prisma.round.findUnique({
+    where: { id: roundId },
+    include: {
+      matches: { select: { id: true, player1Id: true, player2Id: true, isBye: true } },
+      event: { include: { season: true, config: true } },
+    },
+  });
+
+  if (!round) {
+    throw new AppError(404, 'NOT_FOUND', 'Round not found');
+  }
+
+  if (round.status !== 'not_started') {
+    throw new AppError(409, 'INVALID_ROUND_STATE', 'Pairings can only be edited before the round starts');
+  }
+
+  if (round.event.config && isBracketFormat(round.event.config.format)) {
+    throw new AppError(409, 'INVALID_OPERATION', 'Bracket pairings cannot be manually edited');
+  }
+
+  const matchById = new Map(round.matches.map((match) => [match.id, match]));
+  const seenMatchIds = new Set<string>();
+
+  for (const pairing of pairings) {
+    if (pairing.matchId) {
+      if (seenMatchIds.has(pairing.matchId)) {
+        throw new AppError(400, 'VALIDATION_ERROR', 'Duplicate match in pairings payload');
+      }
+      seenMatchIds.add(pairing.matchId);
+
+      if (!matchById.has(pairing.matchId)) {
+        throw new AppError(400, 'VALIDATION_ERROR', 'Match does not belong to this round');
+      }
+    }
+
+    if (pairing.player2Id !== null && pairing.player1Id === pairing.player2Id) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Player 1 and player 2 must be different');
+    }
+  }
+
+  const leagueId = round.event.season.leagueId;
+  const memberships = await prisma.leagueMembership.findMany({
+    where: { leagueId },
+    select: { userId: true },
+  });
+  const memberIds = new Set(memberships.map((membership) => membership.userId));
+
+  const playerCounts = new Map<string, number>();
+  for (const pairing of pairings) {
+    for (const playerId of [pairing.player1Id, pairing.player2Id]) {
+      if (!playerId) {
+        continue;
+      }
+      if (!memberIds.has(playerId)) {
+        throw new AppError(400, 'VALIDATION_ERROR', 'All players must be league members');
+      }
+      playerCounts.set(playerId, (playerCounts.get(playerId) ?? 0) + 1);
+    }
+  }
+
+  for (const [, count] of playerCounts) {
+    if (count > 1) {
+      throw new AppError(409, 'DUPLICATE_PLAYER', 'Player is paired in multiple matches this round');
+    }
+  }
+
+  const isRoundRobin = round.event.config?.format === 'round_robin';
+  const keptIds = new Set(pairings.map((pairing) => pairing.matchId).filter((id): id is string => Boolean(id)));
+  const matchesToDelete = round.matches.filter((match) => !keptIds.has(match.id));
+  const creates = pairings.filter((pairing) => !pairing.matchId);
+  const updates = pairings
+    .filter((pairing): pairing is RoundPairingInput & { matchId: string } => Boolean(pairing.matchId))
+    .map((pairing) => {
+      const current = matchById.get(pairing.matchId)!;
+      const updateData = buildMatchPairingUpdateData(current, pairing);
+      if (!updateData) {
+        return null;
+      }
+      return {
+        matchId: pairing.matchId,
+        current,
+        next: pairing,
+        updateData,
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+
+  await prisma.$transaction(async (tx) => {
+    for (const match of matchesToDelete) {
+      if (isRoundRobin && match.player2Id) {
+        await tx.scheduledPairing.updateMany({
+          where: {
+            roundId,
+            OR: [
+              { player1Id: match.player1Id, player2Id: match.player2Id },
+              { player1Id: match.player2Id, player2Id: match.player1Id },
+            ],
+          },
+          data: { roundId: null },
+        });
+      }
+
+      await tx.gameResult.deleteMany({
+        where: { matchId: match.id },
+      });
+      await tx.match.delete({
+        where: { id: match.id },
+      });
+    }
+
+    for (const pairing of creates) {
+      const isBye = pairing.player2Id === null;
+      await tx.match.create({
+        data: {
+          roundId,
+          player1Id: pairing.player1Id,
+          player2Id: pairing.player2Id,
+          isBye,
+          status: isBye ? 'confirmed' : 'pending',
+          confirmedAt: isBye ? new Date() : null,
+        },
+      });
+    }
+
+    for (const update of updates) {
+      await tx.match.update({
+        where: { id: update.matchId },
+        data: update.updateData,
+      });
+
+      const nextIsBye = update.next.player2Id === null;
+      const shouldSyncScheduledPairing = isRoundRobin && !nextIsBye && update.next.player2Id !== null;
+      if (shouldSyncScheduledPairing && update.current.player2Id) {
+        await tx.scheduledPairing.updateMany({
+          where: {
+            roundId,
+            OR: [
+              { player1Id: update.current.player1Id, player2Id: update.current.player2Id },
+              { player1Id: update.current.player2Id, player2Id: update.current.player1Id },
+            ],
+          },
+          data: {
+            player1Id: update.next.player1Id,
+            player2Id: update.next.player2Id!,
+          },
+        });
+      }
+    }
+  });
+}
+
 export function createMatchService() {
   return {
     validateMatchStateTransition,
@@ -347,5 +645,7 @@ export function createMatchService() {
     confirmMatch,
     disputeMatch,
     resolveMatch,
+    updateMatchPlayers,
+    updateRoundPairings,
   };
 }

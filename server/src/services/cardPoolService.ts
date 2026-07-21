@@ -5,6 +5,7 @@ import {
 } from '@mtg-league/shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { expandPhaseLabelMatches, normalizePhaseLabel } from '../lib/poolRules.js';
 import {
   bulkLookupForPoolImport,
   getCard,
@@ -221,7 +222,7 @@ type AcquisitionCardInput = {
 };
 
 export async function createAcquisition(poolId: string, phaseLabel: string, cards: AcquisitionCardInput[]) {
-  const trimmedPhaseLabel = phaseLabel.trim();
+  const trimmedPhaseLabel = normalizePhaseLabel(phaseLabel);
   if (!trimmedPhaseLabel) {
     throw new AppError(400, 'VALIDATION_ERROR', 'Phase label is required');
   }
@@ -522,15 +523,15 @@ export async function deleteAcquisition(acquisitionId: string) {
 }
 
 export async function clearPhaseAcquisitions(poolId: string, phaseLabel: string) {
-  const normalizedPhaseLabel = phaseLabel.trim();
-  if (!normalizedPhaseLabel) {
+  const labelMatches = expandPhaseLabelMatches(phaseLabel);
+  if (labelMatches.length === 0) {
     throw new AppError(400, 'VALIDATION_ERROR', 'Phase label is required');
   }
 
   await prisma.poolAcquisition.deleteMany({
     where: {
       cardPoolId: poolId,
-      phaseLabel: normalizedPhaseLabel,
+      phaseLabel: { in: labelMatches },
     },
   });
 }
@@ -543,7 +544,7 @@ export async function adjustCardQuantityInPhase(
   cachedCardId: string,
   action: AdjustCardQuantityAction,
 ) {
-  const normalizedPhaseLabel = phaseLabel.trim();
+  const normalizedPhaseLabel = normalizePhaseLabel(phaseLabel);
   if (!normalizedPhaseLabel) {
     throw new AppError(400, 'VALIDATION_ERROR', 'Phase label is required');
   }
@@ -551,6 +552,8 @@ export async function adjustCardQuantityInPhase(
   if (!cachedCardId.trim()) {
     throw new AppError(400, 'VALIDATION_ERROR', 'Card id is required');
   }
+
+  const phaseLabelMatches = expandPhaseLabelMatches(normalizedPhaseLabel);
 
   if (action === 'add') {
     await refreshStaleDfcManaCost([cachedCardId]);
@@ -563,7 +566,7 @@ export async function adjustCardQuantityInPhase(
       cachedCardId,
       acquisition: {
         cardPoolId: poolId,
-        phaseLabel: normalizedPhaseLabel,
+        phaseLabel: { in: phaseLabelMatches },
       },
     },
     select: {

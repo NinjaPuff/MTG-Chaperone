@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   adjustCardQuantityInPhase: vi.fn(),
   bulkResolveAcquisitionItems: vi.fn(),
   clearPhaseAcquisitions: vi.fn(),
+  createAcquisition: vi.fn(),
+  deleteAcquisition: vi.fn(),
   getPoolDetail: vi.fn(),
   listAcquisitions: vi.fn(),
 }));
@@ -45,6 +47,8 @@ vi.mock('../../services/cardPoolService.js', async (importOriginal) => {
     adjustCardQuantityInPhase: mocks.adjustCardQuantityInPhase,
     bulkResolveAcquisitionItems: mocks.bulkResolveAcquisitionItems,
     clearPhaseAcquisitions: mocks.clearPhaseAcquisitions,
+    createAcquisition: mocks.createAcquisition,
+    deleteAcquisition: mocks.deleteAcquisition,
     getPoolDetail: mocks.getPoolDetail,
     listAcquisitions: mocks.listAcquisitions,
   };
@@ -58,12 +62,16 @@ describe('card pools routes', () => {
     mocks.adjustCardQuantityInPhase.mockReset();
     mocks.bulkResolveAcquisitionItems.mockReset();
     mocks.clearPhaseAcquisitions.mockReset();
+    mocks.createAcquisition.mockReset();
+    mocks.deleteAcquisition.mockReset();
     mocks.getPoolDetail.mockReset();
     mocks.listAcquisitions.mockReset();
     mocks.getPoolDetail.mockResolvedValue({
+      seasonId: 'season-1',
       user: { id: 'owner-1' },
       boosterProduct: { setCodes: [] },
     });
+    prismaMock.event.findMany.mockResolvedValue([{ status: 'active' }]);
   });
 
   it('allows admins to adjust a pool they do not own', async () => {
@@ -74,13 +82,13 @@ describe('card pools routes', () => {
       .set('x-test-user', 'admin-1')
       .set('x-test-role', 'admin')
       .send({
-        phaseLabel: 'After Round 2',
+        phaseLabel: 'Phase 3',
         cachedCardId: 'card-1',
         action: 'remove_one',
       });
 
     expect(response.status).toBe(204);
-    expect(mocks.adjustCardQuantityInPhase).toHaveBeenCalledWith('pool-1', 'After Round 2', 'card-1', 'remove_one');
+    expect(mocks.adjustCardQuantityInPhase).toHaveBeenCalledWith('pool-1', 'Phase 3', 'card-1', 'remove_one');
   });
 
   it('rejects non-admin users editing someone else pool', async () => {
@@ -89,7 +97,7 @@ describe('card pools routes', () => {
       .set('x-test-user', 'user-2')
       .set('x-test-role', 'user')
       .send({
-        phaseLabel: 'After Round 2',
+        phaseLabel: 'Phase 3',
         cachedCardId: 'card-1',
         action: 'add',
       });
@@ -107,11 +115,11 @@ describe('card pools routes', () => {
       .set('x-test-user', 'admin-1')
       .set('x-test-role', 'admin')
       .send({
-        phaseLabel: 'After Round 2',
+        phaseLabel: 'Phase 3',
       });
 
     expect(response.status).toBe(204);
-    expect(mocks.clearPhaseAcquisitions).toHaveBeenCalledWith('pool-1', 'After Round 2');
+    expect(mocks.clearPhaseAcquisitions).toHaveBeenCalledWith('pool-1', 'Phase 3');
   });
 
   it('rejects non-admin users clearing a phase', async () => {
@@ -120,7 +128,7 @@ describe('card pools routes', () => {
       .set('x-test-user', 'owner-1')
       .set('x-test-role', 'user')
       .send({
-        phaseLabel: 'After Round 2',
+        phaseLabel: 'Phase 3',
       });
 
     expect(response.status).toBe(403);
@@ -130,6 +138,7 @@ describe('card pools routes', () => {
 
   it('allows pool owners to bulk resolve acquisitions', async () => {
     mocks.getPoolDetail.mockResolvedValue({
+      seasonId: 'season-1',
       user: { id: 'owner-1' },
       boosterProduct: { setCodes: [{ setCode: 'ECL' }] },
     });
@@ -155,7 +164,7 @@ describe('card pools routes', () => {
       .set('x-test-user', 'owner-1')
       .set('x-test-role', 'user')
       .send({
-        phaseLabel: 'Initial Pool',
+        phaseLabel: 'Phase 1',
         items: [{ name: 'Lightning Bolt', quantity: 1 }],
       });
 
@@ -171,7 +180,7 @@ describe('card pools routes', () => {
       .set('x-test-user', 'user-2')
       .set('x-test-role', 'user')
       .send({
-        phaseLabel: 'Initial Pool',
+        phaseLabel: 'Phase 1',
         items: [{ name: 'Lightning Bolt', quantity: 1 }],
       });
 
@@ -232,5 +241,299 @@ describe('card pools routes', () => {
     expect(mocks.listAcquisitions).toHaveBeenCalledWith('pool-1');
     expect(response.text).toContain('1 Lightning Bolt (ECL) 112');
     expect(response.text).toContain('1 Lightning Bolt (MH2) 261');
+  });
+
+  describe('season-locked pool', () => {
+    const lockedEvents = [{ status: 'completed' }, { status: 'completed' }];
+    const unlockedEvents = [{ status: 'completed' }, { status: 'active' }];
+
+    beforeEach(() => {
+      mocks.getPoolDetail.mockResolvedValue({
+        seasonId: 'season-1',
+        user: { id: 'owner-1' },
+        boosterProduct: { setCodes: [{ setCode: 'ECL' }] },
+      });
+    });
+
+    describe('POST /acquisitions', () => {
+      it('blocks the pool owner when the season is locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(lockedEvents);
+
+        const response = await request(app)
+          .post('/api/card-pools/pool-1/acquisitions')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 1',
+            cards: [{ cachedCardId: 'card-1', quantity: 1 }],
+          });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.code).toBe('SEASON_LOCKED');
+        expect(mocks.createAcquisition).not.toHaveBeenCalled();
+      });
+
+      it('allows admins when the season is locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(lockedEvents);
+        mocks.createAcquisition.mockResolvedValue({ id: 'acq-1' });
+
+        const response = await request(app)
+          .post('/api/card-pools/pool-1/acquisitions')
+          .set('x-test-user', 'admin-1')
+          .set('x-test-role', 'admin')
+          .send({
+            phaseLabel: 'Phase 1',
+            cards: [{ cachedCardId: 'card-1', quantity: 1 }],
+          });
+
+        expect(response.status).toBe(201);
+        expect(mocks.createAcquisition).toHaveBeenCalled();
+      });
+
+      it('allows the pool owner when the season is not locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(unlockedEvents);
+        mocks.createAcquisition.mockResolvedValue({ id: 'acq-1' });
+
+        const response = await request(app)
+          .post('/api/card-pools/pool-1/acquisitions')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 2',
+            cards: [{ cachedCardId: 'card-1', quantity: 1 }],
+          });
+
+        expect(response.status).toBe(201);
+        expect(mocks.createAcquisition).toHaveBeenCalled();
+      });
+
+      it('blocks the pool owner from adding to a non-current phase', async () => {
+        prismaMock.event.findMany.mockResolvedValue(unlockedEvents);
+
+        const response = await request(app)
+          .post('/api/card-pools/pool-1/acquisitions')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 1',
+            cards: [{ cachedCardId: 'card-1', quantity: 1 }],
+          });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.code).toBe('PHASE_NOT_ALLOWED');
+        expect(mocks.createAcquisition).not.toHaveBeenCalled();
+      });
+
+      it('allows the pool owner to add to the next window', async () => {
+        prismaMock.event.findMany.mockResolvedValue(unlockedEvents);
+        mocks.createAcquisition.mockResolvedValue({ id: 'acq-1' });
+
+        const response = await request(app)
+          .post('/api/card-pools/pool-1/acquisitions')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 3',
+            cards: [{ cachedCardId: 'card-1', quantity: 1 }],
+          });
+
+        expect(response.status).toBe(201);
+        expect(mocks.createAcquisition).toHaveBeenCalled();
+      });
+    });
+
+    describe('POST /acquisitions/bulk', () => {
+      it('blocks the pool owner when the season is locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(lockedEvents);
+
+        const response = await request(app)
+          .post('/api/card-pools/pool-1/acquisitions/bulk')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 1',
+            items: [{ name: 'Lightning Bolt', quantity: 1 }],
+          });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.code).toBe('SEASON_LOCKED');
+        expect(mocks.bulkResolveAcquisitionItems).not.toHaveBeenCalled();
+      });
+
+      it('allows admins when the season is locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(lockedEvents);
+        mocks.bulkResolveAcquisitionItems.mockResolvedValue({ resolved: [], unresolved: [] });
+
+        const response = await request(app)
+          .post('/api/card-pools/pool-1/acquisitions/bulk')
+          .set('x-test-user', 'admin-1')
+          .set('x-test-role', 'admin')
+          .send({
+            phaseLabel: 'Phase 1',
+            items: [{ name: 'Lightning Bolt', quantity: 1 }],
+          });
+
+        expect(response.status).toBe(200);
+        expect(mocks.bulkResolveAcquisitionItems).toHaveBeenCalled();
+      });
+
+      it('allows the pool owner when the season is not locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(unlockedEvents);
+        mocks.bulkResolveAcquisitionItems.mockResolvedValue({ resolved: [], unresolved: [] });
+
+        const response = await request(app)
+          .post('/api/card-pools/pool-1/acquisitions/bulk')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 1',
+            items: [{ name: 'Lightning Bolt', quantity: 1 }],
+          });
+
+        expect(response.status).toBe(200);
+        expect(mocks.bulkResolveAcquisitionItems).toHaveBeenCalled();
+      });
+    });
+
+    describe('DELETE /acquisitions/:acqId', () => {
+      it('blocks the pool owner when the season is locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(lockedEvents);
+
+        const response = await request(app)
+          .delete('/api/card-pools/pool-1/acquisitions/acq-1')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user');
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.code).toBe('SEASON_LOCKED');
+        expect(mocks.deleteAcquisition).not.toHaveBeenCalled();
+      });
+
+      it('allows admins when the season is locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(lockedEvents);
+        prismaMock.poolAcquisition.findUnique.mockResolvedValue({
+          id: 'acq-1',
+          cardPoolId: 'pool-1',
+        });
+        mocks.deleteAcquisition.mockResolvedValue(undefined);
+
+        const response = await request(app)
+          .delete('/api/card-pools/pool-1/acquisitions/acq-1')
+          .set('x-test-user', 'admin-1')
+          .set('x-test-role', 'admin');
+
+        expect(response.status).toBe(204);
+        expect(mocks.deleteAcquisition).toHaveBeenCalledWith('acq-1');
+      });
+
+      it('allows the pool owner when the season is not locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(unlockedEvents);
+        prismaMock.poolAcquisition.findUnique.mockResolvedValue({
+          id: 'acq-1',
+          cardPoolId: 'pool-1',
+        });
+        mocks.deleteAcquisition.mockResolvedValue(undefined);
+
+        const response = await request(app)
+          .delete('/api/card-pools/pool-1/acquisitions/acq-1')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user');
+
+        expect(response.status).toBe(204);
+        expect(mocks.deleteAcquisition).toHaveBeenCalledWith('acq-1');
+      });
+    });
+
+    describe('PATCH /cards/adjust', () => {
+      it('blocks the pool owner when the season is locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(lockedEvents);
+
+        const response = await request(app)
+          .patch('/api/card-pools/pool-1/cards/adjust')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 3',
+            cachedCardId: 'card-1',
+            action: 'add',
+          });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.code).toBe('SEASON_LOCKED');
+        expect(mocks.adjustCardQuantityInPhase).not.toHaveBeenCalled();
+      });
+
+      it('allows admins when the season is locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(lockedEvents);
+        mocks.adjustCardQuantityInPhase.mockResolvedValue(undefined);
+
+        const response = await request(app)
+          .patch('/api/card-pools/pool-1/cards/adjust')
+          .set('x-test-user', 'admin-1')
+          .set('x-test-role', 'admin')
+          .send({
+            phaseLabel: 'Phase 3',
+            cachedCardId: 'card-1',
+            action: 'remove_one',
+          });
+
+        expect(response.status).toBe(204);
+        expect(mocks.adjustCardQuantityInPhase).toHaveBeenCalled();
+      });
+
+      it('allows the pool owner when the season is not locked', async () => {
+        prismaMock.event.findMany.mockResolvedValue(unlockedEvents);
+        mocks.adjustCardQuantityInPhase.mockResolvedValue(undefined);
+
+        const response = await request(app)
+          .patch('/api/card-pools/pool-1/cards/adjust')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 2',
+            cachedCardId: 'card-1',
+            action: 'add',
+          });
+
+        expect(response.status).toBe(204);
+        expect(mocks.adjustCardQuantityInPhase).toHaveBeenCalled();
+      });
+
+      it('blocks the pool owner from adjusting a non-current phase', async () => {
+        prismaMock.event.findMany.mockResolvedValue(unlockedEvents);
+
+        const response = await request(app)
+          .patch('/api/card-pools/pool-1/cards/adjust')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 1',
+            cachedCardId: 'card-1',
+            action: 'add',
+          });
+
+        expect(response.status).toBe(403);
+        expect(response.body.error.code).toBe('PHASE_NOT_ALLOWED');
+        expect(mocks.adjustCardQuantityInPhase).not.toHaveBeenCalled();
+      });
+
+      it('allows the pool owner to adjust the next window', async () => {
+        prismaMock.event.findMany.mockResolvedValue(unlockedEvents);
+        mocks.adjustCardQuantityInPhase.mockResolvedValue(undefined);
+
+        const response = await request(app)
+          .patch('/api/card-pools/pool-1/cards/adjust')
+          .set('x-test-user', 'owner-1')
+          .set('x-test-role', 'user')
+          .send({
+            phaseLabel: 'Phase 3',
+            cachedCardId: 'card-1',
+            action: 'add',
+          });
+
+        expect(response.status).toBe(204);
+        expect(mocks.adjustCardQuantityInPhase).toHaveBeenCalled();
+      });
+    });
   });
 });

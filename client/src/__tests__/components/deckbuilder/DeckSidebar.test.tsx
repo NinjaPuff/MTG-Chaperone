@@ -1,5 +1,5 @@
 import type React from 'react';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DeckSidebar } from '../../../components/deckbuilder/DeckSidebar';
 import type { BuilderDeck, DeckBuilderCard } from '../../../components/deckbuilder/types';
@@ -49,6 +49,7 @@ const defaultSidebarProps = {
   onDeckNameChange: vi.fn(),
   onCardClick: vi.fn(),
   onBasicLandsChange: vi.fn(),
+  onSideboardBasicLandsChange: vi.fn(),
 };
 
 describe('DeckSidebar', () => {
@@ -172,6 +173,53 @@ describe('DeckSidebar', () => {
 
     expect(screen.getByText('Right-click pool cards to add.')).toBeInTheDocument();
     expect(screen.queryByText('Always visible drop zone.')).not.toBeInTheDocument();
+  });
+
+  it('excludes sideboard cards from suggest-lands calculation', async () => {
+    const onBasicLandsChange = vi.fn();
+    const mainCards = Array.from({ length: 26 }, (_, i) =>
+      makeCard({
+        cachedCardId: `main-${i}`,
+        name: `Spell ${i}`,
+        manaCost: '{1}{G}',
+        typeLine: 'Creature',
+        cmc: 2,
+        quantity: 1,
+        zone: 'main',
+        colorIdentity: ['G'],
+      }),
+    );
+    const sideboardCards = Array.from({ length: 20 }, (_, i) =>
+      makeCard({
+        cachedCardId: `sb-${i}`,
+        name: `SB Card ${i}`,
+        manaCost: '{1}{R}',
+        typeLine: 'Creature',
+        cmc: 2,
+        quantity: 1,
+        zone: 'sideboard',
+        colorIdentity: ['R'],
+      }),
+    );
+
+    renderSidebar(
+      <DeckSidebar
+        {...defaultSidebarProps}
+        decks={[makeDeck([...mainCards, ...sideboardCards])]}
+        onBasicLandsChange={onBasicLandsChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Basic Lands' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest Lands' }));
+
+    await waitFor(() => {
+      expect(onBasicLandsChange).toHaveBeenCalledTimes(1);
+    });
+    const suggested = onBasicLandsChange.mock.calls[0][1];
+    const totalLands = suggested.Plains + suggested.Island + suggested.Swamp + suggested.Mountain + suggested.Forest + suggested.Wastes;
+    expect(totalLands).toBe(14);
+    expect(suggested.Forest).toBe(14);
   });
 
   it('shows_a_pencil_button_when_renaming_is_enabled', () => {

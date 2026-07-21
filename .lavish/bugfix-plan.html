@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html data-theme="luxury" lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bug Fix Plan — 4 Parallel Issues</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :where(.grid, .flex) > * { min-width: 0; }
+    :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  </style>
+</head>
+<body class="bg-base-100 text-base-content min-h-screen">
+
+  <main class="mx-auto max-w-6xl p-4 lg:p-8 space-y-8">
+
+    <!-- Header -->
+    <div class="hero bg-base-200 rounded-box p-6">
+      <div class="hero-content text-center flex-col">
+        <h1 class="text-3xl lg:text-4xl font-bold leading-tight">Bug Fix Plan</h1>
+        <p class="text-base-content/70 max-w-2xl">Four independent issues to be resolved in parallel. Each fix is self-contained with no cross-dependencies.</p>
+      </div>
+    </div>
+
+    <!-- Overview Stats -->
+    <div class="stats stats-vertical lg:stats-horizontal shadow w-full bg-base-200">
+      <div class="stat">
+        <div class="stat-title">Issues</div>
+        <div class="stat-value text-error">4</div>
+        <div class="stat-desc">All parallelizable</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Files Affected</div>
+        <div class="stat-value">4</div>
+        <div class="stat-desc">Distinct components</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Risk Level</div>
+        <div class="stat-value text-warning">Low</div>
+        <div class="stat-desc">Isolated, testable fixes</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Tests Required</div>
+        <div class="stat-value text-success">4</div>
+        <div class="stat-desc">One per fix (TDD)</div>
+      </div>
+    </div>
+
+    <!-- Bug 1: Sideboard Basics -->
+    <div class="card card-border bg-base-100 shadow-lg">
+      <div class="card-body">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="badge badge-error badge-lg">Bug 1</span>
+          <h2 class="card-title text-xl lg:text-2xl">Sideboard Basics Double-Counted</h2>
+        </div>
+        <p class="text-base-content/80 mt-2">Basic lands in the sideboard are counted as being in both the main deck and the sideboard.</p>
+
+        <div class="divider"></div>
+
+        <h3 class="font-bold text-lg">Root Cause</h3>
+        <p class="mb-3">Two bugs compound in <code class="text-primary">DeckBuilderPage.tsx</code>:</p>
+
+        <div class="space-y-4">
+          <div class="bg-base-200 rounded-box p-4">
+            <p class="font-semibold text-warning mb-2">Problem A: <code>onBasicLandsChange</code> strips sideboard basics</p>
+            <p class="text-sm text-base-content/70 mb-2">Line 1261 — filters out ALL basic land cards regardless of zone:</p>
+            <div class="mockup-code text-sm">
+              <pre data-prefix="1261"><code>const nonBasicCards = deck.cards.filter(</code></pre>
+              <pre data-prefix="1262"><code>  (card) =&gt; !BASIC_LAND_ORDER.includes(card.name)</code></pre>
+              <pre data-prefix="1263"><code>);</code></pre>
+            </div>
+            <p class="text-sm text-base-content/70 mt-2">When the BasicLandAdder popup is used, sideboard basics are removed and recreated as <code>zone: 'main'</code> on line 1279.</p>
+          </div>
+
+          <div class="bg-base-200 rounded-box p-4">
+            <p class="font-semibold text-warning mb-2">Problem B: <code>deck.basicLands</code> drifts out of sync</p>
+            <p class="text-sm text-base-content/70">When cards are moved between zones via context menu (<code>moveCardBetweenZones</code>) or added from the pool (<code>addCardToActiveDeck</code>), <code>deck.basicLands</code> is never re-extracted. This causes the BasicLandAdder popup to show stale counts that don't match the actual card list.</p>
+          </div>
+
+          <div class="bg-base-200 rounded-box p-4">
+            <p class="font-semibold text-warning mb-2">Problem C: No way to intentionally add basics to the sideboard</p>
+            <p class="text-sm text-base-content/70">The <code>BasicLandAdderPopup</code> only manages main-deck basics. There is no UI to add basic lands specifically to the sideboard — users have to find basics in the pool and right-click, which is awkward and error-prone. The modal needs a zone selector so users can manage sideboard basics directly.</p>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 class="font-bold text-lg">Proposed Fix</h3>
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Change</th>
+                <th>Location</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge badge-success badge-sm">Fix A</span></td>
+                <td><code>DeckBuilderPage.tsx:1261</code></td>
+                <td>Change filter to preserve sideboard basics: <br><code class="text-xs">(card) =&gt; card.zone === 'sideboard' || !BASIC_LAND_ORDER.includes(card.name)</code></td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-success badge-sm">Fix B</span></td>
+                <td><code>DeckBuilderPage.tsx</code></td>
+                <td>Re-extract <code>basicLands</code> after <code>addCardToActiveDeck</code> and <code>moveCardBetweenZones</code> mutations by calling <code>extractBasicCounts</code> inline</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-success badge-sm">Fix C</span></td>
+                <td><code>BasicLandAdderPopup.tsx</code></td>
+                <td>Add a <strong>Main / Sideboard</strong> tab switcher to the popup. Each tab manages its own counts independently. "Suggest Lands" only appears on the Main tab — never on Sideboard. Sideboard basics are stored as regular cards with <code>zone: 'sideboard'</code> in the cards array.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bg-base-200 rounded-box p-4 mt-4">
+          <p class="font-semibold mb-2">BasicLandAdder Popup — Updated Design</p>
+          <div class="flex gap-2 mb-3">
+            <div class="badge badge-primary">Main Deck</div>
+            <div class="badge badge-outline">Sideboard</div>
+          </div>
+          <ul class="list-disc list-inside text-sm text-base-content/70 space-y-1">
+            <li>Two tabs: <strong>Main Deck</strong> (default) and <strong>Sideboard</strong></li>
+            <li>Each tab shows +/- controls for each basic land type</li>
+            <li>"Suggest Lands" button only visible on the Main Deck tab</li>
+            <li>Sideboard tab changes create/update cards with <code>zone: 'sideboard'</code></li>
+            <li>Main tab continues to use <code>deck.basicLands</code> + <code>zone: 'main'</code> as before</li>
+          </ul>
+        </div>
+
+        <div class="alert alert-info mt-4">
+          <span class="text-sm"><strong>Test:</strong> Assert that sideboard basics survive an <code>onBasicLandsChange</code> call, that <code>basicLands</code> stays synced after zone moves, and that the popup's Sideboard tab manages <code>zone: 'sideboard'</code> cards independently without triggering Suggest Lands.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bug 2: Sidebar Drift -->
+    <div class="card card-border bg-base-100 shadow-lg">
+      <div class="card-body">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="badge badge-error badge-lg">Bug 2</span>
+          <h2 class="card-title text-xl lg:text-2xl">Deckbuilder Panel Not Sticking</h2>
+        </div>
+        <p class="text-base-content/80 mt-2">The sidebar drifts away from the viewport edge. Recurring issue — keeps getting broken by other changes.</p>
+
+        <div class="divider"></div>
+
+        <h3 class="font-bold text-lg">Root Cause</h3>
+        <p class="mb-3">The sidebar stays pinned via a viewport-height CSS grid that prevents page scroll. There is no fallback if the page wrapper overflows (e.g., when the deck-tab header wraps or grows). When the combined height of header + work area exceeds the viewport, the page scrolls and the sidebar drifts out of view.</p>
+
+        <div class="bg-base-200 rounded-box p-4">
+          <p class="font-semibold mb-2">Current Layout Chain (fragile):</p>
+          <ul class="steps steps-vertical text-sm">
+            <li class="step step-primary"><code>AppLayout main</code>: <code>flex min-h-0 flex-1 flex-col</code></li>
+            <li class="step step-primary"><code>AppLayout inner div</code>: <code>flex min-h-0 flex-1 flex-col w-full px-2 py-3</code></li>
+            <li class="step step-primary"><code>DeckBuilderPage wrapper</code>: <code>flex min-h-0 flex-1 flex-col space-y-2</code></li>
+            <li class="step step-primary">Work area grid: <code>lg:h-[calc(100dvh-9rem)] lg:overflow-hidden</code></li>
+            <li class="step step-warning">Page wrapper has no <code>overflow-hidden</code> — if content grows, page scrolls</li>
+          </ul>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 class="font-bold text-lg">Proposed Fix</h3>
+        <p class="mb-3">Prevent page-level scroll on desktop by adding overflow containment to the page wrapper. The internal scroll regions (pool list, deck list) still work via their own <code>overflow-y-auto</code>.</p>
+
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Change</th>
+                <th>Location</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge badge-success badge-sm">1</span></td>
+                <td><code>DeckBuilderPage.tsx:981</code></td>
+                <td>Add <code>lg:overflow-hidden</code> to the page wrapper div:<br><code class="text-xs">flex min-h-0 flex-1 flex-col space-y-2 lg:overflow-hidden</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="alert alert-warning mt-4">
+          <span class="text-sm"><strong>Why not sticky?</strong> The sidebar is inside a CSS Grid cell with a fixed viewport height. <code>position: sticky</code> only works relative to a scrolling ancestor — inside a height-locked grid cell it has no effect. The correct fix is preventing the scroll from happening in the first place.</span>
+        </div>
+
+        <div class="alert alert-success mt-3">
+          <span class="text-sm"><strong>Internal scrolling still works.</strong> <code>lg:overflow-hidden</code> only prevents the <em>page</em> from scrolling. All internal scroll regions are unaffected because they have their own <code>overflow-y-auto</code>:
+            <ul class="list-disc list-inside mt-1">
+              <li><code>deckbuilder-pool-scroll</code> — pool card list scrolls vertically</li>
+              <li><code>deck-sidebar-main-scroll</code> — main deck card list scrolls</li>
+              <li><code>deck-sidebar-sideboard-scroll</code> — sideboard list scrolls (when expanded)</li>
+            </ul>
+          </span>
+        </div>
+
+        <div class="alert alert-info mt-4">
+          <span class="text-sm"><strong>Test:</strong> Layout test asserting the page wrapper has <code>overflow-hidden</code> at <code>lg</code> breakpoint via class check on the data-testid element.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bug 3: Landscape Overflow -->
+    <div class="card card-border bg-base-100 shadow-lg">
+      <div class="card-body">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="badge badge-error badge-lg">Bug 3</span>
+          <h2 class="card-title text-xl lg:text-2xl">Landscape Cards Overflow on Mobile</h2>
+        </div>
+        <p class="text-base-content/80 mt-2">Horizontal (split/battle) cards in the preview modal overflow the screen on mobile devices.</p>
+
+        <div class="divider"></div>
+
+        <h3 class="font-bold text-lg">Root Cause</h3>
+        <p class="mb-3">In <code class="text-primary">cardLayout.ts</code> (line 78), the touch-variant landscape frame uses viewport-relative width that ignores cumulative padding:</p>
+
+        <div class="bg-base-200 rounded-box p-4">
+          <div class="mockup-code text-sm">
+            <pre data-prefix="78"><code>variant === 'touch'</code></pre>
+            <pre data-prefix="79"><code>  ? 'h-[min(55vh,400px)] w-[min(92vw,660px)]'</code></pre>
+          </div>
+          <div class="mt-3 space-y-1 text-sm text-base-content/70">
+            <p><strong>On a 375px phone:</strong></p>
+            <ul class="list-disc list-inside ml-2">
+              <li>92vw = 345px (frame width)</li>
+              <li>Outer modal wrapper: <code>p-4</code> = 32px</li>
+              <li>Inner dialog: <code>p-4</code> = 32px</li>
+              <li>Available space: 375 - 32 - 32 = <strong>311px</strong></li>
+              <li class="text-error font-semibold">Frame (345px) &gt; Available (311px) = overflow!</li>
+            </ul>
+          </div>
+          <p class="text-sm text-base-content/70 mt-2">The frame also has <code>shrink-0</code> which prevents it from fitting within the constrained container.</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 class="font-bold text-lg">Proposed Fix</h3>
+        <p class="mb-3">The dialog (<code>cardHoverPreviewDialogClassName</code>) already uses <code>w-full max-w-2xl</code> which naturally constrains width. The landscape frame should fill available dialog space instead of fighting it with viewport units.</p>
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Change</th>
+                <th>Location</th>
+                <th>Detail</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge badge-success badge-sm">1</span></td>
+                <td><code>cardLayout.ts:79-80</code></td>
+                <td>Touch variant size: change to <code>'h-[min(55vh,400px)] w-full'</code>. The parent dialog already caps width via <code>max-w-2xl</code>.</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-success badge-sm">2</span></td>
+                <td><code>cardLayout.ts:82</code></td>
+                <td>Make <code>shrink-0</code> conditional on variant. Return different tail strings:<br><code class="text-xs">variant === 'touch' ? 'relative ... overflow-hidden ...' : 'relative ... shrink-0 overflow-hidden ...'</code></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bg-base-200 rounded-box p-4 mt-3">
+          <p class="font-semibold mb-2">After fix — <code>cardHoverPreviewLandscapeFrameClassName</code>:</p>
+          <div class="mockup-code text-sm">
+            <pre data-prefix="75"><code>export function cardHoverPreviewLandscapeFrameClassName(</code></pre>
+            <pre data-prefix="76"><code>  variant: 'desktop' | 'touch' = 'desktop',</code></pre>
+            <pre data-prefix="77"><code>): string {</code></pre>
+            <pre data-prefix="78"><code>  const size =</code></pre>
+            <pre data-prefix="79"><code>    variant === 'touch'</code></pre>
+            <pre data-prefix="80"><code>      ? 'h-[min(55vh,400px)] w-full'</code></pre>
+            <pre data-prefix="81"><code>      : 'h-[min(60vh,440px)] w-[min(92vw,660px)]';</code></pre>
+            <pre data-prefix="82"><code>  const base = `relative ${size} max-w-full overflow-hidden rounded-md border border-border bg-muted/40`;</code></pre>
+            <pre data-prefix="83"><code>  return variant === 'desktop' ? `${base} shrink-0` : base;</code></pre>
+            <pre data-prefix="84"><code>}</code></pre>
+          </div>
+          <p class="text-sm text-base-content/70 mt-2">Desktop keeps <code>shrink-0</code> and explicit viewport width (flyout is not inside a constrained dialog). Touch drops both since it lives inside the width-constrained touch modal dialog.</p>
+        </div>
+
+        <div class="alert alert-info mt-4">
+          <span class="text-sm"><strong>Test:</strong> Unit test on <code>cardHoverPreviewLandscapeFrameClassName('touch')</code> asserting no viewport-width class and no <code>shrink-0</code>.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bug 4: Auto-Focus -->
+    <div class="card card-border bg-base-100 shadow-lg">
+      <div class="card-body">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="badge badge-error badge-lg">Bug 4</span>
+          <h2 class="card-title text-xl lg:text-2xl">Mobile Report Dialog Auto-Focus</h2>
+        </div>
+        <p class="text-base-content/80 mt-2">Opening the match report dialog on mobile immediately focuses the text input, triggering the virtual keyboard and pushing content up.</p>
+
+        <div class="divider"></div>
+
+        <h3 class="font-bold text-lg">Root Cause</h3>
+        <p class="mb-3">In <code class="text-primary">ReportMatchDialog.tsx</code> (lines 63-68), a <code>useEffect</code> unconditionally focuses the first input:</p>
+
+        <div class="bg-base-200 rounded-box p-4">
+          <div class="mockup-code text-sm">
+            <pre data-prefix="63"><code>useEffect(() =&gt; {</code></pre>
+            <pre data-prefix="64"><code>  if (step !== 'entry') return;</code></pre>
+            <pre data-prefix="65"><code>  firstInputRef.current?.focus();</code></pre>
+            <pre data-prefix="66"><code>}, [step]);</code></pre>
+          </div>
+          <p class="text-sm text-base-content/70 mt-2">No device check — fires on mobile and desktop alike.</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <h3 class="font-bold text-lg">Proposed Fix</h3>
+        <p class="mb-3">The codebase already exports <code>deviceHasHover()</code> from <code>CardPreviewContext.tsx</code> which wraps <code>window.matchMedia('(hover: hover)')</code> with SSR safety. Import and use it:</p>
+
+        <div class="bg-base-200 rounded-box p-4">
+          <div class="mockup-code text-sm">
+            <pre data-prefix="1"><code>import { deviceHasHover } from '@/components/cardpool/CardPreviewContext';</code></pre>
+          </div>
+          <div class="mt-3 mockup-code text-sm">
+            <pre data-prefix="63"><code>useEffect(() =&gt; {</code></pre>
+            <pre data-prefix="64"><code>  if (step !== 'entry') return;</code></pre>
+            <pre data-prefix="65"><code>  if (deviceHasHover()) {</code></pre>
+            <pre data-prefix="66"><code>    firstInputRef.current?.focus();</code></pre>
+            <pre data-prefix="67"><code>  }</code></pre>
+            <pre data-prefix="68"><code>}, [step]);</code></pre>
+          </div>
+          <p class="text-sm text-base-content/70 mt-2">Uses the same detection pattern as the card preview system. SSR-safe (returns <code>false</code> when <code>window</code> is undefined).</p>
+        </div>
+
+        <div class="alert alert-info mt-4">
+          <span class="text-sm"><strong>Test:</strong> Mock <code>window.matchMedia</code> to return <code>matches: false</code> and assert <code>.focus()</code> is not called.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Execution Order -->
+    <div class="card card-border bg-base-200">
+      <div class="card-body">
+        <h2 class="card-title text-xl">Execution Strategy</h2>
+        <p class="text-base-content/70">All four fixes are independent — zero shared state, different files. They can be implemented in parallel or in any order.</p>
+
+        <div class="overflow-x-auto mt-4">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Bug</th>
+                <th>Primary File</th>
+                <th>Complexity</th>
+                <th>Risk</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="badge badge-error badge-sm">1</span> Sideboard basics</td>
+                <td><code>DeckBuilderPage.tsx</code> + <code>BasicLandAdderPopup.tsx</code></td>
+                <td><span class="badge badge-warning badge-sm">Medium-High</span></td>
+                <td>State sync + new UI tab</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-error badge-sm">2</span> Panel drift</td>
+                <td><code>DeckBuilderPage.tsx</code></td>
+                <td><span class="badge badge-success badge-sm">Low</span></td>
+                <td>Single class addition</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-error badge-sm">3</span> Landscape overflow</td>
+                <td><code>cardLayout.ts</code></td>
+                <td><span class="badge badge-success badge-sm">Low</span></td>
+                <td>May need desktop regression check</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-error badge-sm">4</span> Auto-focus</td>
+                <td><code>ReportMatchDialog.tsx</code></td>
+                <td><span class="badge badge-success badge-sm">Low</span></td>
+                <td>Minimal, 2-line change</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</body>
+</html>

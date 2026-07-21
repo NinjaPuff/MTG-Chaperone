@@ -1,7 +1,7 @@
 import { suggestBasicLands, type BasicLandSuggestion, type SuggestBasicLandCard } from '@/lib/suggestBasicLands';
 import { useConfirm } from '@/context/ConfirmContext';
 
-const LAND_ORDER: Array<keyof BasicLandSuggestion> = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Wastes'];
+const LAND_ORDER: Array<keyof BasicLandSuggestion> = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
 
 type BasicLandAdderProps = {
   counts: BasicLandSuggestion;
@@ -9,6 +9,7 @@ type BasicLandAdderProps = {
   deckCards: SuggestBasicLandCard[];
   disabled?: boolean;
   showHeader?: boolean;
+  showSuggestLands?: boolean;
   onChange: (next: BasicLandSuggestion) => void;
 };
 
@@ -18,6 +19,7 @@ export function BasicLandAdder({
   deckCards,
   disabled = false,
   showHeader = true,
+  showSuggestLands = true,
   onChange,
 }: BasicLandAdderProps) {
   const { confirm } = useConfirm();
@@ -49,30 +51,32 @@ export function BasicLandAdder({
 
   return (
     <div className={showHeader ? 'space-y-2 rounded-md border border-border/70 bg-card p-3' : 'space-y-2'}>
-      {showHeader ? (
-        <div className="flex items-center justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Basic Lands</h3>
-          <button
-            type="button"
-            className="rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
-            onClick={() => void applySuggestion()}
-            disabled={disabled}
-          >
-            Suggest Lands
-          </button>
-        </div>
-      ) : (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            className="rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
-            onClick={() => void applySuggestion()}
-            disabled={disabled}
-          >
-            Suggest Lands
-          </button>
-        </div>
-      )}
+      {showSuggestLands ? (
+        showHeader ? (
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Basic Lands</h3>
+            <button
+              type="button"
+              className="rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
+              onClick={() => void applySuggestion()}
+              disabled={disabled}
+            >
+              Suggest Lands
+            </button>
+          </div>
+        ) : (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="rounded border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted disabled:opacity-50"
+              onClick={() => void applySuggestion()}
+              disabled={disabled}
+            >
+              Suggest Lands
+            </button>
+          </div>
+        )
+      ) : null}
       <div className="grid grid-cols-2 gap-2">
         {LAND_ORDER.map((land) => (
           <div key={land} className="flex items-center justify-between rounded border border-border/50 px-2 py-1">

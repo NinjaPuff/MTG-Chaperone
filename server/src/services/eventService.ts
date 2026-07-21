@@ -517,7 +517,7 @@ export async function resetEvent(eventId: string) {
       rounds: {
         include: {
           matches: {
-            select: { id: true },
+            select: { id: true, player1Id: true, player2Id: true, isBye: true },
           },
         },
         orderBy: { roundNumber: 'asc' },
@@ -539,6 +539,18 @@ export async function resetEvent(eventId: string) {
     throw new AppError(409, 'INVALID_OPERATION', 'Unsupported event format for reset');
   }
   const pairingFormat = event.config.format;
+
+  const savedPairings = new Map<string, Array<{ player1Id: string; player2Id: string | null; isBye: boolean }>>();
+  for (const round of event.rounds) {
+    savedPairings.set(
+      round.id,
+      round.matches.map((match) => ({
+        player1Id: match.player1Id,
+        player2Id: match.player2Id,
+        isBye: match.isBye,
+      })),
+    );
+  }
 
   const roundIdsToRepair: string[] = [];
   await prisma.$transaction(async (tx) => {
@@ -569,7 +581,12 @@ export async function resetEvent(eventId: string) {
   });
 
   for (const roundId of roundIdsToRepair) {
-    await repopulatePairingsForRound(roundId, pairingFormat);
+    if (pairingFormat === 'round_robin') {
+      const pairs = savedPairings.get(roundId) ?? [];
+      await createMatchesForRound(roundId, pairs);
+    } else {
+      await repopulatePairingsForRound(roundId, pairingFormat);
+    }
   }
 
   return getEvent(eventId);

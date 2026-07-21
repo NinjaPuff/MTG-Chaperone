@@ -22,7 +22,8 @@ import {
 import { BracketView } from '@/components/bracket/BracketView';
 import type { BracketSlotView } from '@/components/bracket/types';
 import { fetchBracketState } from '@/lib/bracketApi';
-import { isBracketFormat } from '@mtg-league/shared';
+import { isBracketFormat, supportsRegeneratePairings } from '@mtg-league/shared';
+import { type DraftPairing, validateDraftPairings } from '@/lib/pairingValidation';
 
 type ApiResponse<T> = { data: T };
 type ApiListResponse<T> = { data: T[] };
@@ -181,6 +182,8 @@ export function EventDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isEditingSettings, setIsEditingSettings] = useState(false);
+  const [editingRoundId, setEditingRoundId] = useState<string | null>(null);
+  const [draftPairings, setDraftPairings] = useState<DraftPairing[]>([]);
   const [editSettingsForm, setEditSettingsForm] = useState({
     name: '',
     pointMultiplier: 1,
@@ -197,6 +200,15 @@ export function EventDetailPage() {
   );
 
   const leagueMembers = useMemo(() => event?.season.league.memberships ?? [], [event]);
+  const leagueMemberIds = useMemo(() => leagueMembers.map((membership) => membership.userId), [leagueMembers]);
+  const draftPairingValidation = useMemo(
+    () => validateDraftPairings(draftPairings, leagueMemberIds),
+    [draftPairings, leagueMemberIds],
+  );
+  const memberNameById = useMemo(
+    () => new Map(leagueMembers.map((membership) => [membership.userId, primaryName(membership.user)])),
+    [leagueMembers],
+  );
   const eventRecords = useMemo(() => computeEventRecords(rounds), [rounds]);
   const userActiveMatches = useMemo(() => getUserActiveMatches<Match, Round>(rounds, user?.id), [rounds, user?.id]);
   const orderedRounds = useMemo(() => {
@@ -330,6 +342,89 @@ export function EventDetailPage() {
     } finally {
       setIsMutating(false);
     }
+  };
+
+  const startEditRoundPairings = (round: Round) => {
+    setEditingRoundId(round.id);
+    setDraftPairings(
+      round.matches.map((match) => ({
+        draftId: crypto.randomUUID(),
+        matchId: match.id,
+        player1Id: match.player1.id,
+        player2Id: match.isBye || !match.player2 ? null : match.player2.id,
+      })),
+    );
+  };
+
+  const cancelEditRoundPairings = () => {
+    setEditingRoundId(null);
+    setDraftPairings([]);
+  };
+
+  const addDraftPairing = () => {
+    const unpaired = draftPairingValidation.unpairedMembers;
+    const player1Id = unpaired[0] ?? leagueMemberIds[0] ?? '';
+    const player2Id = unpaired.length > 1 ? unpaired[1] : leagueMemberIds[1] ?? null;
+
+    setDraftPairings((current) => [
+      ...current,
+      {
+        draftId: crypto.randomUUID(),
+        player1Id,
+        player2Id,
+      },
+    ]);
+  };
+
+  const removeDraftPairing = (draftId: string) => {
+    setDraftPairings((current) => current.filter((pairing) => pairing.draftId !== draftId));
+  };
+
+  const updateDraftPairing = (draftId: string, field: 'player1Id' | 'player2Id', value: string | null) => {
+    setDraftPairings((current) =>
+      current.map((pairing) =>
+        pairing.draftId === draftId
+          ? { ...pairing, [field]: value }
+          : pairing,
+      ),
+    );
+  };
+
+  const saveEditRoundPairings = async (roundId: string) => {
+    if (!draftPairingValidation.isValid) {
+      return;
+    }
+
+    if (draftPairingValidation.unpairedMembers.length > 0) {
+      const unpairedNames = draftPairingValidation.unpairedMembers
+        .map((memberId) => memberNameById.get(memberId) ?? memberId)
+        .join(', ');
+
+      const confirmed = await confirm({
+        title: 'Save with unpaired players?',
+        message: `The following players are not in any pairing: ${unpairedNames}. Save anyway?`,
+        confirmLabel: 'Save All',
+        variant: 'default',
+      });
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    await mutate('Pairings updated.', async () => {
+      await authApiRequest(`/api/rounds/${roundId}/pairings`, {
+        method: 'PUT',
+        body: {
+          pairings: draftPairings.map(({ matchId, player1Id, player2Id }) => ({
+            ...(matchId ? { matchId } : {}),
+            player1Id,
+            player2Id,
+          })),
+        },
+      });
+      cancelEditRoundPairings();
+    });
   };
 
   const transitionEvent = async (action: 'start' | 'complete') => {
@@ -1162,16 +1257,29 @@ export function EventDetailPage() {
                           >
                             Start Round
                           </button>
+                          {supportsRegeneratePairings(event.config?.format ?? '') ? (
+                            <button
+                              type="button"
+                              className="rounded-md border border-border px-2 py-1 text-xs"
+                              disabled={isMutating}
+                              onClick={(clickEvent) => {
+                                clickEvent.preventDefault();
+                                void transitionRound(round.id, 'regenerate');
+                              }}
+                            >
+                              Regenerate Pairings
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="rounded-md border border-border px-2 py-1 text-xs"
                             disabled={isMutating}
                             onClick={(clickEvent) => {
                               clickEvent.preventDefault();
-                              void transitionRound(round.id, 'regenerate');
+                              startEditRoundPairings(round);
                             }}
                           >
-                            Regenerate Pairings
+                            Edit Pairings
                           </button>
                         </>
                       ) : null}
@@ -1255,7 +1363,144 @@ export function EventDetailPage() {
                       </button>
                     </div>
                   ) : null}
-                  {round.matches.map((match) => {
+                  {editingRoundId === round.id ? (
+                    <div className="rounded-md border border-border bg-muted/30 p-3 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium">Edit pairings</p>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            className="rounded-md border border-border px-2 py-1 text-xs"
+                            disabled={isMutating || !draftPairingValidation.isValid}
+                            onClick={() => void saveEditRoundPairings(round.id)}
+                          >
+                            Save All
+                          </button>
+                          <button
+                            type="button"
+                            className="rounded-md border border-border px-2 py-1 text-xs"
+                            disabled={isMutating}
+                            onClick={cancelEditRoundPairings}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+
+                      {draftPairingValidation.duplicatePlayers.size > 0 ? (
+                        <div className="rounded-md border border-red-600/40 bg-red-600/5 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                          Double-booked:{' '}
+                          {[...draftPairingValidation.duplicatePlayers.keys()]
+                            .map((playerId) => memberNameById.get(playerId) ?? playerId)
+                            .join(', ')}
+                        </div>
+                      ) : !draftPairingValidation.isValid ? null : draftPairingValidation.unpairedMembers.length > 0 ? (
+                        <div className="rounded-md border border-amber-600/40 bg-amber-600/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                          No duplicate pairings. You can save with unpaired players and finish assignments later.
+                        </div>
+                      ) : (
+                        <div className="rounded-md border border-emerald-600/40 bg-emerald-600/5 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
+                          Pairings look good.
+                        </div>
+                      )}
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="text-left text-xs text-muted-foreground">
+                              <th className="pb-2 pr-3 font-medium">Match</th>
+                              <th className="pb-2 pr-3 font-medium">Player 1</th>
+                              <th className="pb-2 pr-3 font-medium">Player 2</th>
+                              <th className="pb-2 font-medium" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {draftPairings.map((pairing, index) => {
+                              const hasSamePlayerError = draftPairingValidation.samePlayerMatches.has(pairing.draftId);
+                              const player1Duplicate = draftPairingValidation.duplicatePlayers.has(pairing.player1Id);
+                              const player2Duplicate = pairing.player2Id
+                                ? draftPairingValidation.duplicatePlayers.has(pairing.player2Id)
+                                : false;
+
+                              return (
+                                <tr key={pairing.draftId} className="border-t border-border align-top">
+                                  <td className="py-2 pr-3 text-xs text-muted-foreground">#{index + 1}</td>
+                                  <td className="py-2 pr-3">
+                                    <select
+                                      className={`w-full rounded-md border bg-background px-2 py-1 text-sm ${
+                                        player1Duplicate ? 'border-red-600' : 'border-border'
+                                      }`}
+                                      value={pairing.player1Id}
+                                      onChange={(event) => updateDraftPairing(pairing.draftId, 'player1Id', event.target.value)}
+                                    >
+                                      {leagueMembers.map((membership) => (
+                                        <option key={membership.userId} value={membership.userId}>
+                                          {primaryName(membership.user)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    <select
+                                      className={`w-full rounded-md border bg-background px-2 py-1 text-sm ${
+                                        player2Duplicate ? 'border-red-600' : 'border-border'
+                                      }`}
+                                      value={pairing.player2Id ?? 'BYE'}
+                                      onChange={(event) =>
+                                        updateDraftPairing(
+                                          pairing.draftId,
+                                          'player2Id',
+                                          event.target.value === 'BYE' ? null : event.target.value,
+                                        )
+                                      }
+                                    >
+                                      <option value="BYE">BYE</option>
+                                      {leagueMembers.map((membership) => (
+                                        <option key={membership.userId} value={membership.userId}>
+                                          {primaryName(membership.user)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {hasSamePlayerError ? (
+                                      <p className="mt-1 text-xs text-red-600">Player 1 and Player 2 cannot be the same.</p>
+                                    ) : null}
+                                  </td>
+                                  <td className="py-2">
+                                    <button
+                                      type="button"
+                                      className="rounded-md border border-border px-2 py-1 text-xs text-destructive"
+                                      disabled={isMutating}
+                                      onClick={() => removeDraftPairing(pairing.draftId)}
+                                    >
+                                      Remove
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="rounded-md border border-border px-2 py-1 text-xs"
+                        disabled={isMutating}
+                        onClick={addDraftPairing}
+                      >
+                        + Add pairing
+                      </button>
+
+                      {draftPairingValidation.unpairedMembers.length > 0 ? (
+                        <div className="rounded-md border border-amber-600/40 bg-amber-600/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+                          Not paired:{' '}
+                          {draftPairingValidation.unpairedMembers
+                            .map((memberId) => memberNameById.get(memberId) ?? memberId)
+                            .join(', ')}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : round.matches.map((match) => {
                     const isParticipant = Boolean(user && (match.player1.id === user.id || match.player2?.id === user.id));
                     const canReport = (isParticipant || isAdmin) && match.status === 'pending' && round.status === 'in_progress';
                     const canConfirmOrDispute = isParticipant && match.status === 'reported' && match.reportedById !== user?.id;

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReportMatchDialog } from '@/components/ReportMatchDialog';
+import { mockMatchMedia, restoreMatchMedia } from '../helpers/matchMedia';
 
 const match = {
   id: 'm1',
@@ -83,5 +84,42 @@ describe('ReportMatchDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm & Submit' }));
 
     expect(onSubmit).toHaveBeenCalledWith({ player1Wins: 2, player2Wins: 0 });
+  });
+
+  describe('autofocus', () => {
+    let focusSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      focusSpy = vi.spyOn(HTMLInputElement.prototype, 'focus');
+    });
+
+    afterEach(() => {
+      focusSpy.mockRestore();
+      restoreMatchMedia();
+    });
+
+    const renderDialog = () =>
+      render(
+        <ReportMatchDialog
+          match={match}
+          bestOfN={3}
+          mode="report"
+          isMutating={false}
+          onSubmit={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      );
+
+    it('does not focus the first input on touch devices', () => {
+      mockMatchMedia({ '(hover: hover)': false });
+      renderDialog();
+      expect(focusSpy).not.toHaveBeenCalled();
+    });
+
+    it('focuses the first input on hover-capable devices', () => {
+      mockMatchMedia({ '(hover: hover)': true });
+      renderDialog();
+      expect(focusSpy).toHaveBeenCalled();
+    });
   });
 });

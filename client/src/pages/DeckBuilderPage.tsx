@@ -25,6 +25,13 @@ import { ImportDeckDialog, type ImportEntry } from '@/components/deckbuilder/Imp
 import { PoolCardBadge } from '@/components/deckbuilder/PoolCardBadge';
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
 import { DECKBUILDER_WORK_AREA_HEIGHT_CLASS } from '@/lib/deckBuilderLayout';
+import {
+  applyMainBasicLandsChange,
+  applySideboardBasicLandsChange,
+  deckEntryCards,
+  extractBasicCounts,
+  syncDeckBasicLands,
+} from '@/lib/deckBasicLands';
 import { moveCardBetweenZones } from '@/lib/deckMutations';
 import { buildPoolAllocationMaps } from '@mtg-league/shared';
 
@@ -124,8 +131,6 @@ function getPoolCardAvailableQty(
   return Math.max(0, poolCard.quantity - restrictedQty - allocatedQty);
 }
 
-const BASIC_LAND_ORDER = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Wastes'] as const;
-
 function toDeckCards(entries: DecklistEntryResponse[]): DeckBuilderCard[] {
   return entries.map((entry) => ({
     cachedCardId: entry.cachedCardId,
@@ -138,30 +143,6 @@ function toDeckCards(entries: DecklistEntryResponse[]): DeckBuilderCard[] {
     zone: entry.zone,
     colorIdentity: entry.cachedCard.colorIdentity ?? [],
   }));
-}
-
-function getDefaultBasicLandCounts() {
-  return {
-    Plains: 0,
-    Island: 0,
-    Swamp: 0,
-    Mountain: 0,
-    Forest: 0,
-    Wastes: 0,
-  };
-}
-
-function extractBasicCounts(cards: DeckBuilderCard[]) {
-  const counts = getDefaultBasicLandCounts();
-  for (const card of cards) {
-    if (card.zone !== 'main') {
-      continue;
-    }
-    if (BASIC_LAND_ORDER.includes(card.name as (typeof BASIC_LAND_ORDER)[number])) {
-      counts[card.name as (typeof BASIC_LAND_ORDER)[number]] += card.quantity;
-    }
-  }
-  return counts;
 }
 
 export function DeckBuilderPage() {
@@ -649,34 +630,11 @@ export function DeckBuilderPage() {
   };
 
   const saveDeck = async (deck: BuilderDeck) => {
-    const basicEntries = BASIC_LAND_ORDER.flatMap((landName) => {
-      const qty = deck.basicLands[landName];
-      const basic = basicLandCatalogRef.current.get(landName);
-      if (!basic || qty < 1) {
-        return [];
-      }
-      return [
-        {
-          cachedCardId: basic.cachedCardId,
-          quantity: qty,
-          zone: 'main' as const,
-        },
-      ];
-    });
-
-    const nonBasicEntries = deck.cards
-      .filter((card) => !BASIC_LAND_ORDER.includes(card.name as (typeof BASIC_LAND_ORDER)[number]))
-      .map((card) => ({
-        cachedCardId: card.cachedCardId,
-        quantity: card.quantity,
-        zone: card.zone,
-      }));
-
     await authApiRequest(`/api/decklists/${deck.id}`, {
       method: 'PATCH',
       body: {
         name: deck.name,
-        entries: [...nonBasicEntries, ...basicEntries],
+        entries: deckEntryCards(deck),
       },
     });
   };
@@ -806,8 +764,9 @@ export function DeckBuilderPage() {
           return deck;
         }
         const existingIndex = deck.cards.findIndex((card) => card.cachedCardId === poolCard.scryfallId && card.zone === zone);
+        let nextDeck: BuilderDeck;
         if (existingIndex === -1) {
-          return {
+          nextDeck = {
             ...deck,
             cards: [
               ...deck.cards,
@@ -824,13 +783,15 @@ export function DeckBuilderPage() {
               },
             ],
           };
+        } else {
+          const nextCards = [...deck.cards];
+          nextCards[existingIndex] = {
+            ...nextCards[existingIndex],
+            quantity: nextCards[existingIndex].quantity + 1,
+          };
+          nextDeck = { ...deck, cards: nextCards };
         }
-        const nextCards = [...deck.cards];
-        nextCards[existingIndex] = {
-          ...nextCards[existingIndex],
-          quantity: nextCards[existingIndex].quantity + 1,
-        };
-        return { ...deck, cards: nextCards };
+        return syncDeckBasicLands(nextDeck);
       }),
     );
   };
@@ -875,7 +836,7 @@ export function DeckBuilderPage() {
         } else {
           nextCards[idx] = { ...nextCards[idx], quantity: nextCards[idx].quantity - 1 };
         }
-        return { ...deck, cards: nextCards };
+        return syncDeckBasicLands({ ...deck, cards: nextCards });
       }),
     );
   };
@@ -949,7 +910,7 @@ export function DeckBuilderPage() {
               contextMenu.card.cachedCardId,
               contextMenu.card.zone,
               targetZone,
-            ),
+            ).map((deck) => (deck.id === contextMenu.deckId ? syncDeckBasicLands(deck) : deck)),
           );
           setContextMenu(null);
         },
@@ -978,7 +939,7 @@ export function DeckBuilderPage() {
 
   return (
     <DragProvider>
-      <div className="flex min-h-0 flex-1 flex-col space-y-2">
+      <div className="flex min-h-0 flex-1 flex-col space-y-2 lg:overflow-hidden" data-testid="deckbuilder-page-root">
         <div
           className="flex shrink-0 flex-wrap items-start justify-between gap-2"
           data-testid="deckbuilder-page-header"
@@ -1073,7 +1034,7 @@ export function DeckBuilderPage() {
           </div>
         ) : (
           <div
-            className={`grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,24vw)] lg:overflow-hidden ${DECKBUILDER_WORK_AREA_HEIGHT_CLASS}`}
+            className={`grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(300px,24vw)] lg:overflow-hidden ${DECKBUILDER_WORK_AREA_HEIGHT_CLASS}`}
             data-testid="deckbuilder-work-area"
           >
             <div
@@ -1235,7 +1196,10 @@ export function DeckBuilderPage() {
               </div>
             </div>
 
-            <div className="min-h-0 h-full">
+            <div
+              className="flex min-h-0 h-full flex-col overflow-hidden"
+              data-testid="deckbuilder-sidebar-column"
+            >
               <DeckSidebar
                 decks={decks}
                 activeDeckId={activeDeckId ?? ''}
@@ -1258,34 +1222,20 @@ export function DeckBuilderPage() {
                       if (!isDeckEditable(deck)) {
                         return deck;
                       }
-                      const nonBasicCards = deck.cards.filter(
-                        (card) => !BASIC_LAND_ORDER.includes(card.name as (typeof BASIC_LAND_ORDER)[number]),
-                      );
-                      const basicCards: DeckBuilderCard[] = BASIC_LAND_ORDER.flatMap((landName) => {
-                        const qty = next[landName];
-                        const catalog = basicLandCatalogRef.current.get(landName);
-                        if (!catalog || qty < 1) {
-                          return [];
-                        }
-                        return [
-                          {
-                            cachedCardId: catalog.cachedCardId,
-                            name: catalog.name,
-                            layout: null,
-                            manaCost: catalog.manaCost,
-                            typeLine: catalog.typeLine,
-                            cmc: 0,
-                            quantity: qty,
-                            zone: 'main' as const,
-                            colorIdentity: catalog.colorIdentity,
-                          },
-                        ];
-                      });
-                      return {
-                        ...deck,
-                        cards: [...nonBasicCards, ...basicCards],
-                        basicLands: next,
-                      };
+                      return applyMainBasicLandsChange(deck, next, basicLandCatalogRef.current);
+                    }),
+                  );
+                }}
+                onSideboardBasicLandsChange={(deckId, next) => {
+                  setDecks((prev) =>
+                    prev.map((deck) => {
+                      if (deck.id !== deckId) {
+                        return deck;
+                      }
+                      if (!isDeckEditable(deck)) {
+                        return deck;
+                      }
+                      return applySideboardBasicLandsChange(deck, next, basicLandCatalogRef.current);
                     }),
                   );
                 }}

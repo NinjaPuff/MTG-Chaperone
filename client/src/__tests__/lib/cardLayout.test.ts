@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   cardHoverPreviewDialogClassName,
   cardHoverPreviewImageClassName,
+  cardHoverPreviewLandscapeFrameClassName,
   cardHoverPreviewLandscapeImageClassName,
   cardImageLandscapeFrameClassName,
   cardThumbnailLayoutToken,
@@ -112,6 +113,21 @@ describe('cardLayout', () => {
 
   it('should_use_standard_touch_dialog_for_portrait_cards', () => {
     expect(cardHoverPreviewDialogClassName(false)).toContain('max-w-md');
+  });
+
+  it('should_use_full_width_touch_frame_for_landscape_hover_preview', () => {
+    const touchFrame = cardHoverPreviewLandscapeFrameClassName('touch');
+    expect(touchFrame).toContain('h-[min(55vh,400px)]');
+    expect(touchFrame).toContain('w-full');
+    expect(touchFrame).not.toContain('w-[min(92vw,660px)]');
+    expect(touchFrame).not.toContain('shrink-0');
+  });
+
+  it('should_use_fixed_width_desktop_frame_for_landscape_hover_preview', () => {
+    const desktopFrame = cardHoverPreviewLandscapeFrameClassName('desktop');
+    expect(desktopFrame).toContain('h-[min(60vh,440px)]');
+    expect(desktopFrame).toContain('w-[min(92vw,660px)]');
+    expect(desktopFrame).toContain('shrink-0');
   });
 
   it('should_return_true_for_battle_siege_type_line_when_checking_isBattleTypeLine', () => {

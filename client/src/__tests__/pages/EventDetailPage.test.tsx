@@ -62,7 +62,12 @@ function renderPage() {
 function configureApi(
   eventStatus: 'setup' | 'active' | 'completed',
   rounds: Array<{ id: string; roundNumber: number; status: 'not_started' | 'in_progress' | 'completed'; matches: unknown[] }>,
+  options?: {
+    format?: 'swiss' | 'seeded_swiss' | 'round_robin' | 'single_elimination' | 'double_elimination' | 'custom_10_player';
+    memberships?: Array<{ userId: string; user: { id: string; displayName: string } }>;
+  },
 ) {
+  const memberships = options?.memberships ?? [];
   const eventData = {
     id: 'e1',
     name: 'Week 1',
@@ -71,7 +76,7 @@ function configureApi(
     standingsOverride: false,
     totalRounds: null,
     config: {
-      format: 'swiss',
+      format: options?.format ?? 'swiss',
       bestOfN: 3,
       deckCount: 1,
       minDeckSize: 40,
@@ -85,7 +90,7 @@ function configureApi(
       league: {
         id: 'l1',
         slug: 'test-league',
-        memberships: [],
+        memberships,
       },
     },
   };
@@ -215,5 +220,224 @@ describe('EventDetailPage', () => {
     await waitFor(() => {
       expect(mocks.authApiRequest).toHaveBeenCalledWith('/api/rounds/r1/reset', { method: 'POST' });
     });
+  });
+
+  const leagueMemberships = [
+    { userId: 'u1', user: { id: 'u1', displayName: 'Player One' } },
+    { userId: 'u2', user: { id: 'u2', displayName: 'Player Two' } },
+    { userId: 'u3', user: { id: 'u3', displayName: 'Player Three' } },
+    { userId: 'u4', user: { id: 'u4', displayName: 'Player Four' } },
+  ];
+
+  const sampleMatch = {
+    id: 'm1',
+    status: 'pending',
+    player1: { id: 'u1', displayName: 'Player One' },
+    player2: { id: 'u2', displayName: 'Player Two' },
+    gameResults: [],
+    isBye: false,
+    reportedById: null,
+  };
+
+  it('hides regenerate pairings for round robin but keeps edit pairings', async () => {
+    mocks.role = 'admin';
+    configureApi('active', [{ id: 'r1', roundNumber: 1, status: 'not_started', matches: [sampleMatch] }], {
+      format: 'round_robin',
+      memberships: leagueMemberships,
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit Pairings' })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole('button', { name: 'Regenerate Pairings' })).not.toBeInTheDocument();
+  });
+
+  it('shows regenerate pairings for swiss events', async () => {
+    mocks.role = 'admin';
+    configureApi('active', [{ id: 'r1', roundNumber: 1, status: 'not_started', matches: [sampleMatch] }], {
+      format: 'swiss',
+      memberships: leagueMemberships,
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Regenerate Pairings' })).toBeInTheDocument();
+    });
+  });
+
+  it('adds and removes pairing rows in the editor', async () => {
+    mocks.role = 'admin';
+    mocks.confirm.mockResolvedValue(true);
+    mocks.authApiRequest.mockResolvedValue({});
+    configureApi('active', [{ id: 'r1', roundNumber: 1, status: 'not_started', matches: [sampleMatch] }], {
+      format: 'round_robin',
+      memberships: leagueMemberships,
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit Pairings' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pairings' }));
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pairing' }));
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(2);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]!);
+    expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save All' }));
+
+    await waitFor(() => {
+      expect(mocks.authApiRequest).toHaveBeenCalledWith('/api/rounds/r1/pairings', {
+        method: 'PUT',
+        body: {
+          pairings: [{ matchId: 'm1', player1Id: 'u1', player2Id: 'u2' }],
+        },
+      });
+    });
+  });
+
+  it('sends new pairings without matchId when saving added rows', async () => {
+    mocks.role = 'admin';
+    mocks.confirm.mockResolvedValue(true);
+    mocks.authApiRequest.mockResolvedValue({});
+    configureApi('active', [{ id: 'r1', roundNumber: 1, status: 'not_started', matches: [] }], {
+      format: 'round_robin',
+      memberships: leagueMemberships,
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit Pairings' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pairings' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pairing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save All' }));
+
+    await waitFor(() => {
+      expect(mocks.authApiRequest).toHaveBeenCalledWith('/api/rounds/r1/pairings', {
+        method: 'PUT',
+        body: {
+          pairings: [{ player1Id: 'u1', player2Id: 'u2' }],
+        },
+      });
+    });
+  });
+
+  it('disables save all when add pairing introduces duplicate players', async () => {
+    mocks.role = 'admin';
+    configureApi('active', [{ id: 'r1', roundNumber: 1, status: 'not_started', matches: [sampleMatch] }], {
+      format: 'round_robin',
+      memberships: leagueMemberships.slice(0, 2),
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit Pairings' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pairings' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Add pairing' }));
+
+    expect(screen.getByRole('button', { name: 'Save All' })).toBeDisabled();
+    expect(mocks.confirm).not.toHaveBeenCalled();
+  });
+
+  const unpairedConfirmPayload = {
+    title: 'Save with unpaired players?',
+    message: expect.stringMatching(/Player Three.*Player Four/),
+    confirmLabel: 'Save All',
+    variant: 'default' as const,
+  };
+
+  it('prompts to save when unpaired players remain and skips save on cancel', async () => {
+    mocks.role = 'admin';
+    mocks.confirm.mockResolvedValue(false);
+    mocks.authApiRequest.mockResolvedValue({});
+    configureApi('active', [{ id: 'r1', roundNumber: 1, status: 'not_started', matches: [sampleMatch] }], {
+      format: 'round_robin',
+      memberships: leagueMemberships,
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit Pairings' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pairings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save All' }));
+
+    await waitFor(() => {
+      expect(mocks.confirm).toHaveBeenCalledWith(unpairedConfirmPayload);
+    });
+
+    expect(mocks.authApiRequest).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Save All' })).toBeInTheDocument();
+  });
+
+  it('prompts to save when unpaired players remain and saves on confirm', async () => {
+    mocks.role = 'admin';
+    mocks.confirm.mockResolvedValue(true);
+    mocks.authApiRequest.mockResolvedValue({});
+    configureApi('active', [{ id: 'r1', roundNumber: 1, status: 'not_started', matches: [sampleMatch] }], {
+      format: 'round_robin',
+      memberships: leagueMemberships,
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit Pairings' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pairings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save All' }));
+
+    await waitFor(() => {
+      expect(mocks.confirm).toHaveBeenCalledWith(unpairedConfirmPayload);
+    });
+
+    await waitFor(() => {
+      expect(mocks.authApiRequest).toHaveBeenCalledWith('/api/rounds/r1/pairings', {
+        method: 'PUT',
+        body: {
+          pairings: [{ matchId: 'm1', player1Id: 'u1', player2Id: 'u2' }],
+        },
+      });
+    });
+  });
+
+  it('does not prompt when all members are paired', async () => {
+    mocks.role = 'admin';
+    mocks.confirm.mockResolvedValue(true);
+    mocks.authApiRequest.mockResolvedValue({});
+    configureApi('active', [{ id: 'r1', roundNumber: 1, status: 'not_started', matches: [sampleMatch] }], {
+      format: 'round_robin',
+      memberships: leagueMemberships.slice(0, 2),
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Edit Pairings' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Pairings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save All' }));
+
+    await waitFor(() => {
+      expect(mocks.authApiRequest).toHaveBeenCalledWith('/api/rounds/r1/pairings', {
+        method: 'PUT',
+        body: {
+          pairings: [{ matchId: 'm1', player1Id: 'u1', player2Id: 'u2' }],
+        },
+      });
+    });
+
+    expect(mocks.confirm).not.toHaveBeenCalled();
   });
 });
