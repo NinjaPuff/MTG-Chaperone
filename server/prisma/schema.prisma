@@ -138,6 +138,8 @@ model User {
   bracketSlotsAsPlayer2 BracketSlot[] @relation("BracketSlotP2")
   bracketSlotsAsWinner  BracketSlot[] @relation("BracketSlotWinner")
   bracketSlotsAsLoser   BracketSlot[] @relation("BracketSlotLoser")
+  playerDrops      PlayerDrop[] @relation("PlayerDropUser")
+  administeredDrops PlayerDrop[] @relation("PlayerDropAdmin")
 }
 
 model League {
@@ -208,6 +210,7 @@ model Season {
   cardPools          CardPool[]
   standings          Standing[]
   roundRobinSchedule RoundRobinSchedule?
+  playerDrops        PlayerDrop[]
 
   @@unique([leagueId, number])
 }
@@ -269,6 +272,25 @@ model Event {
   deckUniquenessRule DeckUniquenessRule?
   seeds              EventSeed[]
   bracketSlots       BracketSlot[]
+  playerDrops        PlayerDrop[]
+}
+
+model PlayerDrop {
+  id          String   @id @default(uuid())
+  userId      String
+  seasonId    String
+  eventId     String?
+  reason      String?
+  droppedById String
+  droppedAt   DateTime @default(now())
+
+  user      User   @relation("PlayerDropUser", fields: [userId], references: [id], onDelete: Cascade)
+  season    Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  event     Event? @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  droppedBy User   @relation("PlayerDropAdmin", fields: [droppedById], references: [id], onDelete: Cascade)
+
+  @@index([seasonId, userId])
+  @@index([eventId])
 }
 
 model EventConfig {

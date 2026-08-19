@@ -2056,7 +2056,11 @@ List all pending disputes across all leagues the admin manages.
 
 #### `POST /api/admin/players/:userId/drop`
 
-Drop a player from a season or event. Dropped players receive automatic losses for remaining matches.
+Drop a player from a season or event.
+
+- For Swiss / seeded Swiss: remaining pending matches against the dropped player become byes for the opponent.
+- For round-robin: remaining pending matches become confirmed auto-losses for the dropped player.
+- Confirmed/resolved/reported/disputed results are preserved.
 
 | Property | Value |
 |----------|-------|
@@ -2089,7 +2093,7 @@ Drop a player from a season or event. Dropped players receive automatic losses f
 }
 ```
 
-**Errors:** `FORBIDDEN`, `NOT_FOUND`
+**Errors:** `FORBIDDEN`, `NOT_FOUND`, `ALREADY_DROPPED`, `INVALID_OPERATION`, `VALIDATION_ERROR`
 
 ---
 

@@ -49,6 +49,8 @@ function mockEventWithMembers(memberIds: string[], seedingSource: string | null 
 describe('pairingService swiss behavior', () => {
   beforeEach(() => {
     resetPrismaMock();
+    prismaMock.match.findMany.mockResolvedValue([]);
+    prismaMock.playerDrop.findMany.mockResolvedValue([]);
   });
 
   describe('generateSwissPairings', () => {
@@ -144,13 +146,23 @@ describe('pairingService swiss behavior', () => {
       await expect(generateSwissPairings('r1')).resolves.toEqual([]);
     });
 
-    it('should_not_read_prior_matches_when_generating_swiss_pairs', async () => {
+    it('should_read_this_event_confirmed_matches_when_generating_swiss_pairs', async () => {
       prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
       prismaMock.standing.findMany.mockResolvedValue([standingRow('u1', 9), standingRow('u2', 6)]);
 
       await generateSwissPairings('r1');
 
-      expect(prismaMock.match.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.match.findMany).toHaveBeenCalledWith({
+        where: {
+          round: { eventId: 'e1' },
+          status: { in: ['confirmed', 'resolved'] },
+        },
+        select: {
+          isBye: true,
+          player1Id: true,
+          player2Id: true,
+        },
+      });
     });
 
     it('should_repeat_the_same_pairs_when_standings_unchanged', async () => {
@@ -402,7 +414,7 @@ describe('pairingService swiss behavior', () => {
   });
 
   describe('FEATURES.md pairing gaps', () => {
-    it.skip('should_avoid_rematch_when_a_same_record_alternate_exists', async () => {
+    it('should_avoid_rematch_when_a_same_record_alternate_exists', async () => {
       // FEATURES.md §8: avoid repeat pairings when possible.
       prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
       prismaMock.standing.findMany.mockResolvedValue([standingRow('A', 6), standingRow('B', 6), standingRow('C', 3), standingRow('D', 3)]);
@@ -423,7 +435,7 @@ describe('pairingService swiss behavior', () => {
       ]);
     });
 
-    it.skip('should_give_bye_to_lowest_ranked_player_without_a_prior_bye', async () => {
+    it('should_give_bye_to_lowest_ranked_player_without_a_prior_bye', async () => {
       // FEATURES.md §8: lowest-ranked player without a prior bye receives the bye.
       prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
       prismaMock.standing.findMany.mockResolvedValue([
@@ -451,10 +463,68 @@ describe('pairingService swiss behavior', () => {
       ]);
     });
 
-    it.skip('should_exclude_dropped_players_from_future_swiss_rounds', async () => {
+    it('should_ignore_rematches_from_other_events', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
+      prismaMock.standing.findMany.mockResolvedValue([standingRow('A', 6), standingRow('B', 6), standingRow('C', 3), standingRow('D', 3)]);
+      prismaMock.match.findMany.mockImplementation(async (args: any) => {
+        if (args.where?.round?.eventId !== 'e1') {
+          return [
+            {
+              isBye: false,
+              player1Id: 'A',
+              player2Id: 'B',
+              gameResults: [{ winnerId: 'A', isDraw: false }],
+            },
+          ];
+        }
+        return [];
+      });
+
+      const pairs = await generateSwissPairings('r1');
+
+      expect(pairs).toEqual([
+        { player1Id: 'A', player2Id: 'B', isBye: false },
+        { player1Id: 'C', player2Id: 'D', isBye: false },
+      ]);
+    });
+
+    it('should_ignore_prior_byes_from_other_events', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
+      prismaMock.standing.findMany.mockResolvedValue([
+        standingRow('A', 12),
+        standingRow('B', 9),
+        standingRow('C', 6),
+        standingRow('D', 3),
+        standingRow('E', 0),
+      ]);
+      prismaMock.match.findMany.mockImplementation(async (args: any) => {
+        if (args.where?.round?.eventId !== 'e1') {
+          return [
+            {
+              isBye: true,
+              player1Id: 'E',
+              player2Id: null,
+              gameResults: [],
+            },
+          ];
+        }
+        return [];
+      });
+
+      const pairs = await generateSwissPairings('r1');
+
+      expect(pairs).toEqual([
+        { player1Id: 'A', player2Id: 'B', isBye: false },
+        { player1Id: 'C', player2Id: 'D', isBye: false },
+        { player1Id: 'E', player2Id: null, isBye: true },
+      ]);
+    });
+
+    it('should_exclude_dropped_players_from_future_swiss_rounds', async () => {
       // FEATURES.md §9: dropped players should be excluded from future pairings.
       prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
       prismaMock.standing.findMany.mockResolvedValue([standingRow('A', 9), standingRow('B', 6), standingRow('C', 3), standingRow('D', 0)]);
+      prismaMock.playerDrop.findMany.mockResolvedValue([{ userId: 'C', seasonId: 's1', eventId: 'e1' }]);
 
       const pairs = await generateSwissPairings('r1');
 
@@ -462,6 +532,59 @@ describe('pairingService swiss behavior', () => {
         { player1Id: 'A', player2Id: 'B', isBye: false },
         { player1Id: 'D', player2Id: null, isBye: true },
       ]);
+    });
+
+    it('should_exclude_player_with_season_wide_drop', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
+      prismaMock.standing.findMany.mockResolvedValue([standingRow('A', 9), standingRow('B', 6), standingRow('C', 3), standingRow('D', 0)]);
+      prismaMock.playerDrop.findMany.mockResolvedValue([{ userId: 'C', seasonId: 's1', eventId: null }]);
+
+      await expect(generateSwissPairings('r1')).resolves.toEqual([
+        { player1Id: 'A', player2Id: 'B', isBye: false },
+        { player1Id: 'D', player2Id: null, isBye: true },
+      ]);
+    });
+
+    it('should_keep_player_dropped_from_a_different_event', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
+      prismaMock.standing.findMany.mockResolvedValue([standingRow('A', 9), standingRow('B', 6), standingRow('C', 3), standingRow('D', 0)]);
+      prismaMock.playerDrop.findMany.mockResolvedValue([]);
+
+      await expect(generateSwissPairings('r1')).resolves.toEqual([
+        { player1Id: 'A', player2Id: 'B', isBye: false },
+        { player1Id: 'C', player2Id: 'D', isBye: false },
+      ]);
+    });
+
+    it('should_omit_dropped_member_from_seeded_round_one_field', async () => {
+      prismaMock.round.findUnique.mockResolvedValue({ roundNumber: 1, eventId: 'e1' });
+      prismaMock.event.findUnique.mockResolvedValue(mockEventWithMembers(['u1', 'u2', 'u3', 'u4'], null));
+      prismaMock.playerDrop.findMany.mockResolvedValue([{ userId: 'u4', seasonId: 's1', eventId: 'e1' }]);
+
+      await expect(generateSeededSwissPairings('r1')).resolves.toEqual([
+        { player1Id: 'u1', player2Id: 'u3', isBye: false },
+        { player1Id: 'u2', player2Id: null, isBye: true },
+      ]);
+    });
+
+    it('should_omit_dropped_member_when_standings_are_empty', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
+      prismaMock.standing.findMany.mockResolvedValue([]);
+      prismaMock.event.findUnique.mockResolvedValue(mockEventWithMembers(['u1', 'u2', 'u3']));
+      prismaMock.playerDrop.findMany.mockResolvedValue([{ userId: 'u3', seasonId: 's1', eventId: 'e1' }]);
+
+      await expect(generateSwissPairings('r1')).resolves.toEqual([{ player1Id: 'u1', player2Id: 'u2', isBye: false }]);
+    });
+
+    it('should_return_empty_pairs_when_all_players_are_dropped', async () => {
+      prismaMock.round.findUnique.mockResolvedValue(mockSwissRound());
+      prismaMock.standing.findMany.mockResolvedValue([standingRow('A', 9), standingRow('B', 6)]);
+      prismaMock.playerDrop.findMany.mockResolvedValue([
+        { userId: 'A', seasonId: 's1', eventId: null },
+        { userId: 'B', seasonId: 's1', eventId: null },
+      ]);
+
+      await expect(generateSwissPairings('r1')).resolves.toEqual([]);
     });
   });
 });

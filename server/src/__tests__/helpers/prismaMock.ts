@@ -55,6 +55,11 @@ export const prismaMock = {
     deleteMany: vi.fn(),
     createMany: vi.fn(),
   },
+  playerDrop: {
+    findMany: vi.fn(),
+    findFirst: vi.fn(),
+    create: vi.fn(),
+  },
   bracketSlot: {
     findUnique: vi.fn(),
     findMany: vi.fn(),
@@ -96,6 +101,7 @@ export const prismaMock = {
   },
   gameResult: {
     create: vi.fn(),
+    createMany: vi.fn(),
     deleteMany: vi.fn(),
   },
   decklist: {

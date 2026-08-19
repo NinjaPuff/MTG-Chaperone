@@ -191,6 +191,18 @@ erDiagram
 | deadline | timestamp | nullable | Optional deadline for match completion |
 | createdAt | timestamp | not null | Row creation time |
 
+#### PlayerDrop
+
+| Field | Type | Constraints | Description |
+|---|---|---|---|
+| id | UUID | PK | Primary identifier |
+| userId | UUID | FK → User, not null | Player being dropped |
+| seasonId | UUID | FK → Season, not null | Season scope for the drop |
+| eventId | UUID | FK → Event, nullable | Event-only drop when present; season-wide when null |
+| reason | text | nullable | Admin note for the drop |
+| droppedById | UUID | FK → User, not null | Admin who executed the drop |
+| droppedAt | timestamp | default now | When the drop was recorded |
+
 #### RoundRobinSchedule
 
 | Field | Type | Constraints | Description |

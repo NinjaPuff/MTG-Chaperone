@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pairSequential, pairTopVsBottom, rankPlayersByMatchResults } from '../../services/pairingService.js';
+import { pairSequential, pairSwissScoreGroups, pairTopVsBottom, rankPlayersByMatchResults } from '../../services/pairingService.js';
 
 describe('pairSequential', () => {
   it('returns empty when no players', () => {
@@ -159,5 +159,139 @@ describe('rankPlayersByMatchResults', () => {
     );
 
     expect(ranked).toEqual(['u1', 'u2']);
+  });
+});
+
+describe('pairSwissScoreGroups', () => {
+  it('returns empty when no players', () => {
+    expect(pairSwissScoreGroups([], new Set(), new Set())).toEqual([]);
+  });
+
+  it('gives single player a bye', () => {
+    expect(pairSwissScoreGroups([{ userId: 'A', points: 6 }], new Set(), new Set())).toEqual([
+      { player1Id: 'A', player2Id: null, isBye: true },
+    ]);
+  });
+
+  it('pairs within score groups when there are no rematches', () => {
+    const pairs = pairSwissScoreGroups(
+      [
+        { userId: 'A', points: 6 },
+        { userId: 'B', points: 6 },
+        { userId: 'C', points: 3 },
+        { userId: 'D', points: 3 },
+      ],
+      new Set(),
+      new Set(),
+    );
+
+    expect(pairs).toEqual([
+      { player1Id: 'A', player2Id: 'B', isBye: false },
+      { player1Id: 'C', player2Id: 'D', isBye: false },
+    ]);
+  });
+
+  it('avoids rematches by down pairing to lower score groups', () => {
+    const pairs = pairSwissScoreGroups(
+      [
+        { userId: 'A', points: 6 },
+        { userId: 'B', points: 6 },
+        { userId: 'C', points: 3 },
+        { userId: 'D', points: 3 },
+      ],
+      new Set(['A:B']),
+      new Set(),
+    );
+
+    expect(pairs).toEqual([
+      { player1Id: 'A', player2Id: 'C', isBye: false },
+      { player1Id: 'B', player2Id: 'D', isBye: false },
+    ]);
+  });
+
+  it('down pairs odd players in a score group', () => {
+    const pairs = pairSwissScoreGroups(
+      [
+        { userId: 'A', points: 6 },
+        { userId: 'B', points: 6 },
+        { userId: 'C', points: 6 },
+        { userId: 'D', points: 3 },
+      ],
+      new Set(),
+      new Set(),
+    );
+
+    expect(pairs).toEqual([
+      { player1Id: 'A', player2Id: 'B', isBye: false },
+      { player1Id: 'C', player2Id: 'D', isBye: false },
+    ]);
+  });
+
+  it('down pairs after rematch constraints in odd score groups', () => {
+    const pairs = pairSwissScoreGroups(
+      [
+        { userId: 'A', points: 6 },
+        { userId: 'B', points: 6 },
+        { userId: 'C', points: 6 },
+        { userId: 'D', points: 3 },
+      ],
+      new Set(['A:B']),
+      new Set(),
+    );
+
+    expect(pairs).toEqual([
+      { player1Id: 'A', player2Id: 'C', isBye: false },
+      { player1Id: 'B', player2Id: 'D', isBye: false },
+    ]);
+  });
+
+  it('allows rematch when no legal opponent exists', () => {
+    const pairs = pairSwissScoreGroups(
+      [
+        { userId: 'A', points: 6 },
+        { userId: 'B', points: 6 },
+      ],
+      new Set(['A:B']),
+      new Set(),
+    );
+
+    expect(pairs).toEqual([{ player1Id: 'A', player2Id: 'B', isBye: false }]);
+  });
+
+  it('assigns bye to lowest ranked player without prior bye', () => {
+    const pairs = pairSwissScoreGroups(
+      [
+        { userId: 'A', points: 12 },
+        { userId: 'B', points: 9 },
+        { userId: 'C', points: 6 },
+        { userId: 'D', points: 3 },
+        { userId: 'E', points: 0 },
+      ],
+      new Set(),
+      new Set(['E']),
+    );
+
+    expect(pairs).toEqual([
+      { player1Id: 'A', player2Id: 'B', isBye: false },
+      { player1Id: 'C', player2Id: 'E', isBye: false },
+      { player1Id: 'D', player2Id: null, isBye: true },
+    ]);
+  });
+
+  it('assigns bye to lowest ranked when everyone already had a bye', () => {
+    const pairs = pairSwissScoreGroups(
+      [
+        { userId: 'A', points: 6 },
+        { userId: 'B', points: 3 },
+        { userId: 'C', points: 0 },
+      ],
+      new Set(),
+      new Set(['A', 'B', 'C']),
+    );
+
+    expect(pairs).toEqual([
+      { player1Id: 'A', player2Id: 'B', isBye: false },
+      { player1Id: 'C', player2Id: null, isBye: true },
+    ]);
   });
 });
