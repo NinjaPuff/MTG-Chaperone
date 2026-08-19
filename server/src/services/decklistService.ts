@@ -1201,7 +1201,7 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
     .filter((entry) => entry.zone === 'main')
     .reduce((sum, entry) => sum + entry.quantity, 0);
   if (mainCount < minDeckSize) {
-    warnings.push(`Main deck is below minimum size (${mainCount}/${minDeckSize})`);
+    errors.push(`Main deck is below minimum size (${mainCount}/${minDeckSize})`);
   }
 
   if (decklist.event.config?.sideboardRule === 'fixed_15') {

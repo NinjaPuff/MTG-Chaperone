@@ -164,12 +164,34 @@ describe('DeckBuilderPage registration validation flow', () => {
     expect(mocks.authApiRequest).not.toHaveBeenCalledWith('/api/decklists/deck-1/submit', { method: 'POST' });
   });
 
+  it('should_show_cannot_register_when_validate_returns_size_error', async () => {
+    configureApi({
+      validateResponse: {
+        isValid: false,
+        errors: ['Main deck is below minimum size (39/40)'],
+        warnings: [],
+        invalidCardIds: [],
+      },
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-register-button')).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByTestId('deck-register-button'));
+
+    expect(await screen.findByText('Cannot register deck')).toBeInTheDocument();
+    expect(screen.getByText(/Main deck is below minimum size \(39\/40\)/)).toBeInTheDocument();
+    expect(mocks.authApiRequest).not.toHaveBeenCalledWith('/api/decklists/deck-1/submit', { method: 'POST' });
+  });
+
   it('prompts with warnings before submit and proceeds when confirmed', async () => {
     configureApi({
       validateResponse: {
         isValid: true,
         errors: [],
-        warnings: ['Main deck has fewer than 40 cards'],
+        warnings: ['Sideboard count is 0; expected 15'],
         invalidCardIds: [],
       },
     });
@@ -182,7 +204,7 @@ describe('DeckBuilderPage registration validation flow', () => {
     fireEvent.click(screen.getByTestId('deck-register-button'));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Register with warnings?')).toBeInTheDocument();
-    expect(within(dialog).getByText(/Main deck has fewer than 40 cards/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Sideboard count is 0; expected 15/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Register' }));
 
     await waitFor(() => {

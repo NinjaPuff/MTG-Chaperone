@@ -48,10 +48,24 @@ function configureApi(options?: {
   deckStatus?: 'draft' | 'submitted' | 'locked';
   deckCount?: number;
   extraDraftDeck?: boolean;
+  deckEntries?: Array<{
+    cachedCardId: string;
+    quantity: number;
+    zone: 'main' | 'sideboard';
+    cachedCard: {
+      name: string;
+      layout: string | null;
+      manaCost: string | null;
+      typeLine: string;
+      cmc: number;
+      colorIdentity: string[];
+    };
+  }>;
 }) {
   const deckStatus = options?.deckStatus ?? 'draft';
   const deckCount = options?.deckCount ?? 1;
   const registeredCount = options?.registeredCount ?? (deckStatus === 'draft' ? 0 : 1);
+  const deckEntries = options?.deckEntries ?? [];
 
   mocks.authApiRequest.mockImplementation(async (path: string, init?: { method?: string }) => {
     if (path === '/api/events/e1/my-decklists') {
@@ -61,7 +75,7 @@ function configureApi(options?: {
           orderIndex: 0,
           name: 'Deck 1',
           status: deckStatus,
-          entries: [],
+          entries: deckEntries,
         },
       ];
       if (options?.extraDraftDeck) {
@@ -128,6 +142,9 @@ function configureApi(options?: {
       };
     }
     if (path === '/api/decklists/deck-2' && init?.method === 'DELETE') {
+      return { data: null };
+    }
+    if (path.startsWith('/api/decklists/') && init?.method === 'PATCH') {
       return { data: null };
     }
     throw new Error(`Unexpected path: ${path}`);
@@ -322,5 +339,106 @@ describe('DeckBuilderPage layout', () => {
     expect(screen.getByTestId('deck-register-button')).toBeDisabled();
     expect(screen.getByTestId('deck-unregister-button')).toBeDisabled();
     expect(screen.getByTestId('deck-delete-button')).toBeDisabled();
+  });
+
+  it('shows 60-card target for extra prep decks in a 40-card event', async () => {
+    configureApi({ extraDraftDeck: true, deckCount: 1, deckStatus: 'draft', registeredCount: 0 });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-tab-list')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('deck-tab-list'), { target: { value: 'deck-2' } });
+
+    await waitFor(() => {
+      expect(document.querySelector('aside')).toBeTruthy();
+    });
+    const sidebar = document.querySelector('aside')!;
+    expect(within(sidebar).getByText('0/60')).toBeInTheDocument();
+    expect(within(sidebar).getByTestId('deck-sidebar-prep-size-toggle')).toBeInTheDocument();
+  });
+
+  it('should_use_event_min_for_required_slot_when_extra_deck_exists', async () => {
+    configureApi({ extraDraftDeck: true, deckCount: 1, deckStatus: 'draft', registeredCount: 0 });
+    renderPage();
+
+    await waitFor(() => {
+      expect(document.querySelector('aside')).toBeTruthy();
+    });
+    const sidebar = document.querySelector('aside')!;
+    expect(within(sidebar).getByText('0/40')).toBeInTheDocument();
+    expect(within(sidebar).queryByTestId('deck-sidebar-prep-size-toggle')).not.toBeInTheDocument();
+  });
+
+  it('should_remove_main_card_from_details_when_editable_deck_card_clicked', async () => {
+    configureApi({
+      deckEntries: [
+        {
+          cachedCardId: 'card-1',
+          quantity: 2,
+          zone: 'main',
+          cachedCard: {
+            name: 'Lightning Bolt',
+            layout: null,
+            manaCost: '{R}',
+            typeLine: 'Instant',
+            cmc: 1,
+            colorIdentity: ['R'],
+          },
+        },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Details' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+
+    const details = await screen.findByTestId('deckbuilder-details-area');
+    const mainStat = within(details).getAllByText('Main Deck')[0].parentElement!;
+    expect(mainStat).toHaveTextContent('2');
+
+    fireEvent.click(within(details).getByText('Lightning Bolt'));
+
+    await waitFor(() => {
+      expect(mainStat).toHaveTextContent('1');
+    });
+  });
+
+  it('should_not_remove_details_card_when_deck_is_locked', async () => {
+    configureApi({
+      deckStatus: 'locked',
+      deckEntries: [
+        {
+          cachedCardId: 'card-1',
+          quantity: 2,
+          zone: 'main',
+          cachedCard: {
+            name: 'Lightning Bolt',
+            layout: null,
+            manaCost: '{R}',
+            typeLine: 'Instant',
+            cmc: 1,
+            colorIdentity: ['R'],
+          },
+        },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Details' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+
+    const details = await screen.findByTestId('deckbuilder-details-area');
+    const mainStat = within(details).getAllByText('Main Deck')[0].parentElement!;
+    expect(mainStat).toHaveTextContent('2');
+
+    fireEvent.click(within(details).getByText('Lightning Bolt'));
+
+    expect(mainStat).toHaveTextContent('2');
   });
 });

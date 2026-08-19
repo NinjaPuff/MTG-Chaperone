@@ -1,4 +1,5 @@
-import { ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 
 export type TouchAction = {
   label: string;
@@ -82,25 +83,30 @@ type CardPreviewProviderProps = {
 
 export function CardPreviewProvider({ children }: CardPreviewProviderProps) {
   const [preview, setPreview] = useState<PreviewState>(null);
+  const showPreview = useCallback<CardPreviewContextValue['showPreview']>(
+    (scryfallId, name, layout, typeLine, imageUrl, anchorRect, anchorPoint, options) =>
+      setPreview({
+        scryfallId,
+        name,
+        layout,
+        typeLine,
+        imageUrl,
+        anchorRect,
+        anchorPoint,
+        touchActions: options?.touchActions ?? [],
+        isTouchMode: options?.isTouchMode ?? false,
+      }),
+    [],
+  );
+  const hidePreview = useCallback(() => setPreview(null), []);
 
   const value = useMemo<CardPreviewContextValue>(
     () => ({
       preview,
-      showPreview: (scryfallId, name, layout, typeLine, imageUrl, anchorRect, anchorPoint, options) =>
-        setPreview({
-          scryfallId,
-          name,
-          layout,
-          typeLine,
-          imageUrl,
-          anchorRect,
-          anchorPoint,
-          touchActions: options?.touchActions ?? [],
-          isTouchMode: options?.isTouchMode ?? false,
-        }),
-      hidePreview: () => setPreview(null),
+      showPreview,
+      hidePreview,
     }),
-    [preview],
+    [hidePreview, preview, showPreview],
   );
 
   return (
@@ -116,6 +122,17 @@ export function useCardPreview() {
     throw new Error('useCardPreview must be used inside CardPreviewProvider');
   }
   return value;
+}
+
+export function CardPreviewNavigationReset() {
+  const { pathname } = useLocation();
+  const { hidePreview } = useCardPreview();
+
+  useEffect(() => {
+    hidePreview();
+  }, [hidePreview, pathname]);
+
+  return null;
 }
 
 type HoverTargetProps = {
@@ -143,6 +160,7 @@ export function HoverTarget({
 }: HoverTargetProps) {
   const { preview, showPreview, hidePreview } = useCardPreview();
   const hoverTimerRef = useRef<number | null>(null);
+  const previewOwnedRef = useRef(false);
   const isTouchPrimary = useMatchMedia('(hover: none)');
   const Element = element;
 
@@ -152,6 +170,20 @@ export function HoverTarget({
       hoverTimerRef.current = null;
     }
   };
+
+  useEffect(() => {
+    previewOwnedRef.current = preview?.scryfallId === scryfallId;
+  }, [preview, scryfallId]);
+
+  useEffect(
+    () => () => {
+      clearHoverTimer();
+      if (previewOwnedRef.current) {
+        hidePreview();
+      }
+    },
+    [hidePreview],
+  );
 
   return (
     <Element

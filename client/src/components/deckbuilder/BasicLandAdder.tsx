@@ -1,7 +1,7 @@
 import { suggestBasicLands, type BasicLandSuggestion, type SuggestBasicLandCard } from '@/lib/suggestBasicLands';
 import { useConfirm } from '@/context/ConfirmContext';
 
-const LAND_ORDER: Array<keyof BasicLandSuggestion> = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'];
+const LAND_ORDER: Array<keyof BasicLandSuggestion> = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Wastes'];
 
 type BasicLandAdderProps = {
   counts: BasicLandSuggestion;

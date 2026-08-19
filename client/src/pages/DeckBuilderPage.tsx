@@ -33,6 +33,14 @@ import {
   syncDeckBasicLands,
 } from '@/lib/deckBasicLands';
 import { moveCardBetweenZones } from '@/lib/deckMutations';
+import {
+  isExtraDeckSlot,
+  PREP_DECK_SIZES,
+  readStoredPrepSize,
+  resolveBuilderSizeTarget,
+  writeStoredPrepSize,
+  type PrepDeckSize,
+} from '@/lib/prepDeckSize';
 import { buildPoolAllocationMaps } from '@mtg-league/shared';
 
 type DecklistEntryResponse = {
@@ -169,6 +177,7 @@ export function DeckBuilderPage() {
   const { cardImageWidth, setCardImageWidth } = useCardImageWidth();
   const poolScrollRef = useRef<HTMLDivElement>(null);
   const [minDeckSize, setMinDeckSize] = useState(40);
+  const [prepDeckSizeByDeckId, setPrepDeckSizeByDeckId] = useState<Record<string, PrepDeckSize>>({});
   const [requiredDeckCount, setRequiredDeckCount] = useState(1);
   const [registeredDeckCount, setRegisteredDeckCount] = useState(0);
   const [activeRoundId, setActiveRoundId] = useState<string | null>(null);
@@ -275,6 +284,26 @@ export function DeckBuilderPage() {
       setActiveDeckId((prev) => prev ?? mappedDecks[0]?.id ?? null);
       setMinDeckSize(deckResponse.data.eventConfig?.minDeckSize ?? 40);
       setRequiredDeckCount(Math.max(1, deckResponse.data.eventConfig?.deckCount ?? 1));
+      setPrepDeckSizeByDeckId(() => {
+        const next: Record<string, PrepDeckSize> = {};
+        const eventMin = deckResponse.data.eventConfig?.minDeckSize ?? 40;
+        const deckCount = Math.max(1, deckResponse.data.eventConfig?.deckCount ?? 1);
+        for (const deck of mappedDecks) {
+          if (!isExtraDeckSlot(deck.orderIndex, deckCount)) {
+            continue;
+          }
+          const resolved = resolveBuilderSizeTarget({
+            orderIndex: deck.orderIndex,
+            requiredDeckCount: deckCount,
+            eventMinDeckSize: eventMin,
+            stored: readStoredPrepSize(deck.id),
+          });
+          if (PREP_DECK_SIZES.includes(resolved as PrepDeckSize)) {
+            next[deck.id] = resolved as PrepDeckSize;
+          }
+        }
+        return next;
+      });
       setRegisteredDeckCount(
         deckResponse.data.registeredCount ??
           mappedDecks.filter((deck) => deck.status === 'submitted' || deck.status === 'locked').length,
@@ -426,6 +455,15 @@ export function DeckBuilderPage() {
   );
 
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? null;
+  const activeDeckTargetSize = activeDeck
+    ? resolveBuilderSizeTarget({
+        orderIndex: activeDeck.orderIndex,
+        requiredDeckCount,
+        eventMinDeckSize: minDeckSize,
+        stored: prepDeckSizeByDeckId[activeDeck.id] ?? null,
+      })
+    : minDeckSize;
+  const showPrepSizeToggle = !!activeDeck && isExtraDeckSlot(activeDeck.orderIndex, requiredDeckCount);
   const activeDeckEditable =
     activeDeck?.status === 'draft' || (activeDeck?.status === 'submitted' && eventFormat === 'round_robin');
   const isDeckEditable = (deck: BuilderDeck) => deck.status === 'draft' || (deck.status === 'submitted' && eventFormat === 'round_robin');
@@ -1030,7 +1068,13 @@ export function DeckBuilderPage() {
             className={`min-h-0 flex-1 overflow-y-auto ${DECKBUILDER_WORK_AREA_HEIGHT_CLASS}`}
             data-testid="deckbuilder-details-area"
           >
-            <DeckAnalyticsView deck={activeDeck} poolImageByCardId={poolImageByCardId} />
+            <DeckAnalyticsView
+              deck={activeDeck}
+              poolImageByCardId={poolImageByCardId}
+              editable={activeDeckEditable}
+              onCardClick={removeCardFromDeck}
+              onCardContextMenu={handleDeckCardContextMenu}
+            />
           </div>
         ) : (
           <div
@@ -1203,9 +1247,20 @@ export function DeckBuilderPage() {
               <DeckSidebar
                 decks={decks}
                 activeDeckId={activeDeckId ?? ''}
-                minDeckSize={minDeckSize}
+                minDeckSize={activeDeckTargetSize}
                 poolImageByCardId={poolImageByCardId}
                 saveBlockedCardIdsByDeckId={saveBlockedCardIdsByDeckId}
+                prepSizeToggle={
+                  showPrepSizeToggle && activeDeck
+                    ? {
+                        value: prepDeckSizeByDeckId[activeDeck.id] ?? (activeDeckTargetSize as PrepDeckSize),
+                        onChange: (size) => {
+                          setPrepDeckSizeByDeckId((prev) => ({ ...prev, [activeDeck.id]: size }));
+                          writeStoredPrepSize(activeDeck.id, size);
+                        },
+                      }
+                    : undefined
+                }
                 onDeckNameChange={(deckId, name) =>
                   setDecks((prev) =>
                     prev.map((deck) => (deck.id === deckId && isDeckRenamable() ? { ...deck, name } : deck))

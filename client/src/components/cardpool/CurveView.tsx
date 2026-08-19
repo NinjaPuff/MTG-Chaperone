@@ -4,7 +4,7 @@ import { HoverTarget, type TouchAction } from './CardPreviewContext';
 import { GroupHeadingLabel } from './GroupHeadingLabel';
 import { PoolCardImage } from './PoolCardImage';
 import { sumBucketQuantity } from '@/lib/curveBucketTotal';
-import { getPrimaryType, groupByCmc, groupByOrganize, groupByPhase, sortCards } from '@/lib/cardPoolSort';
+import { getPrimaryType, groupByCmc, groupByOrganize, groupByPhase, sortCards, spellCardsForCurve } from '@/lib/cardPoolSort';
 import { getPrimaryCardImageUrl } from '@/lib/cardImage';
 import { stackBadgeTopPx } from '@/lib/stackBadgeLayout';
 
@@ -215,11 +215,11 @@ export function CurveView({
   renderBadge,
   getTouchActions,
 }: CurveViewProps) {
-  if (cards.length === 0) {
+  const sortedCards = spellCardsForCurve(sortCards(cards, sortKey));
+
+  if (sortedCards.length === 0) {
     return <p className="text-sm text-muted-foreground">No cards added yet.</p>;
   }
-
-  const sortedCards = sortCards(cards, sortKey);
 
   if (groupMode === 'flat') {
     return (

@@ -29,6 +29,7 @@ vi.mock('../../services/scryfallService.js', () => ({
 
 import {
   bulkResolveAcquisitionItems,
+  createAcquisition,
   filterBulkResolveCandidates,
 } from '../../services/cardPoolService.js';
 import { formatDecklistLine } from '@mtg-league/shared';
@@ -540,5 +541,56 @@ describe('cardPoolService bulkResolveAcquisitionItems', () => {
     expect(result.resolved).toHaveLength(1);
     expect(result.resolved[0]?.cachedCardId).toBe('abrade-sos');
     expect(result.unresolved).toEqual([]);
+  });
+});
+
+describe('cardPoolService createAcquisition stale DFC refresh', () => {
+  beforeEach(() => {
+    prismaMock.cachedCard.findMany.mockReset();
+    prismaMock.poolAcquisition.create.mockReset();
+    scryfallMocks.getCard.mockReset();
+    scryfallMocks.getCard.mockResolvedValue(null);
+  });
+
+  it('refreshes reversible nonland entries with zero cached cmc before create', async () => {
+    prismaMock.cachedCard.findMany
+      .mockResolvedValueOnce([
+        {
+          scryfallId: 'clarion-id',
+          name: 'Clarion Conqueror // Clarion Conqueror',
+          layout: 'reversible_card',
+          manaCost: '{2}{W}',
+          cmc: 0,
+          typeLine: 'Creature — Dragon',
+        },
+      ])
+      .mockResolvedValueOnce([{ scryfallId: 'clarion-id' }]);
+    prismaMock.poolAcquisition.create.mockResolvedValue({ id: 'acq-1' });
+
+    await createAcquisition('pool-1', 'Phase 2', [{ cachedCardId: 'clarion-id', quantity: 1 }]);
+
+    expect(scryfallMocks.getCard).toHaveBeenCalledWith('clarion-id');
+    expect(prismaMock.poolAcquisition.create).toHaveBeenCalled();
+  });
+
+  it('does not refresh reversible land entries with zero cached cmc before create', async () => {
+    prismaMock.cachedCard.findMany
+      .mockResolvedValueOnce([
+        {
+          scryfallId: 'blood-crypt-id',
+          name: 'Blood Crypt // Blood Crypt',
+          layout: 'reversible_card',
+          manaCost: null,
+          cmc: 0,
+          typeLine: 'Land — Swamp Mountain',
+        },
+      ])
+      .mockResolvedValueOnce([{ scryfallId: 'blood-crypt-id' }]);
+    prismaMock.poolAcquisition.create.mockResolvedValue({ id: 'acq-2' });
+
+    await createAcquisition('pool-1', 'Phase 2', [{ cachedCardId: 'blood-crypt-id', quantity: 1 }]);
+
+    expect(scryfallMocks.getCard).not.toHaveBeenCalled();
+    expect(prismaMock.poolAcquisition.create).toHaveBeenCalled();
   });
 });

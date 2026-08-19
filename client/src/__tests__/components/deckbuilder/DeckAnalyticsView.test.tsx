@@ -25,6 +25,39 @@ function makeDeckCard(overrides: Partial<DeckBuilderCard>): DeckBuilderCard {
   };
 }
 
+function makeCurveFixtureDeck(): BuilderDeck {
+  return {
+    id: 'deck-curve',
+    orderIndex: 0,
+    name: 'Curve Deck',
+    status: 'draft',
+    cards: [
+      makeDeckCard({
+        cachedCardId: 'bolt',
+        name: 'Lightning Bolt',
+        manaCost: '{R}',
+        typeLine: 'Instant',
+        cmc: 1,
+        colorIdentity: ['R'],
+      }),
+      makeDeckCard({
+        cachedCardId: 'plains',
+        name: 'Plains',
+        typeLine: 'Basic Land — Plains',
+        cmc: 0,
+      }),
+    ],
+    basicLands: {
+      Plains: 0,
+      Island: 0,
+      Swamp: 0,
+      Mountain: 0,
+      Forest: 0,
+      Wastes: 0,
+    },
+  };
+}
+
 function makeDeck(): BuilderDeck {
   return {
     id: 'deck-1',
@@ -149,5 +182,76 @@ describe('DeckAnalyticsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Stacks' }));
     expect(screen.queryByTestId('deck-analytics-combined-curve')).not.toBeInTheDocument();
+  });
+
+  it('renders_mini_curve_below_details_views', () => {
+    renderWithAppProviders(<DeckAnalyticsView deck={makeSplitDeck()} />);
+
+    expect(screen.getByTestId('deck-analytics-mini-curve')).toBeInTheDocument();
+    expect(screen.getByText('Mini Curve')).toBeInTheDocument();
+  });
+
+  it('supports_click_to_remove_in_editable_details', () => {
+    const onCardClick = vi.fn();
+    renderWithAppProviders(
+      <DeckAnalyticsView deck={makeSplitDeck()} editable onCardClick={onCardClick} />,
+    );
+
+    fireEvent.click(screen.getByText('Bear'));
+
+    expect(onCardClick).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cachedCardId: 'bear',
+        zone: 'main',
+      }),
+      'deck-split',
+    );
+  });
+
+  it('should_not_count_land_in_mini_curve_zero_bucket', () => {
+    renderWithAppProviders(<DeckAnalyticsView deck={makeCurveFixtureDeck()} />);
+
+    const miniCurve = screen.getByTestId('deck-analytics-mini-curve');
+    expect(within(miniCurve).queryByLabelText(/^0:/)).not.toBeInTheDocument();
+  });
+
+  it('should_count_one_drop_in_mini_curve', () => {
+    renderWithAppProviders(<DeckAnalyticsView deck={makeCurveFixtureDeck()} />);
+
+    const miniCurve = screen.getByTestId('deck-analytics-mini-curve');
+    expect(within(miniCurve).getByLabelText(/1: 1 total/)).toBeInTheDocument();
+  });
+
+  it('should_not_call_onCardClick_when_not_editable', () => {
+    const onCardClick = vi.fn();
+    renderWithAppProviders(<DeckAnalyticsView deck={makeCurveFixtureDeck()} onCardClick={onCardClick} />);
+
+    fireEvent.click(screen.getByText('Lightning Bolt'));
+
+    expect(onCardClick).not.toHaveBeenCalled();
+  });
+
+  it('should_call_onCardContextMenu_when_editable_and_card_contextmenu', () => {
+    const onCardContextMenu = vi.fn();
+    renderWithAppProviders(
+      <DeckAnalyticsView deck={makeCurveFixtureDeck()} editable onCardContextMenu={onCardContextMenu} />,
+    );
+
+    fireEvent.contextMenu(screen.getByText('Lightning Bolt'));
+
+    expect(onCardContextMenu).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        cachedCardId: 'bolt',
+        zone: 'main',
+      }),
+      'deck-curve',
+    );
+  });
+
+  it('should_show_build_hint_in_details', () => {
+    renderWithAppProviders(<DeckAnalyticsView deck={makeCurveFixtureDeck()} />);
+
+    expect(screen.getByTestId('deck-analytics-build-hint')).toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { CardHoverPreview } from '@/components/cardpool/CardHoverPreview';
-import { CardPreviewProvider } from '@/components/cardpool/CardPreviewContext';
+import { CardPreviewNavigationReset, CardPreviewProvider } from '@/components/cardpool/CardPreviewContext';
 import { ConfirmProvider } from '@/context/ConfirmContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { isDeckBuilderPath } from '@/lib/deckBuilderLayout';
@@ -37,6 +37,7 @@ export function AppLayout() {
               </ErrorBoundary>
             </main>
           </div>
+          <CardPreviewNavigationReset />
           <CardHoverPreview />
         </CardPreviewProvider>
       </ConfirmProvider>

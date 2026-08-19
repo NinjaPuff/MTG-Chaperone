@@ -116,7 +116,6 @@ export function suggestBasicLands(deckCards: SuggestBasicLandCard[], minDeckSize
 
   const totalUnmet = [...unmetDemand.values()].reduce((sum, value) => sum + value, 0);
   if (totalUnmet <= 0) {
-    suggestion.Wastes = basicLandSlots;
     return suggestion;
   }
 

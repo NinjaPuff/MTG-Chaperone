@@ -81,6 +81,22 @@ describe('ManaCurveBucketTooltipContent', () => {
 });
 
 describe('MiniManaCurve', () => {
+  it('excludes lands from rendered curve buckets', () => {
+    const { container } = render(
+      <MiniManaCurve cards={[{ cmc: 0, quantity: 2, typeLine: 'Basic Land — Plains' }]} />,
+    );
+
+    expect(container.querySelector('[aria-label="0: 2 total (0 creatures, 2 non-creatures)"]')).not.toBeInTheDocument();
+  });
+
+  it('keeps zero-cmc spells in the rendered zero bucket', () => {
+    const { container } = render(
+      <MiniManaCurve cards={[{ cmc: 0, quantity: 1, typeLine: 'Artifact Creature — Thopter' }]} />,
+    );
+
+    expect(container.querySelector('[aria-label="0: 1 total (1 creatures, 0 non-creatures)"]')).toBeInTheDocument();
+  });
+
   it('renders stacked creature and non-creature segments', () => {
     const { container } = render(
       <MiniManaCurve

@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { BasicLandAdderPopup } from '@/components/deckbuilder/BasicLandAdderPopup';
 import { renderWithAppProviders } from '../../helpers/renderWithAppProviders';
@@ -86,5 +86,34 @@ describe('BasicLandAdderPopup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Close basic lands dialog' }));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('prompts before replacing when only wastes are present', async () => {
+    const onMainChange = vi.fn();
+    renderWithAppProviders(
+      <BasicLandAdderPopup
+        {...defaultProps}
+        onMainChange={onMainChange}
+        mainCounts={{ ...defaultProps.mainCounts, Wastes: 8 }}
+        mainDeckCards={[{ quantity: 23, manaCost: '{3}', typeLine: 'Artifact Creature - Golem', colorIdentity: [] }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Basic Lands' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest Lands' }));
+
+    expect(await screen.findByText('Replace current basic lands with suggested values?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
+
+    await waitFor(() => {
+      expect(onMainChange).toHaveBeenCalledWith({
+        Plains: 0,
+        Island: 0,
+        Swamp: 0,
+        Mountain: 0,
+        Forest: 0,
+        Wastes: 0,
+      });
+    });
   });
 });
