@@ -25,6 +25,25 @@ export function computeGridColumnCount(
   return Math.max(1, Math.floor((containerWidth + gapPx) / (cardWidth + gapPx)));
 }
 
+export function computeGridCellWidth(
+  containerWidth: number,
+  columnCount: number,
+  gapPx: number = GRID_GAP_PX,
+): number {
+  const columns = Math.max(1, columnCount);
+  if (!Number.isFinite(containerWidth) || containerWidth <= 0) {
+    return 0;
+  }
+  return (containerWidth - gapPx * (columns - 1)) / columns;
+}
+
+export function computeWindowScrollMargin(element: HTMLElement | null, scrollY: number): number {
+  if (!element) {
+    return 0;
+  }
+  return element.getBoundingClientRect().top + scrollY;
+}
+
 function chunkCards(cards: PoolCard[], columnCount: number): PoolCard[][] {
   const rows: PoolCard[][] = [];
   for (let index = 0; index < cards.length; index += columnCount) {

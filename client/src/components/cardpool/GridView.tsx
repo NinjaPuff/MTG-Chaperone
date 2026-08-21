@@ -18,7 +18,9 @@ import {
 import {
   GRID_GAP_PX,
   buildVirtualGridRows,
+  computeGridCellWidth,
   computeGridColumnCount,
+  computeWindowScrollMargin,
   estimateVirtualGridRowHeight,
 } from '@/lib/virtualGridRows';
 
@@ -177,6 +179,7 @@ export function GridView({
 }: GridViewProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [scrollMargin, setScrollMargin] = useState(0);
 
   useLayoutEffect(() => {
     const element = parentRef.current;
@@ -184,11 +187,19 @@ export function GridView({
       return;
     }
 
-    const updateWidth = (width: number) => {
+    const updateLayout = (width: number) => {
       setContainerWidth(Math.max(0, Math.round(width)));
+      const scrollParent = scrollElementRef?.current ?? null;
+      if (scrollParent) {
+        const listTop = element.getBoundingClientRect().top;
+        const parentTop = scrollParent.getBoundingClientRect().top;
+        setScrollMargin(listTop - parentTop + scrollParent.scrollTop);
+        return;
+      }
+      setScrollMargin(computeWindowScrollMargin(element, window.scrollY));
     };
 
-    updateWidth(element.getBoundingClientRect().width);
+    updateLayout(element.getBoundingClientRect().width);
 
     if (typeof ResizeObserver === 'undefined') {
       return;
@@ -199,16 +210,21 @@ export function GridView({
       if (!entry) {
         return;
       }
-      updateWidth(entry.contentRect.width);
+      updateLayout(entry.contentRect.width);
     });
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [cards.length, cardWidth, groupMode, organizeBy, sortKey]);
+  }, [cards.length, cardWidth, groupMode, organizeBy, sortKey, scrollElementRef]);
 
   const columnCount = useMemo(
     () => computeGridColumnCount(containerWidth, cardWidth, GRID_GAP_PX),
     [containerWidth, cardWidth],
+  );
+
+  const cellWidth = useMemo(
+    () => computeGridCellWidth(containerWidth, columnCount, GRID_GAP_PX),
+    [containerWidth, columnCount],
   );
 
   const rows = useMemo(
@@ -225,9 +241,13 @@ export function GridView({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollElementRef?.current ?? document.documentElement,
-    estimateSize: (index) => estimateVirtualGridRowHeight(rows[index], cardWidth, GRID_GAP_PX),
+    estimateSize: (index) => estimateVirtualGridRowHeight(rows[index], cellWidth, GRID_GAP_PX),
     overscan: 3,
-    scrollMargin: parentRef.current?.offsetTop ?? 0,
+    scrollMargin,
+    measureElement:
+      typeof window !== 'undefined' && window.ResizeObserver
+        ? (element) => element.getBoundingClientRect().height
+        : undefined,
   });
 
   if (cards.length === 0) {
@@ -276,6 +296,7 @@ export function GridView({
               key={row.id}
               data-index={virtualRow.index}
               data-testid="virtual-grid-row"
+              ref={virtualizer.measureElement}
               style={{
                 position: 'absolute',
                 top: 0,

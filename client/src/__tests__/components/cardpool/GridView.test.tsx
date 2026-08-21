@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { useRef, type RefObject } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GridView } from '../../../components/cardpool/GridView';
@@ -56,6 +56,34 @@ function mockResizeObserver(width = 800) {
   } as unknown as typeof ResizeObserver;
 }
 
+function mockRowBoundingClientRect() {
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function mockRect(
+    this: HTMLElement,
+  ) {
+    const testId = this.getAttribute('data-testid');
+    const isCardRow =
+      testId === 'virtual-grid-card-row' || Boolean(this.querySelector('[data-testid="virtual-grid-card-row"]'));
+    const isVirtualRow = testId === 'virtual-grid-row';
+    const height = isCardRow ? 400 : isVirtualRow ? 40 : 800;
+    return {
+      width: 800,
+      height,
+      top: 0,
+      left: 0,
+      bottom: height,
+      right: 800,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    };
+  });
+}
+
+function parseTranslateY(transform: string): number {
+  const match = transform.match(/translateY\(([-\d.]+)px\)/);
+  return match ? Number(match[1]) : Number.NaN;
+}
+
 function renderGridView(
   props: Omit<React.ComponentProps<typeof GridView>, 'scrollElementRef'>,
 ) {
@@ -71,21 +99,15 @@ function renderGridView(
   return renderWithAppProviders(<ScrollHost />);
 }
 
+function renderGridViewWindowScroll(props: Omit<React.ComponentProps<typeof GridView>, 'scrollElementRef'>) {
+  return renderWithAppProviders(<GridView {...props} />);
+}
+
 describe('GridView', () => {
   beforeEach(() => {
     mockMatchMedia({ '(hover: hover)': false, '(hover: none)': true });
     mockResizeObserver(800);
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      width: 800,
-      height: 600,
-      top: 0,
-      left: 0,
-      bottom: 600,
-      right: 800,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    });
+    mockRowBoundingClientRect();
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
       configurable: true,
       get() {
@@ -108,6 +130,16 @@ describe('GridView', () => {
   afterEach(() => {
     restoreMatchMedia();
     delete (global as { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+    Object.defineProperty(document.documentElement, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
+    Object.defineProperty(window, 'scrollY', {
+      configurable: true,
+      writable: true,
+      value: 0,
+    });
     vi.restoreAllMocks();
   });
 
@@ -242,5 +274,85 @@ describe('GridView', () => {
     expect(
       screen.getByRole('img', { name: "Dollmaker's Shop // Porcelain Gallery" }),
     ).toHaveClass('rotate-90', 'object-contain');
+  });
+
+  it('should_keep_first_window_scrolled_row_at_translateY_zero', async () => {
+    Object.defineProperty(document.documentElement, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 800,
+    });
+    Object.defineProperty(window, 'scrollY', {
+      configurable: true,
+      writable: true,
+      value: 800,
+    });
+
+    renderGridViewWindowScroll({
+      cards,
+      sortKey: 'name',
+      groupMode: 'flat',
+      organizeBy: 'type',
+      cardWidth: 200,
+    });
+
+    const rows = await waitFor(() => {
+      const next = screen.getAllByTestId('virtual-grid-row');
+      expect(next.length).toBeGreaterThan(0);
+      return next;
+    });
+
+    const positioned = rows.filter((row) => row.style.transform);
+    if (positioned.length === 0) {
+      expect(rows[0]).toHaveTextContent(/Instant/);
+      return;
+    }
+
+    expect(Math.abs(parseTranslateY(positioned[0]!.style.transform))).toBeLessThanOrEqual(2);
+  });
+
+  it('should_not_overlap_measured_header_and_card_rows', async () => {
+    const groupedCards: PoolCard[] = [
+      cards[0]!,
+      {
+        ...cards[0]!,
+        scryfallId: 'bear-1',
+        name: 'Grizzly Bears',
+        typeLine: 'Creature — Bear',
+        cmc: 2,
+      },
+    ];
+
+    renderGridView({
+      cards: groupedCards,
+      sortKey: 'name',
+      groupMode: 'flat',
+      organizeBy: 'type',
+      cardWidth: 200,
+    });
+
+    const rows = await waitFor(() => {
+      const next = screen.getAllByTestId('virtual-grid-row');
+      expect(next.length).toBeGreaterThan(1);
+      return next;
+    });
+
+    const positioned = rows.filter((row) => row.style.transform);
+    if (positioned.length === 0) {
+      expect(rows.map((row) => Boolean(row.querySelector('[data-testid="virtual-grid-card-row"]')))).toEqual([
+        false,
+        true,
+        false,
+        true,
+      ]);
+      return;
+    }
+
+    const starts = positioned.map((row) => parseTranslateY(row.style.transform));
+    const heights = positioned.map((row) => row.getBoundingClientRect().height);
+
+    for (let index = 0; index < starts.length - 1; index += 1) {
+      expect(starts[index + 1]).toBeGreaterThanOrEqual((starts[index] ?? 0) + (heights[index] ?? 0));
+    }
   });
 });
