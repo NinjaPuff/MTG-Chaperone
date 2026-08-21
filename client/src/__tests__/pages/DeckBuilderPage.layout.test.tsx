@@ -48,6 +48,7 @@ function configureApi(options?: {
   deckStatus?: 'draft' | 'submitted' | 'locked';
   deckCount?: number;
   extraDraftDeck?: boolean;
+  minDeckSize?: number;
   deckEntries?: Array<{
     cachedCardId: string;
     quantity: number;
@@ -66,6 +67,7 @@ function configureApi(options?: {
   const deckCount = options?.deckCount ?? 1;
   const registeredCount = options?.registeredCount ?? (deckStatus === 'draft' ? 0 : 1);
   const deckEntries = options?.deckEntries ?? [];
+  const minDeckSize = options?.minDeckSize ?? 40;
 
   mocks.authApiRequest.mockImplementation(async (path: string, init?: { method?: string }) => {
     if (path === '/api/events/e1/my-decklists') {
@@ -97,7 +99,7 @@ function configureApi(options?: {
           eventConfig: {
             format: 'swiss',
             deckCount,
-            minDeckSize: 40,
+            minDeckSize,
             sideboardRule: 'entire_pool',
             deckLockingMode: 'free_modification',
           },
@@ -341,7 +343,7 @@ describe('DeckBuilderPage layout', () => {
     expect(screen.getByTestId('deck-delete-button')).toBeDisabled();
   });
 
-  it('shows 60-card target for extra prep decks in a 40-card event', async () => {
+  it('shows event min as extra prep deck target in a 40-card event', async () => {
     configureApi({ extraDraftDeck: true, deckCount: 1, deckStatus: 'draft', registeredCount: 0 });
     renderPage();
 
@@ -355,8 +357,28 @@ describe('DeckBuilderPage layout', () => {
       expect(document.querySelector('aside')).toBeTruthy();
     });
     const sidebar = document.querySelector('aside')!;
-    expect(within(sidebar).getByText('0/60')).toBeInTheDocument();
+    expect(within(sidebar).getByText('0/40')).toBeInTheDocument();
     expect(within(sidebar).getByTestId('deck-sidebar-prep-size-toggle')).toBeInTheDocument();
+  });
+
+  it('shows 60-card target for extra prep decks in a 60-card event', async () => {
+    configureApi({ extraDraftDeck: true, deckCount: 1, deckStatus: 'draft', registeredCount: 0, minDeckSize: 60 });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-tab-list')).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId('deck-tab-list'), { target: { value: 'deck-2' } });
+
+    await waitFor(() => {
+      expect(document.querySelector('aside')).toBeTruthy();
+    });
+    const sidebar = document.querySelector('aside')!;
+    expect(within(sidebar).getByText('0/60')).toBeInTheDocument();
+
+    fireEvent.click(within(sidebar).getByRole('button', { name: '40' }));
+    expect(within(sidebar).getByText('0/40')).toBeInTheDocument();
   });
 
   it('should_use_event_min_for_required_slot_when_extra_deck_exists', async () => {

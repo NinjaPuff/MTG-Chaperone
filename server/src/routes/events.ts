@@ -12,6 +12,7 @@ import { getEventResults } from '../services/eventRankingService.js';
 import { listMyDecklistsForEvent, listMyDecklistsForRound } from '../services/decklistService.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 import { getBracketState } from '../services/bracketService.js';
+import { minDeckSizeSchema } from '../lib/minDeckSizeSchema.js';
 
 const router = Router();
 const EVENT_FORMATS = [
@@ -28,7 +29,7 @@ const eventConfigSchema = z
     format: z.enum(EVENT_FORMATS).optional(),
     bestOfN: z.number().int().positive().optional(),
     deckCount: z.number().int().positive().optional(),
-    minDeckSize: z.number().int().positive().optional(),
+    minDeckSize: minDeckSizeSchema.optional(),
     sideboardRule: z.enum(['entire_pool', 'fixed_15', 'none']).optional(),
     schedulingType: z.enum(['fixed_deadlines', 'open_window', 'weekly_auto']).optional(),
     deckLockingMode: z.enum(['required_before_round', 'free_modification', 'admin_locked']).optional(),

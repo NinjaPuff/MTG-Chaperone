@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   isExtraDeckSlot,
-  otherPrepSize,
   readStoredPrepSize,
   resolveBuilderSizeTarget,
   writeStoredPrepSize,
@@ -10,26 +9,6 @@ import {
 describe('prepDeckSize helpers', () => {
   beforeEach(() => {
     window.localStorage.clear();
-  });
-
-  it('returns opposite prep size for 40-card events', () => {
-    expect(otherPrepSize(40)).toBe(60);
-  });
-
-  it('returns opposite prep size for 60-card events', () => {
-    expect(otherPrepSize(60)).toBe(40);
-  });
-
-  it('should_default_extra_deck_target_to_60_when_event_min_is_45', () => {
-    expect(otherPrepSize(45)).toBe(60);
-    expect(
-      resolveBuilderSizeTarget({
-        orderIndex: 1,
-        requiredDeckCount: 1,
-        eventMinDeckSize: 45,
-        stored: null,
-      }),
-    ).toBe(60);
   });
 
   it('identifies extra deck slots', () => {
@@ -43,10 +22,19 @@ describe('prepDeckSize helpers', () => {
 
   it('uses stored prep target when available for extra slots', () => {
     expect(resolveBuilderSizeTarget({ orderIndex: 1, requiredDeckCount: 1, eventMinDeckSize: 40, stored: 40 })).toBe(40);
+    expect(resolveBuilderSizeTarget({ orderIndex: 1, requiredDeckCount: 1, eventMinDeckSize: 40, stored: 60 })).toBe(60);
   });
 
-  it('falls back to opposite prep target when no stored value exists', () => {
-    expect(resolveBuilderSizeTarget({ orderIndex: 1, requiredDeckCount: 1, eventMinDeckSize: 40, stored: null })).toBe(60);
+  it('defaults extra decks to the event min when it is 40', () => {
+    expect(resolveBuilderSizeTarget({ orderIndex: 1, requiredDeckCount: 1, eventMinDeckSize: 40, stored: null })).toBe(40);
+  });
+
+  it('defaults extra decks to the event min when it is 60', () => {
+    expect(resolveBuilderSizeTarget({ orderIndex: 1, requiredDeckCount: 1, eventMinDeckSize: 60, stored: null })).toBe(60);
+  });
+
+  it('defaults extra decks to 40 when the event min is not 40 or 60', () => {
+    expect(resolveBuilderSizeTarget({ orderIndex: 1, requiredDeckCount: 1, eventMinDeckSize: 45, stored: null })).toBe(40);
   });
 
   it('round-trips stored prep sizes', () => {

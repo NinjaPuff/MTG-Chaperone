@@ -65,6 +65,7 @@ function configureApi(
   options?: {
     format?: 'swiss' | 'seeded_swiss' | 'round_robin' | 'single_elimination' | 'double_elimination' | 'custom_10_player';
     memberships?: Array<{ userId: string; user: { id: string; displayName: string } }>;
+    minDeckSize?: number;
   },
 ) {
   const memberships = options?.memberships ?? [];
@@ -79,7 +80,7 @@ function configureApi(
       format: options?.format ?? 'swiss',
       bestOfN: 3,
       deckCount: 1,
-      minDeckSize: 40,
+      minDeckSize: options?.minDeckSize ?? 40,
       sideboardRule: 'entire_pool',
       schedulingType: 'open_window',
       deckLockingMode: 'free_modification',
@@ -175,6 +176,16 @@ describe('EventDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit Settings' }));
     fireEvent.change(screen.getByLabelText('Event Name'), { target: { value: 'Week 1 Updated' } });
     fireEvent.change(screen.getByLabelText('Deck Count'), { target: { value: '2' } });
+
+    const minDeckSizeSelect = screen.getByTestId('min-deck-size-select');
+    expect(minDeckSizeSelect.tagName).toBe('SELECT');
+    expect(minDeckSizeSelect).not.toHaveAttribute('type', 'number');
+    expect(Array.from((minDeckSizeSelect as HTMLSelectElement).options).map((option) => option.value)).toEqual([
+      '40',
+      '60',
+    ]);
+    fireEvent.change(minDeckSizeSelect, { target: { value: '60' } });
+
     fireEvent.click(screen.getByRole('button', { name: 'Save Settings' }));
 
     await waitFor(() => {
@@ -182,10 +193,30 @@ describe('EventDetailPage', () => {
         method: 'PATCH',
         body: expect.objectContaining({
           name: 'Week 1 Updated',
-          config: expect.objectContaining({ deckCount: 2 }),
+          config: expect.objectContaining({ deckCount: 2, minDeckSize: 60 }),
         }),
       });
     });
+  });
+
+  it('shows a pick-40-or-60 option for historical minDeckSize', async () => {
+    mocks.role = 'admin';
+    configureApi('setup', [], { minDeckSize: 45 });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Week 1')).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Settings' }));
+
+    const minDeckSizeSelect = screen.getByTestId('min-deck-size-select') as HTMLSelectElement;
+    expect(minDeckSizeSelect.value).toBe('45');
+    expect(Array.from(minDeckSizeSelect.options).map((option) => option.text)).toEqual([
+      '45 (pick 40 or 60)',
+      '40',
+      '60',
+    ]);
   });
 
   it('shows reset event for active admin event and calls reset endpoint after confirmation', async () => {

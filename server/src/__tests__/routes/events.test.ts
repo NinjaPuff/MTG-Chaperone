@@ -266,4 +266,35 @@ describe('events routes', () => {
       }),
     );
   });
+
+  it.each([41, 45, 100])('rejects PATCH minDeckSize %s', async (minDeckSize) => {
+    const response = await request(app)
+      .patch('/api/events/event-1')
+      .send({ config: { minDeckSize } });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(response.body.error.fields['config.minDeckSize']).toBeDefined();
+    expect(mocks.updateEvent).not.toHaveBeenCalled();
+  });
+
+  it('accepts PATCH minDeckSize 60', async () => {
+    mocks.updateEvent.mockResolvedValue({ id: 'event-1', season: { id: 'season-1' } });
+
+    const response = await request(app)
+      .patch('/api/events/event-1')
+      .send({ config: { minDeckSize: 60 } });
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateEvent).toHaveBeenCalledWith('event-1', { config: { minDeckSize: 60 } });
+  });
+
+  it('allows PATCH that omits minDeckSize', async () => {
+    mocks.updateEvent.mockResolvedValue({ id: 'event-1', season: { id: 'season-1' } });
+
+    const response = await request(app).patch('/api/events/event-1').send({ name: 'Week 1 updated' });
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateEvent).toHaveBeenCalledWith('event-1', { name: 'Week 1 updated' });
+  });
 });

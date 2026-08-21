@@ -9,10 +9,6 @@ function normalizePrepDeckSize(value: unknown): PrepDeckSize | null {
   return value === 40 || value === 60 ? value : null;
 }
 
-export function otherPrepSize(eventMinDeckSize: number): PrepDeckSize {
-  return eventMinDeckSize === 60 ? 40 : 60;
-}
-
 export function isExtraDeckSlot(orderIndex: number, requiredDeckCount: number): boolean {
   return orderIndex >= Math.max(1, requiredDeckCount);
 }
@@ -55,5 +51,5 @@ export function resolveBuilderSizeTarget(args: {
     return args.eventMinDeckSize;
   }
 
-  return args.stored ?? otherPrepSize(args.eventMinDeckSize);
+  return args.stored ?? (args.eventMinDeckSize === 40 || args.eventMinDeckSize === 60 ? args.eventMinDeckSize : 40);
 }
