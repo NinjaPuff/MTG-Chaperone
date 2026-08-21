@@ -401,6 +401,10 @@ describe('DeckBuilderPage layout', () => {
     expect(mainStat).toHaveTextContent('2');
 
     fireEvent.click(within(details).getByText('Lightning Bolt'));
+    expect(mainStat).toHaveTextContent('2');
+
+    fireEvent.click(within(details).getByTestId('deck-analytics-enable-editing'));
+    fireEvent.click(within(details).getByText('Lightning Bolt'));
 
     await waitFor(() => {
       expect(mainStat).toHaveTextContent('1');
@@ -436,9 +440,46 @@ describe('DeckBuilderPage layout', () => {
     const details = await screen.findByTestId('deckbuilder-details-area');
     const mainStat = within(details).getAllByText('Main Deck')[0].parentElement!;
     expect(mainStat).toHaveTextContent('2');
+    expect(within(details).getByTestId('deck-analytics-enable-editing')).toBeDisabled();
 
     fireEvent.click(within(details).getByText('Lightning Bolt'));
 
     expect(mainStat).toHaveTextContent('2');
+  });
+
+  it('should_reset_details_editing_when_leaving_and_returning', async () => {
+    configureApi({
+      deckEntries: [
+        {
+          cachedCardId: 'card-1',
+          quantity: 2,
+          zone: 'main',
+          cachedCard: {
+            name: 'Lightning Bolt',
+            layout: null,
+            manaCost: '{R}',
+            typeLine: 'Instant',
+            cmc: 1,
+            colorIdentity: ['R'],
+          },
+        },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Details' })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+
+    const details = await screen.findByTestId('deckbuilder-details-area');
+    fireEvent.click(within(details).getByTestId('deck-analytics-enable-editing'));
+    expect(within(details).getByTestId('deck-analytics-enable-editing')).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Build' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+
+    const returned = await screen.findByTestId('deckbuilder-details-area');
+    expect(within(returned).getByTestId('deck-analytics-enable-editing')).not.toBeChecked();
   });
 });

@@ -198,6 +198,10 @@ describe('DeckAnalyticsView', () => {
     );
 
     fireEvent.click(screen.getByText('Bear'));
+    expect(onCardClick).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('deck-analytics-enable-editing'));
+    fireEvent.click(screen.getByText('Bear'));
 
     expect(onCardClick).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -224,11 +228,21 @@ describe('DeckAnalyticsView', () => {
 
   it('should_not_call_onCardClick_when_not_editable', () => {
     const onCardClick = vi.fn();
-    renderWithAppProviders(<DeckAnalyticsView deck={makeCurveFixtureDeck()} onCardClick={onCardClick} />);
+    const onCardContextMenu = vi.fn();
+    renderWithAppProviders(
+      <DeckAnalyticsView
+        deck={makeCurveFixtureDeck()}
+        onCardClick={onCardClick}
+        onCardContextMenu={onCardContextMenu}
+      />,
+    );
 
+    expect(screen.getByTestId('deck-analytics-enable-editing')).toBeDisabled();
     fireEvent.click(screen.getByText('Lightning Bolt'));
+    fireEvent.contextMenu(screen.getByText('Lightning Bolt'));
 
     expect(onCardClick).not.toHaveBeenCalled();
+    expect(onCardContextMenu).not.toHaveBeenCalled();
   });
 
   it('should_call_onCardContextMenu_when_editable_and_card_contextmenu', () => {
@@ -238,6 +252,10 @@ describe('DeckAnalyticsView', () => {
     );
 
     fireEvent.contextMenu(screen.getByText('Lightning Bolt'));
+    expect(onCardContextMenu).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('deck-analytics-enable-editing'));
+    fireEvent.contextMenu(screen.getByText('Lightning Bolt'));
 
     expect(onCardContextMenu).toHaveBeenCalledWith(
       expect.anything(),
@@ -246,6 +264,25 @@ describe('DeckAnalyticsView', () => {
         zone: 'main',
       }),
       'deck-curve',
+    );
+  });
+
+  it('should_remove_stack_card_when_editing_enabled', () => {
+    const onCardClick = vi.fn();
+    renderWithAppProviders(
+      <DeckAnalyticsView deck={makeSplitDeck()} editable onCardClick={onCardClick} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stacks' }));
+    fireEvent.click(screen.getByTestId('deck-analytics-enable-editing'));
+    fireEvent.click(screen.getAllByText('Bear')[0]!);
+
+    expect(onCardClick).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cachedCardId: 'bear',
+        zone: 'main',
+      }),
+      'deck-split',
     );
   });
 

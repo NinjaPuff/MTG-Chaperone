@@ -43,6 +43,7 @@ function toPoolCards(deck: BuilderDeck, poolImageByCardId?: Map<string, string>)
 export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, onCardClick, onCardContextMenu }: DeckAnalyticsViewProps) {
   const [viewMode, setViewMode] = useState<'curve' | 'stacks'>('curve');
   const [splitCreatureRows, setSplitCreatureRows] = useState(true);
+  const [detailsEditing, setDetailsEditing] = useState(false);
   const { cardImageWidth } = useCardImageWidth();
   const cards = useMemo(() => toPoolCards(deck, poolImageByCardId), [deck, poolImageByCardId]);
   const mainCards = cards.filter((card) => card.phaseLabel === 'Main Deck');
@@ -93,6 +94,8 @@ export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, o
     const zone = card.phaseLabel === 'Main Deck' ? 'main' : 'sideboard';
     return deck.cards.find((entry) => entry.cachedCardId === card.scryfallId && entry.zone === zone) ?? null;
   };
+
+  const canMutate = Boolean(editable && detailsEditing);
 
   return (
     <div className="space-y-4 rounded-lg border border-primary/30 bg-muted/20 p-4 ring-1 ring-primary/10">
@@ -168,6 +171,17 @@ export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, o
             Combined curve
           </label>
         ) : null}
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            data-testid="deck-analytics-enable-editing"
+            className="h-3.5 w-3.5 rounded border-border bg-background accent-primary"
+            checked={editable && detailsEditing}
+            disabled={!editable}
+            onChange={(event) => setDetailsEditing(event.target.checked)}
+          />
+          Enable editing
+        </label>
       </div>
       <p className="text-xs text-muted-foreground" data-testid="deck-analytics-build-hint">
         Add cards in Build.
@@ -182,7 +196,7 @@ export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, o
             organizeBy={splitCreatureRows ? 'creature_split' : 'cmc'}
             cardWidth={cardImageWidth}
             onCardClick={
-              editable && onCardClick
+              canMutate && onCardClick
                 ? (card) => {
                     const deckCard = findDeckCard(card);
                     if (deckCard) {
@@ -192,7 +206,7 @@ export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, o
                 : undefined
             }
             onCardContextMenu={
-              editable && onCardContextMenu
+              canMutate && onCardContextMenu
                 ? (event, card) => {
                     const deckCard = findDeckCard(card);
                     if (deckCard) {
@@ -216,7 +230,7 @@ export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, o
             organizeBy="type"
             cardWidth={cardImageWidth}
             onCardClick={
-              editable && onCardClick
+              canMutate && onCardClick
                 ? (card) => {
                     const deckCard = findDeckCard(card);
                     if (deckCard) {
@@ -226,7 +240,7 @@ export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, o
                 : undefined
             }
             onCardContextMenu={
-              editable && onCardContextMenu
+              canMutate && onCardContextMenu
                 ? (event, card) => {
                     const deckCard = findDeckCard(card);
                     if (deckCard) {
