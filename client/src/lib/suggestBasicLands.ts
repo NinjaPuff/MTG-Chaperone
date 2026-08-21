@@ -11,7 +11,6 @@ export type BasicLandSuggestion = {
   Swamp: number;
   Mountain: number;
   Forest: number;
-  Wastes: number;
 };
 
 type ColorCode = 'W' | 'U' | 'B' | 'R' | 'G';
@@ -55,7 +54,6 @@ function emptySuggestion(): BasicLandSuggestion {
     Swamp: 0,
     Mountain: 0,
     Forest: 0,
-    Wastes: 0,
   };
 }
 

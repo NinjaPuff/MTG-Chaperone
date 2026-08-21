@@ -15,7 +15,7 @@ describe('suggestBasicLands', () => {
     expect(suggestion.Swamp).toBe(0);
     expect(suggestion.Mountain).toBe(0);
     expect(suggestion.Forest).toBe(0);
-    expect(suggestion.Wastes).toBe(0);
+    expect(suggestion).not.toHaveProperty('Wastes');
   });
 
   it('accounts for nonbasic lands when distributing basics', () => {
@@ -28,7 +28,8 @@ describe('suggestBasicLands', () => {
       40,
     );
 
-    expect(suggestion.Plains + suggestion.Island + suggestion.Swamp + suggestion.Mountain + suggestion.Forest + suggestion.Wastes).toBe(16);
+    expect(suggestion.Plains + suggestion.Island + suggestion.Swamp + suggestion.Mountain + suggestion.Forest).toBe(16);
+    expect(suggestion).not.toHaveProperty('Wastes');
     expect(suggestion.Plains).toBeGreaterThan(0);
     expect(suggestion.Island).toBeGreaterThan(0);
   });
@@ -41,11 +42,11 @@ describe('suggestBasicLands', () => {
       40,
     );
 
-    expect(suggestion.Wastes).toBe(0);
+    expect(suggestion).not.toHaveProperty('Wastes');
     expect(suggestion.Plains + suggestion.Island + suggestion.Swamp + suggestion.Mountain + suggestion.Forest).toBe(0);
   });
 
-  it('returns zero wastes when nonbasic lands cover all color demand', () => {
+  it('returns no basics when nonbasic lands cover all color demand', () => {
     const suggestion = suggestBasicLands(
       [
         { quantity: 10, manaCost: '{W}', typeLine: 'Creature - Human', colorIdentity: ['W'] },
@@ -55,7 +56,7 @@ describe('suggestBasicLands', () => {
       40,
     );
 
-    expect(suggestion.Wastes).toBe(0);
+    expect(suggestion).not.toHaveProperty('Wastes');
     expect(suggestion.Plains + suggestion.Island + suggestion.Swamp + suggestion.Mountain + suggestion.Forest).toBe(0);
   });
 });

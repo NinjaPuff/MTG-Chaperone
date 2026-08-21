@@ -17,7 +17,6 @@ function makeDeck(id: string, name: string): BuilderDeck {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }

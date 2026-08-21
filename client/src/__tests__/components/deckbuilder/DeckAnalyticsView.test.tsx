@@ -53,7 +53,6 @@ function makeCurveFixtureDeck(): BuilderDeck {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }
@@ -80,7 +79,6 @@ function makeDeck(): BuilderDeck {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }
@@ -125,7 +123,6 @@ function makeSplitDeck(): BuilderDeck {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }

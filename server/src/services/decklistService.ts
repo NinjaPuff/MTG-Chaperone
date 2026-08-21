@@ -3,6 +3,8 @@ import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { canViewDecklist, isPublicDecklistStatus } from '../lib/visibilityRules.js';
 
+export const BASIC_LAND_CATALOG_NAMES = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] as const;
+
 type ConstraintType = 'no_repeat_previous' | 'minimum_changes' | 'cumulative_ban';
 
 type PriorRoundEntry = {
@@ -324,14 +326,7 @@ async function getPoolCardsForUserSeason(userId: string, seasonId: string) {
 
   const basicCards = await prisma.cachedCard.findMany({
     where: {
-      OR: [
-        { name: 'Plains' },
-        { name: 'Island' },
-        { name: 'Swamp' },
-        { name: 'Mountain' },
-        { name: 'Forest' },
-        { name: 'Wastes' },
-      ],
+      OR: BASIC_LAND_CATALOG_NAMES.map((name) => ({ name })),
     },
     select: {
       scryfallId: true,

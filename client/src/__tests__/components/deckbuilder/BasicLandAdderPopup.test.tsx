@@ -11,7 +11,6 @@ describe('BasicLandAdderPopup', () => {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
     sideboardCounts: {
       Plains: 0,
@@ -19,7 +18,6 @@ describe('BasicLandAdderPopup', () => {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
     minDeckSize: 40,
     mainDeckCards: [],
@@ -47,6 +45,7 @@ describe('BasicLandAdderPopup', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Suggest Lands' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Main Deck' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByText('Wastes')).not.toBeInTheDocument();
   });
 
   it('hides suggest lands on the sideboard tab', () => {
@@ -75,7 +74,6 @@ describe('BasicLandAdderPopup', () => {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     });
   });
 
@@ -88,18 +86,18 @@ describe('BasicLandAdderPopup', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('prompts before replacing when only wastes are present', async () => {
+  it('prompts before replacing when forests are already present', async () => {
     const onMainChange = vi.fn();
     renderWithAppProviders(
       <BasicLandAdderPopup
         {...defaultProps}
         onMainChange={onMainChange}
-        mainCounts={{ ...defaultProps.mainCounts, Wastes: 8 }}
-        mainDeckCards={[{ quantity: 23, manaCost: '{3}', typeLine: 'Artifact Creature - Golem', colorIdentity: [] }]}
+        mainCounts={{ ...defaultProps.mainCounts, Forest: 8 }}
+        mainDeckCards={[{ quantity: 23, manaCost: '{G}', typeLine: 'Creature - Elf', colorIdentity: ['G'] }]}
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Basic Lands' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Basic Lands (8)' }));
     fireEvent.click(screen.getByRole('button', { name: 'Suggest Lands' }));
 
     expect(await screen.findByText('Replace current basic lands with suggested values?')).toBeInTheDocument();
@@ -111,9 +109,9 @@ describe('BasicLandAdderPopup', () => {
         Island: 0,
         Swamp: 0,
         Mountain: 0,
-        Forest: 0,
-        Wastes: 0,
+        Forest: 17,
       });
     });
+    expect(onMainChange.mock.calls[0][0]).not.toHaveProperty('Wastes');
   });
 });

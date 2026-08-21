@@ -20,7 +20,6 @@ function makeDeck(id: string, name: string, status: BuilderDeck['status'] = 'dra
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }

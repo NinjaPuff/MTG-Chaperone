@@ -18,7 +18,6 @@ function makeDeck(cards: DeckBuilderCard[] = []): BuilderDeck {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }
@@ -236,7 +235,7 @@ describe('DeckSidebar', () => {
       expect(onBasicLandsChange).toHaveBeenCalledTimes(1);
     });
     const suggested = onBasicLandsChange.mock.calls[0][1];
-    const totalLands = suggested.Plains + suggested.Island + suggested.Swamp + suggested.Mountain + suggested.Forest + suggested.Wastes;
+    const totalLands = suggested.Plains + suggested.Island + suggested.Swamp + suggested.Mountain + suggested.Forest;
     expect(totalLands).toBe(14);
     expect(suggested.Forest).toBe(14);
   });

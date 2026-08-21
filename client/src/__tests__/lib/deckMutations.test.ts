@@ -15,7 +15,6 @@ function makeDeck(id: string, cards: DeckBuilderCard[] = []): BuilderDeck {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }
