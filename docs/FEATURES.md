@@ -243,12 +243,12 @@ Three pairing systems: Swiss, Seeded Swiss, and Round Robin. Round Robin can spa
 
 ### Acceptance Criteria
 
-- [ ] Swiss: pair players with the same or similar record, avoiding repeat pairings when possible
-- [ ] Seeded Swiss: round 1 seeded by configurable source (previous_season, previous_event, manual); subsequent rounds use Swiss
+- [x] Swiss: pair players with the same or similar record, avoiding repeat pairings when possible
+- [x] Seeded Swiss: round 1 seeded by configurable source (previous_season, previous_event, manual); subsequent rounds use Swiss
 - [ ] Round Robin: generate all-play-all schedule at season start, distribute across multiple events (3-4 rounds each)
 - [ ] Round Robin schedule visibility is configurable per league
-- [ ] Admin can regenerate pairings for a round that hasn't started
-- [ ] Odd number of players: assign a bye to the lowest-ranked player without a prior bye
+- [x] Admin can regenerate pairings for a round that hasn't started
+- [x] Odd number of players: assign a bye to the lowest-ranked player without a prior bye
 
 ---
 

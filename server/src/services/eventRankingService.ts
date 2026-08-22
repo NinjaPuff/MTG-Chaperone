@@ -131,6 +131,9 @@ export async function getEventResults(eventId: string) {
       if (match.isBye || !p2) {
         p1.matchWins += 1;
         p1.matchPoints += 3;
+        if (p1GameWins === 0) {
+          p1.gameWins += 2;
+        }
         continue;
       }
 

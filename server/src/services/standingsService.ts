@@ -84,6 +84,10 @@ export function computeStandings(
     if (match.isBye || !p2) {
       p1.matchWins += 1;
       p1.points += pointConfig.matchWinPoints * pointMultiplier;
+      if (p1GamesWon === 0) {
+        // MTR Appendix C: a bye is a 2-0 match win (6 game points).
+        p1.gameWins += 2;
+      }
       continue;
     }
 

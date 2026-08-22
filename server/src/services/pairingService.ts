@@ -1,9 +1,10 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
+import { computeStandings } from './standingsService.js';
+import { buildPairKey, pairCompanionSwiss } from './companionSwissPairing.js';
 
 type Pair = { player1Id: string; player2Id: string | null; isBye: boolean };
 type PlayerRankStat = { userId: string; matchWins: number; gameWins: number; gameLosses: number };
-type RankedPlayer = { userId: string; points: number };
 
 export function pairSequential(playerIds: string[]): Pair[] {
   const pairs: Pair[] = [];
@@ -40,124 +41,6 @@ export function pairTopVsBottom(playerIds: string[]): Pair[] {
       player2Id: null,
       isBye: true,
     });
-  }
-
-  return pairs;
-}
-
-function buildPairKey(playerA: string, playerB: string) {
-  return playerA < playerB ? `${playerA}:${playerB}` : `${playerB}:${playerA}`;
-}
-
-function pairFromPool(
-  pool: RankedPlayer[],
-  playedPairs: Set<string>,
-  allowRematches: boolean,
-) {
-  if (pool.length < 2) {
-    return null;
-  }
-
-  const player1 = pool[0];
-  let candidateIndex = -1;
-  for (let index = 1; index < pool.length; index += 1) {
-    if (!playedPairs.has(buildPairKey(player1.userId, pool[index].userId))) {
-      candidateIndex = index;
-      break;
-    }
-  }
-
-  if (candidateIndex === -1) {
-    if (!allowRematches) {
-      return null;
-    }
-    candidateIndex = 1;
-  }
-
-  const player2 = pool[candidateIndex];
-  pool.splice(candidateIndex, 1);
-  pool.splice(0, 1);
-
-  return {
-    player1Id: player1.userId,
-    player2Id: player2.userId,
-    isBye: false as const,
-  };
-}
-
-export function pairSwissScoreGroups(
-  players: RankedPlayer[],
-  playedPairs: Set<string>,
-  priorByeIds: Set<string>,
-): Pair[] {
-  if (players.length === 0) {
-    return [];
-  }
-
-  const pairs: Pair[] = [];
-  const ordered = [...players];
-  let byePair: Pair | null = null;
-
-  if (ordered.length % 2 === 1) {
-    let byeIndex = ordered.length - 1;
-    for (let index = ordered.length - 1; index >= 0; index -= 1) {
-      if (!priorByeIds.has(ordered[index].userId)) {
-        byeIndex = index;
-        break;
-      }
-    }
-    const [byePlayer] = ordered.splice(byeIndex, 1);
-    byePair = { player1Id: byePlayer.userId, player2Id: null, isBye: true };
-  }
-
-  const groupsByPoints = new Map<number, RankedPlayer[]>();
-  for (const player of ordered) {
-    const bucket = groupsByPoints.get(player.points) ?? [];
-    bucket.push(player);
-    groupsByPoints.set(player.points, bucket);
-  }
-
-  const pointGroups = Array.from(groupsByPoints.values()).map((group) => [...group]);
-  let carryDown: RankedPlayer[] = [];
-
-  for (let groupIndex = 0; groupIndex < pointGroups.length; groupIndex += 1) {
-    const group = [...carryDown, ...pointGroups[groupIndex]];
-    carryDown = [];
-
-    while (group.length > 1) {
-      const pair = pairFromPool(group, playedPairs, false);
-      if (pair) {
-        pairs.push(pair);
-        continue;
-      }
-
-      if (groupIndex < pointGroups.length - 1) {
-        carryDown.push(group.shift()!);
-        continue;
-      }
-
-      const rematchPair = pairFromPool(group, playedPairs, true);
-      if (!rematchPair) {
-        break;
-      }
-      pairs.push(rematchPair);
-    }
-
-    if (group.length === 1) {
-      carryDown.push(group.shift()!);
-    }
-  }
-
-  while (carryDown.length > 1) {
-    const pair = pairFromPool(carryDown, playedPairs, true);
-    if (!pair) {
-      break;
-    }
-    pairs.push(pair);
-  }
-
-  if (byePair) {
-    pairs.push(byePair);
   }
 
   return pairs;
@@ -262,6 +145,9 @@ export function rankPlayersByMatchResults(
 
     if (match.isBye || !p2) {
       p1.matchWins += 1;
+      if (p1GamesWon === 0) {
+        p1.gameWins += 2;
+      }
       continue;
     }
 
@@ -434,13 +320,26 @@ async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string
   return resolveSeededPlayerOrder(eventId);
 }
 
-export async function generateSwissPairings(roundId: string) {
+const SCORING_MATCH_STATUSES = new Set(['reported', 'confirmed', 'resolved']);
+
+export async function generateSwissPairings(roundId: string, options?: { random?: () => number }) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     include: {
       event: {
         include: {
-          season: true,
+          season: {
+            include: {
+              pointConfig: true,
+              league: {
+                include: {
+                  memberships: {
+                    select: { userId: true },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -449,38 +348,30 @@ export async function generateSwissPairings(roundId: string) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
   }
 
-  const standings = await prisma.standing.findMany({
-    where: { seasonId: round.event.seasonId },
-    orderBy: [{ points: 'desc' }, { omwPercent: 'desc' }, { gwPercent: 'desc' }],
-  });
-
-  let orderedPlayers = standings.map((standing) => standing.userId);
-  if (orderedPlayers.length === 0) {
-    const { playerIds } = await getSeasonPlayerIdsForEvent(round.eventId);
-    orderedPlayers = await filterDroppedPlayers(round.event.seasonId, round.eventId, playerIds);
-    return pairSequential(orderedPlayers);
-  }
-
-  orderedPlayers = await filterDroppedPlayers(round.event.seasonId, round.eventId, orderedPlayers);
-  if (orderedPlayers.length === 0) {
+  const memberIds = round.event.season.league.memberships.map((membership) => membership.userId);
+  const playerIds = await filterDroppedPlayers(round.event.seasonId, round.eventId, memberIds);
+  if (playerIds.length === 0) {
     return [];
   }
 
   const eventMatches = await prisma.match.findMany({
     where: {
+      roundId: { not: roundId },
       round: { eventId: round.eventId },
-      status: { in: ['confirmed', 'resolved'] },
     },
     select: {
       isBye: true,
       player1Id: true,
       player2Id: true,
+      status: true,
+      gameResults: { select: { winnerId: true, isDraw: true } },
+      round: { select: { event: { select: { pointMultiplier: true } } } },
     },
   });
 
   const playedPairs = new Set<string>();
   const priorByeIds = new Set<string>();
-  for (const match of eventMatches ?? []) {
+  for (const match of eventMatches) {
     if (match.isBye || !match.player2Id) {
       priorByeIds.add(match.player1Id);
       continue;
@@ -488,20 +379,41 @@ export async function generateSwissPairings(roundId: string) {
     playedPairs.add(buildPairKey(match.player1Id, match.player2Id));
   }
 
-  const pointByUserId = new Map(standings.map((standing) => [standing.userId, standing.points]));
-  const rankedPlayers = orderedPlayers.map((userId) => ({
-    userId,
-    points: pointByUserId.get(userId) ?? 0,
-  }));
+  const scoringMatches = eventMatches
+    .filter((match) => SCORING_MATCH_STATUSES.has(match.status))
+    .map((match) => ({
+      isBye: match.isBye,
+      player1Id: match.player1Id,
+      player2Id: match.player2Id,
+      gameResults: match.gameResults,
+      round: { event: { pointMultiplier: match.round.event.pointMultiplier } },
+    }));
 
-  return pairSwissScoreGroups(
-    rankedPlayers,
+  const pointConfig = round.event.season.pointConfig;
+  const computed = computeStandings(round.event.seasonId, playerIds, scoringMatches, {
+    matchWinPoints: pointConfig?.matchWinPoints ?? 3,
+    matchDrawPoints: pointConfig?.matchDrawPoints ?? 1,
+    matchLossPoints: pointConfig?.matchLossPoints ?? 0,
+  });
+
+  return pairCompanionSwiss({
+    playerIds,
+    eventRecords: computed.map((row) => ({
+      userId: row.userId,
+      points: row.points,
+      omwPercent: row.omwPercent,
+      gwPercent: row.gwPercent,
+      ogwPercent: row.ogwPercent,
+    })),
     playedPairs,
     priorByeIds,
-  );
+    roundNumber: round.roundNumber,
+    totalRounds: round.event.totalRounds,
+    random: options?.random ?? Math.random,
+  });
 }
 
-export async function generateSeededSwissPairings(roundId: string) {
+export async function generateSeededSwissPairings(roundId: string, options?: { random?: () => number }) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     select: { roundNumber: true, eventId: true },
@@ -517,7 +429,7 @@ export async function generateSeededSwissPairings(roundId: string) {
     return pairTopVsBottom(activePlayerIds);
   }
 
-  return generateSwissPairings(roundId);
+  return generateSwissPairings(roundId, options);
 }
 
 export async function generateRoundRobinSchedule(seasonId: string, playerIds: string[]) {

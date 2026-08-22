@@ -73,4 +73,90 @@ describe('computeStandings', () => {
     expect(u1?.matchWins).toBe(0);
     expect(u2?.matchWins).toBe(0);
   });
+
+  it('treats a bye as a 2-0 match win for points and GW%', () => {
+    const rows = computeStandings(
+      'season-1',
+      ['u1', 'u2'],
+      [
+        {
+          isBye: true,
+          player1Id: 'u1',
+          player2Id: null,
+          gameResults: [],
+          round: { event: { pointMultiplier: 1 } },
+        },
+      ],
+      { matchWinPoints: 3, matchDrawPoints: 1, matchLossPoints: 0 },
+    );
+
+    const u1 = rows.find((row) => row.userId === 'u1');
+    const u2 = rows.find((row) => row.userId === 'u2');
+    expect(u1).toMatchObject({
+      points: 3,
+      matchWins: 1,
+      gameWins: 2,
+      gameLosses: 0,
+      gwPercent: 1,
+    });
+    expect(u1?.omwPercent).toBe(0.33);
+    expect(u2?.points).toBe(0);
+    expect(u2?.gameWins).toBe(0);
+  });
+
+  it('does not double-count a bye that already has 2-0 game results', () => {
+    const rows = computeStandings(
+      'season-1',
+      ['u1'],
+      [
+        {
+          isBye: true,
+          player1Id: 'u1',
+          player2Id: null,
+          gameResults: [
+            { winnerId: 'u1', isDraw: false },
+            { winnerId: 'u1', isDraw: false },
+          ],
+          round: { event: { pointMultiplier: 1 } },
+        },
+      ],
+      { matchWinPoints: 3, matchDrawPoints: 1, matchLossPoints: 0 },
+    );
+
+    expect(rows[0]).toMatchObject({ gameWins: 2, gameLosses: 0, gwPercent: 1, points: 3 });
+  });
+
+  it('ignores the bye round when computing the bye player OMW and includes the bye in their own MWP for opponents', () => {
+    const rows = computeStandings(
+      'season-1',
+      ['u1', 'u2'],
+      [
+        {
+          isBye: true,
+          player1Id: 'u1',
+          player2Id: null,
+          gameResults: [],
+          round: { event: { pointMultiplier: 1 } },
+        },
+        {
+          isBye: false,
+          player1Id: 'u1',
+          player2Id: 'u2',
+          gameResults: [
+            { winnerId: 'u1', isDraw: false },
+            { winnerId: 'u1', isDraw: false },
+          ],
+          round: { event: { pointMultiplier: 1 } },
+        },
+      ],
+      { matchWinPoints: 3, matchDrawPoints: 1, matchLossPoints: 0 },
+    );
+
+    const u1 = rows.find((row) => row.userId === 'u1');
+    const u2 = rows.find((row) => row.userId === 'u2');
+    expect(u1?.matchWins).toBe(2);
+    expect(u1?.gameWins).toBe(4);
+    expect(u1?.omwPercent).toBe(0.33);
+    expect(u2?.omwPercent).toBe(1);
+  });
 });
