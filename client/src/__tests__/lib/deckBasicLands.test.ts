@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyMainBasicLandsChange,
   applySideboardBasicLandsChange,
+  extractBasicCounts,
   syncDeckBasicLands,
 } from '@/lib/deckBasicLands';
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
@@ -42,7 +43,6 @@ function makeDeck(cards: DeckBuilderCard[]): BuilderDeck {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }
@@ -71,7 +71,7 @@ describe('applyMainBasicLandsChange', () => {
 
     const next = applyMainBasicLandsChange(
       deck,
-      { Plains: 4, Island: 0, Swamp: 0, Mountain: 0, Forest: 0, Wastes: 0 },
+      { Plains: 4, Island: 0, Swamp: 0, Mountain: 0, Forest: 0 },
       catalog,
     );
 
@@ -91,7 +91,7 @@ describe('applySideboardBasicLandsChange', () => {
 
     const next = applySideboardBasicLandsChange(
       deck,
-      { Plains: 0, Island: 0, Swamp: 0, Mountain: 0, Forest: 2, Wastes: 0 },
+      { Plains: 0, Island: 0, Swamp: 0, Mountain: 0, Forest: 2 },
       catalog,
     );
 
@@ -109,5 +109,39 @@ describe('syncDeckBasicLands', () => {
 
     const synced = syncDeckBasicLands(deck);
     expect(synced.basicLands.Forest).toBe(5);
+  });
+});
+
+describe('historical Wastes copies', () => {
+  it('preserves main-deck Wastes when replacing other basics', () => {
+    const deck = makeDeck([
+      makeCard({
+        cachedCardId: 'wastes-id',
+        name: 'Wastes',
+        typeLine: 'Basic Land',
+        cmc: 0,
+        zone: 'main',
+        quantity: 3,
+      }),
+      makeCard({
+        cachedCardId: 'plains-id',
+        name: 'Plains',
+        typeLine: 'Basic Land — Plains',
+        cmc: 0,
+        zone: 'main',
+        quantity: 2,
+      }),
+    ]);
+
+    expect(extractBasicCounts(deck.cards)).not.toHaveProperty('Wastes');
+
+    const next = applyMainBasicLandsChange(
+      deck,
+      { Plains: 4, Island: 0, Swamp: 0, Mountain: 0, Forest: 1 },
+      catalog,
+    );
+
+    expect(next.cards.find((card) => card.name === 'Wastes' && card.zone === 'main')?.quantity).toBe(3);
+    expect(extractBasicCounts(next.cards)).not.toHaveProperty('Wastes');
   });
 });

@@ -4,11 +4,17 @@ import { StacksView } from '@/components/cardpool/StacksView';
 import type { PoolCard } from '@/components/cardpool/types';
 import { useCardImageWidth } from '@/hooks/useCardImageWidth';
 import { getPrimaryType } from '@/lib/cardPoolSort';
-import type { BuilderDeck } from './types';
+import type { BuilderDeck, DeckBuilderCard } from './types';
+import { MiniManaCurve } from './MiniManaCurve';
+import type { MouseEvent } from 'react';
 
 type DeckAnalyticsViewProps = {
   deck: BuilderDeck;
   poolImageByCardId?: Map<string, string>;
+  editable?: boolean;
+  showBuilderChrome?: boolean;
+  onCardClick?: (card: DeckBuilderCard, deckId: string) => void;
+  onCardContextMenu?: (event: MouseEvent, card: DeckBuilderCard, deckId: string) => void;
 };
 
 function toPoolCards(deck: BuilderDeck, poolImageByCardId?: Map<string, string>): PoolCard[] {
@@ -35,9 +41,17 @@ function toPoolCards(deck: BuilderDeck, poolImageByCardId?: Map<string, string>)
   });
 }
 
-export function DeckAnalyticsView({ deck, poolImageByCardId }: DeckAnalyticsViewProps) {
+export function DeckAnalyticsView({
+  deck,
+  poolImageByCardId,
+  editable = false,
+  showBuilderChrome = true,
+  onCardClick,
+  onCardContextMenu,
+}: DeckAnalyticsViewProps) {
   const [viewMode, setViewMode] = useState<'curve' | 'stacks'>('curve');
   const [splitCreatureRows, setSplitCreatureRows] = useState(true);
+  const [detailsEditing, setDetailsEditing] = useState(false);
   const { cardImageWidth } = useCardImageWidth();
   const cards = useMemo(() => toPoolCards(deck, poolImageByCardId), [deck, poolImageByCardId]);
   const mainCards = cards.filter((card) => card.phaseLabel === 'Main Deck');
@@ -78,6 +92,18 @@ export function DeckAnalyticsView({ deck, poolImageByCardId }: DeckAnalyticsView
     }
     return [...map.entries()];
   }, [mainCards]);
+
+  const curveCards = useMemo(
+    () => mainCards.map((card) => ({ cmc: card.cmc, quantity: card.quantity, typeLine: card.typeLine })),
+    [mainCards],
+  );
+
+  const findDeckCard = (card: PoolCard): DeckBuilderCard | null => {
+    const zone = card.phaseLabel === 'Main Deck' ? 'main' : 'sideboard';
+    return deck.cards.find((entry) => entry.cachedCardId === card.scryfallId && entry.zone === zone) ?? null;
+  };
+
+  const canMutate = Boolean(editable && detailsEditing);
 
   return (
     <div className="space-y-4 rounded-lg border border-primary/30 bg-muted/20 p-4 ring-1 ring-primary/10">
@@ -153,18 +179,94 @@ export function DeckAnalyticsView({ deck, poolImageByCardId }: DeckAnalyticsView
             Combined curve
           </label>
         ) : null}
+        {showBuilderChrome ? (
+          <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              data-testid="deck-analytics-enable-editing"
+              className="h-3.5 w-3.5 rounded border-border bg-background accent-primary"
+              checked={editable && detailsEditing}
+              disabled={!editable}
+              onChange={(event) => setDetailsEditing(event.target.checked)}
+            />
+            Enable editing
+          </label>
+        ) : null}
       </div>
+      {showBuilderChrome ? (
+        <p className="text-xs text-muted-foreground" data-testid="deck-analytics-build-hint">
+          Add cards in Build.
+        </p>
+      ) : null}
 
       {viewMode === 'curve' ? (
-        <CurveView
-          cards={cards}
-          sortKey="cmc"
-          groupMode="phase"
-          organizeBy={splitCreatureRows ? 'creature_split' : 'cmc'}
-          cardWidth={cardImageWidth}
-        />
+        <>
+          <CurveView
+            cards={cards}
+            sortKey="cmc"
+            groupMode="phase"
+            organizeBy={splitCreatureRows ? 'creature_split' : 'cmc'}
+            cardWidth={cardImageWidth}
+            onCardClick={
+              canMutate && onCardClick
+                ? (card) => {
+                    const deckCard = findDeckCard(card);
+                    if (deckCard) {
+                      onCardClick(deckCard, deck.id);
+                    }
+                  }
+                : undefined
+            }
+            onCardContextMenu={
+              canMutate && onCardContextMenu
+                ? (event, card) => {
+                    const deckCard = findDeckCard(card);
+                    if (deckCard) {
+                      onCardContextMenu(event, deckCard, deck.id);
+                    }
+                  }
+                : undefined
+            }
+          />
+          <div className="rounded-md border border-border bg-card p-3" data-testid="deck-analytics-mini-curve">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mini Curve</p>
+            <MiniManaCurve cards={curveCards} />
+          </div>
+        </>
       ) : (
-        <StacksView cards={cards} sortKey="type" groupMode="phase" organizeBy="type" cardWidth={cardImageWidth} />
+        <>
+          <StacksView
+            cards={cards}
+            sortKey="type"
+            groupMode="phase"
+            organizeBy="type"
+            cardWidth={cardImageWidth}
+            onCardClick={
+              canMutate && onCardClick
+                ? (card) => {
+                    const deckCard = findDeckCard(card);
+                    if (deckCard) {
+                      onCardClick(deckCard, deck.id);
+                    }
+                  }
+                : undefined
+            }
+            onCardContextMenu={
+              canMutate && onCardContextMenu
+                ? (event, card) => {
+                    const deckCard = findDeckCard(card);
+                    if (deckCard) {
+                      onCardContextMenu(event, deckCard, deck.id);
+                    }
+                  }
+                : undefined
+            }
+          />
+          <div className="rounded-md border border-border bg-card p-3" data-testid="deck-analytics-mini-curve">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Mini Curve</p>
+            <MiniManaCurve cards={curveCards} />
+          </div>
+        </>
       )}
     </div>
   );

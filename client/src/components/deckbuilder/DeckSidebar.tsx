@@ -6,6 +6,7 @@ import { MiniManaCurve } from './MiniManaCurve';
 import type { BuilderDeck, DeckBuilderCard } from './types';
 import { extractSideboardBasicCounts } from '@/lib/deckBasicLands';
 import type { BasicLandSuggestion, SuggestBasicLandCard } from '@/lib/suggestBasicLands';
+import type { PrepDeckSize } from '@/lib/prepDeckSize';
 
 type DeckSidebarProps = {
   decks: BuilderDeck[];
@@ -22,6 +23,10 @@ type DeckSidebarProps = {
   onSideboardDrop?: (event: DragEvent<HTMLDivElement>, deckId: string) => void;
   poolImageByCardId?: Map<string, string>;
   saveBlockedCardIdsByDeckId?: Record<string, string[]>;
+  prepSizeToggle?: {
+    value: PrepDeckSize;
+    onChange: (size: PrepDeckSize) => void;
+  };
 };
 
 function toListItems(
@@ -71,6 +76,7 @@ export function DeckSidebar({
   onSideboardDrop,
   poolImageByCardId,
   saveBlockedCardIdsByDeckId = {},
+  prepSizeToggle,
 }: DeckSidebarProps) {
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? decks[0];
   const [isEditingName, setIsEditingName] = useState(false);
@@ -176,9 +182,28 @@ export function DeckSidebar({
               </>
             )}
           </div>
-          <span className="shrink-0 rounded bg-primary/15 px-2 py-1 text-xs font-medium text-primary">
-            {mainCount}/{minDeckSize}
-          </span>
+          <div className="shrink-0 text-right">
+            <span className="rounded bg-primary/15 px-2 py-1 text-xs font-medium text-primary">
+              {mainCount}/{minDeckSize}
+            </span>
+            {prepSizeToggle ? (
+              <div className="mt-1 flex justify-end gap-1" data-testid="deck-sidebar-prep-size-toggle">
+                {[40, 60].map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                      prepSizeToggle.value === size ? 'border-primary bg-primary/10 text-primary' : 'border-border'
+                    }`}
+                    onClick={() => prepSizeToggle.onChange(size as PrepDeckSize)}
+                    disabled={disabled}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 

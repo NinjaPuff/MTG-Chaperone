@@ -1,4 +1,4 @@
-import { getPrimaryType } from '@/lib/cardPoolSort';
+import { getPrimaryType, spellCardsForCurve } from '@/lib/cardPoolSort';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export type CurveCard = {
@@ -112,7 +112,7 @@ type MiniManaCurveProps = {
 };
 
 export function MiniManaCurve({ cards, className, compact = false }: MiniManaCurveProps) {
-  const buckets = buildSplitBuckets(cards);
+  const buckets = buildSplitBuckets(spellCardsForCurve(cards));
   const maxValue = Math.max(1, ...buckets.map((bucket) => bucket.total));
 
   return (

@@ -232,6 +232,117 @@ describe('scryfallService mana-cost normalization', () => {
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(upsert.mock.calls[0][0].update.manaCost).toBe('{2}{G}');
   });
+
+  it('refreshes reversible nonland cards with zero cached cmc during bulk name lookup', async () => {
+    const fetchMock = createFetchMock([
+      {
+        ok: true,
+        status: 200,
+        body: {
+          id: 'clarion-id',
+          name: 'Clarion Conqueror // Clarion Conqueror',
+          layout: 'reversible_card',
+          type_line: 'Creature — Dragon',
+          mana_cost: null,
+          cmc: undefined,
+          rarity: 'rare',
+          set: 'tdm',
+          card_faces: [
+            { name: 'Clarion Conqueror', mana_cost: '{2}{W}', type_line: 'Creature — Dragon', cmc: 3 },
+            { name: 'Clarion Conqueror', mana_cost: '{2}{W}', type_line: 'Creature — Dragon', cmc: 3 },
+          ],
+        },
+      },
+    ]);
+
+    const findMany = vi
+      .fn(async () => [])
+      .mockResolvedValueOnce([
+        {
+          scryfallId: 'clarion-id',
+          name: 'Clarion Conqueror // Clarion Conqueror',
+          layout: 'reversible_card',
+          typeLine: 'Creature — Dragon',
+          manaCost: '{2}{W}',
+          cmc: 0,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          scryfallId: 'clarion-id',
+          name: 'Clarion Conqueror // Clarion Conqueror',
+          layout: 'reversible_card',
+          typeLine: 'Creature — Dragon',
+          manaCost: '{2}{W}',
+          cmc: 3,
+        },
+      ]);
+
+    const upsert = vi.fn(async (args: any) => ({ scryfallId: args.where.scryfallId, cmc: args.update.cmc }));
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: async () => {},
+      prisma: {
+        cachedCard: {
+          upsert,
+          findMany,
+          findUnique: vi.fn(async () => null),
+        },
+      } as any,
+    });
+
+    await service.bulkLookupByName(['Clarion Conqueror // Clarion Conqueror']);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toContain('/cards/clarion-id');
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0][0].update.cmc).toBe(3);
+  });
+
+  it('does not refresh reversible lands with zero cached cmc during bulk name lookup', async () => {
+    const fetchMock = createFetchMock([]);
+    const findMany = vi
+      .fn(async () => [])
+      .mockResolvedValueOnce([
+        {
+          scryfallId: 'blood-crypt-id',
+          name: 'Blood Crypt // Blood Crypt',
+          layout: 'reversible_card',
+          typeLine: 'Land — Swamp Mountain',
+          manaCost: null,
+          cmc: 0,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          scryfallId: 'blood-crypt-id',
+          name: 'Blood Crypt // Blood Crypt',
+          layout: 'reversible_card',
+          typeLine: 'Land — Swamp Mountain',
+          manaCost: null,
+          cmc: 0,
+        },
+      ]);
+    const upsert = vi.fn(async () => ({}));
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: async () => {},
+      prisma: {
+        cachedCard: {
+          upsert,
+          findMany,
+          findUnique: vi.fn(async () => null),
+        },
+      } as any,
+    });
+
+    await service.bulkLookupByName(['Blood Crypt // Blood Crypt']);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(upsert).not.toHaveBeenCalled();
+  });
 });
 
 function makeCard(id: string, set: string) {
@@ -473,8 +584,8 @@ describe('scryfallService card cache import', () => {
               set: 'ecl',
               collector_number: '349',
               card_faces: [
-                { type_line: 'Land — Swamp Mountain' },
-                { type_line: 'Land — Swamp Mountain' },
+                { type_line: 'Land — Swamp Mountain', cmc: 0 },
+                { type_line: 'Land — Swamp Mountain', cmc: 0 },
               ],
             },
           ],
@@ -502,6 +613,48 @@ describe('scryfallService card cache import', () => {
     expect(upsert).toHaveBeenCalledTimes(1);
     expect(upsert.mock.calls[0][0].create.typeLine).toBe('Land — Swamp Mountain');
     expect(upsert.mock.calls[0][0].update.typeLine).toBe('Land — Swamp Mountain');
+    expect(upsert.mock.calls[0][0].create.cmc).toBe(0);
+    expect(upsert.mock.calls[0][0].update.cmc).toBe(0);
+  });
+
+  it('importSetFromScryfall uses face cmc when reversible_card omits top-level cmc', async () => {
+    const fetchMock = createFetchMock([
+      setResolveResponse('TDM'),
+      {
+        ok: true,
+        status: 200,
+        body: {
+          data: [
+            {
+              id: 'tdm-clarion-conqueror',
+              name: 'Clarion Conqueror // Clarion Conqueror',
+              layout: 'reversible_card',
+              rarity: 'rare',
+              set: 'tdm',
+              collector_number: '377',
+              card_faces: [
+                { type_line: 'Creature — Dragon', mana_cost: '{2}{W}', cmc: 3 },
+                { type_line: 'Creature — Dragon', mana_cost: '{2}{W}', cmc: 3 },
+              ],
+            },
+          ],
+          has_more: false,
+        },
+      },
+    ]);
+    const upsert = vi.fn(async () => ({}));
+
+    const service = createScryfallService({
+      fetch: fetchMock as unknown as typeof fetch,
+      sleep: async () => {},
+      prisma: { cachedCard: { upsert } } as any,
+    });
+
+    await service.importSetFromScryfall('TDM');
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0][0].create.cmc).toBe(3);
+    expect(upsert.mock.calls[0][0].update.cmc).toBe(3);
   });
 
   it('importSetFromScryfall retries transient Scryfall failures and then succeeds', async () => {

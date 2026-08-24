@@ -24,6 +24,7 @@ import type { BracketSlotView } from '@/components/bracket/types';
 import { fetchBracketState } from '@/lib/bracketApi';
 import { isBracketFormat, supportsRegeneratePairings } from '@mtg-league/shared';
 import { type DraftPairing, validateDraftPairings } from '@/lib/pairingValidation';
+import { minDeckSizeSelectOptions } from '@/lib/minDeckSize';
 
 type ApiResponse<T> = { data: T };
 type ApiListResponse<T> = { data: T[] };
@@ -864,9 +865,8 @@ export function EventDetailPage() {
               </label>
               <label className="text-sm font-medium">
                 Min Deck Size
-                <input
-                  type="number"
-                  min={1}
+                <select
+                  data-testid="min-deck-size-select"
                   className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                   value={editSettingsForm.config.minDeckSize}
                   onChange={(changeEvent) =>
@@ -878,7 +878,13 @@ export function EventDetailPage() {
                       },
                     }))
                   }
-                />
+                >
+                  {minDeckSizeSelectOptions(editSettingsForm.config.minDeckSize).map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label className="text-sm font-medium">
                 Point Multiplier

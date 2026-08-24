@@ -8,6 +8,7 @@ process.env.NODE_ENV = 'test';
 const mocks = vi.hoisted(() => ({
   listMyDecklistsForEvent: vi.fn(),
   listMyDecklistsForRound: vi.fn(),
+  listVisibleDecklistsForEvent: vi.fn(),
   startEvent: vi.fn(),
   updateEvent: vi.fn(),
   resetEvent: vi.fn(),
@@ -53,6 +54,7 @@ vi.mock('../../services/standingsService.js', () => ({
 vi.mock('../../services/decklistService.js', () => ({
   listMyDecklistsForEvent: mocks.listMyDecklistsForEvent,
   listMyDecklistsForRound: mocks.listMyDecklistsForRound,
+  listVisibleDecklistsForEvent: mocks.listVisibleDecklistsForEvent,
 }));
 vi.mock('../../services/bracketService.js', () => ({
   getBracketState: mocks.getBracketState,
@@ -65,6 +67,7 @@ describe('events routes', () => {
     resetPrismaMock();
     mocks.listMyDecklistsForEvent.mockReset();
     mocks.listMyDecklistsForRound.mockReset();
+    mocks.listVisibleDecklistsForEvent.mockReset();
     mocks.startEvent.mockReset();
     mocks.updateEvent.mockReset();
     mocks.resetEvent.mockReset();
@@ -265,5 +268,68 @@ describe('events routes', () => {
         }),
       }),
     );
+  });
+
+  it.each([41, 45, 100])('rejects PATCH minDeckSize %s', async (minDeckSize) => {
+    const response = await request(app)
+      .patch('/api/events/event-1')
+      .send({ config: { minDeckSize } });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(response.body.error.fields['config.minDeckSize']).toBeDefined();
+    expect(mocks.updateEvent).not.toHaveBeenCalled();
+  });
+
+  it('accepts PATCH minDeckSize 60', async () => {
+    mocks.updateEvent.mockResolvedValue({ id: 'event-1', season: { id: 'season-1' } });
+
+    const response = await request(app)
+      .patch('/api/events/event-1')
+      .send({ config: { minDeckSize: 60 } });
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateEvent).toHaveBeenCalledWith('event-1', { config: { minDeckSize: 60 } });
+  });
+
+  it('allows PATCH that omits minDeckSize', async () => {
+    mocks.updateEvent.mockResolvedValue({ id: 'event-1', season: { id: 'season-1' } });
+
+    const response = await request(app).patch('/api/events/event-1').send({ name: 'Week 1 updated' });
+
+    expect(response.status).toBe(200);
+    expect(mocks.updateEvent).toHaveBeenCalledWith('event-1', { name: 'Week 1 updated' });
+  });
+
+  it('lists visible event decklists for anonymous viewers', async () => {
+    mocks.listVisibleDecklistsForEvent.mockResolvedValue([{ id: 'alice-w2-r1' }]);
+
+    const response = await request(app).get('/api/events/week-2/decklists');
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual([{ id: 'alice-w2-r1' }]);
+    expect(mocks.listVisibleDecklistsForEvent).toHaveBeenCalledWith('week-2', null);
+    expect(prismaMock.decklist.findMany).not.toHaveBeenCalled();
+  });
+
+  it('passes the authenticated viewer to listVisibleDecklistsForEvent', async () => {
+    mocks.listVisibleDecklistsForEvent.mockResolvedValue([{ id: 'alice-w2-r1' }]);
+
+    const response = await request(app).get('/api/events/week-2/decklists').set('x-test-user', 'user-charlie');
+
+    expect(response.status).toBe(200);
+    expect(mocks.listVisibleDecklistsForEvent).toHaveBeenCalledWith('week-2', {
+      id: 'user-charlie',
+      role: 'user',
+    });
+  });
+
+  it('returns 404 when listVisibleDecklistsForEvent cannot find the event', async () => {
+    mocks.listVisibleDecklistsForEvent.mockRejectedValue(new AppError(404, 'NOT_FOUND', 'Event not found'));
+
+    const response = await request(app).get('/api/events/missing/decklists');
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('NOT_FOUND');
   });
 });

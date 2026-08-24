@@ -1,7 +1,9 @@
 import type { DeckZone, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { canViewDecklist, isPublicDecklistStatus } from '../lib/visibilityRules.js';
+import { isDecklistVisibleToViewer } from '../lib/visibilityRules.js';
+
+export const BASIC_LAND_CATALOG_NAMES = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] as const;
 
 type ConstraintType = 'no_repeat_previous' | 'minimum_changes' | 'cumulative_ban';
 
@@ -324,14 +326,7 @@ async function getPoolCardsForUserSeason(userId: string, seasonId: string) {
 
   const basicCards = await prisma.cachedCard.findMany({
     where: {
-      OR: [
-        { name: 'Plains' },
-        { name: 'Island' },
-        { name: 'Swamp' },
-        { name: 'Mountain' },
-        { name: 'Forest' },
-        { name: 'Wastes' },
-      ],
+      OR: BASIC_LAND_CATALOG_NAMES.map((name) => ({ name })),
     },
     select: {
       scryfallId: true,
@@ -561,6 +556,7 @@ export async function getDecklistById(
         select: {
           id: true,
           roundNumber: true,
+          status: true,
         },
       },
       entries: {
@@ -576,12 +572,12 @@ export async function getDecklistById(
   }
 
   const season = decklist.event.season;
-  if (!canViewDecklist(decklist, season, viewer ?? null)) {
-    throw new AppError(403, 'FORBIDDEN', 'You do not have permission to access this decklist');
-  }
-
-  const isOwnerOrAdmin = viewer?.role === 'admin' || viewer?.id === decklist.userId;
-  if (!isOwnerOrAdmin && !isPublicDecklistStatus(decklist.status)) {
+  if (
+    !isDecklistVisibleToViewer(decklist, season, viewer ?? null, {
+      eventStatus: decklist.event.status,
+      roundStatus: decklist.round.status,
+    })
+  ) {
     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to access this decklist');
   }
 
@@ -660,16 +656,48 @@ export async function listVisibleDecklistsForSeason(
     orderBy: [{ event: { orderIndex: 'asc' } }, { round: { roundNumber: 'asc' } }, { orderIndex: 'asc' }],
   });
 
-  return decklists.filter((decklist) => {
-    if (!canViewDecklist(decklist, season, viewer ?? null)) {
-      return false;
-    }
-    const isOwnerOrAdmin = viewer?.role === 'admin' || viewer?.id === decklist.userId;
-    if (isOwnerOrAdmin) {
-      return true;
-    }
-    return isPublicDecklistStatus(decklist.status);
+  return decklists.filter((decklist) =>
+    isDecklistVisibleToViewer(decklist, season, viewer ?? null, {
+      eventStatus: decklist.event.status,
+      roundStatus: decklist.round.status,
+    }),
+  );
+}
+
+export async function listVisibleDecklistsForEvent(
+  eventId: string,
+  viewer?: { id: string; role: 'admin' | 'user' } | null,
+) {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      season: {
+        select: {
+          id: true,
+          decklistVisibility: true,
+          poolVisibility: true,
+          scheduleVisibility: true,
+        },
+      },
+    },
   });
+  if (!event) {
+    throw new AppError(404, 'NOT_FOUND', 'Event not found');
+  }
+
+  const decklists = await prisma.decklist.findMany({
+    where: { eventId },
+    include: seasonDecklistInclude,
+    orderBy: [{ round: { roundNumber: 'asc' } }, { orderIndex: 'asc' }],
+  });
+
+  return decklists.filter((decklist) =>
+    isDecklistVisibleToViewer(decklist, event.season, viewer ?? null, {
+      eventStatus: decklist.event.status,
+      roundStatus: decklist.round.status,
+    }),
+  );
 }
 
 export async function listDecklistsForSeason(userId: string, seasonId: string) {
@@ -1201,7 +1229,7 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
     .filter((entry) => entry.zone === 'main')
     .reduce((sum, entry) => sum + entry.quantity, 0);
   if (mainCount < minDeckSize) {
-    warnings.push(`Main deck is below minimum size (${mainCount}/${minDeckSize})`);
+    errors.push(`Main deck is below minimum size (${mainCount}/${minDeckSize})`);
   }
 
   if (decklist.event.config?.sideboardRule === 'fixed_15') {
@@ -1407,6 +1435,8 @@ export async function unlockDecklistsForRound(client: Prisma.TransactionClient, 
 export function createDecklistService() {
   return {
     getDecklistById,
+    listVisibleDecklistsForSeason,
+    listVisibleDecklistsForEvent,
     listDecklistsForSeason,
     ensureDeckbuilderRound,
     listMyDecklistsForEvent,

@@ -15,6 +15,7 @@ describe('suggestBasicLands', () => {
     expect(suggestion.Swamp).toBe(0);
     expect(suggestion.Mountain).toBe(0);
     expect(suggestion.Forest).toBe(0);
+    expect(suggestion).not.toHaveProperty('Wastes');
   });
 
   it('accounts for nonbasic lands when distributing basics', () => {
@@ -27,12 +28,13 @@ describe('suggestBasicLands', () => {
       40,
     );
 
-    expect(suggestion.Plains + suggestion.Island + suggestion.Swamp + suggestion.Mountain + suggestion.Forest + suggestion.Wastes).toBe(16);
+    expect(suggestion.Plains + suggestion.Island + suggestion.Swamp + suggestion.Mountain + suggestion.Forest).toBe(16);
+    expect(suggestion).not.toHaveProperty('Wastes');
     expect(suggestion.Plains).toBeGreaterThan(0);
     expect(suggestion.Island).toBeGreaterThan(0);
   });
 
-  it('suggests wastes for fully colorless decks', () => {
+  it('returns empty suggestion for fully colorless decks', () => {
     const suggestion = suggestBasicLands(
       [
         { quantity: 23, manaCost: '{3}', typeLine: 'Artifact Creature - Golem', colorIdentity: [] },
@@ -40,7 +42,21 @@ describe('suggestBasicLands', () => {
       40,
     );
 
-    expect(suggestion.Wastes).toBe(17);
+    expect(suggestion).not.toHaveProperty('Wastes');
+    expect(suggestion.Plains + suggestion.Island + suggestion.Swamp + suggestion.Mountain + suggestion.Forest).toBe(0);
+  });
+
+  it('returns no basics when nonbasic lands cover all color demand', () => {
+    const suggestion = suggestBasicLands(
+      [
+        { quantity: 10, manaCost: '{W}', typeLine: 'Creature - Human', colorIdentity: ['W'] },
+        { quantity: 10, manaCost: '{U}', typeLine: 'Instant', colorIdentity: ['U'] },
+        { quantity: 20, manaCost: null, typeLine: 'Land', colorIdentity: ['W', 'U'] },
+      ],
+      40,
+    );
+
+    expect(suggestion).not.toHaveProperty('Wastes');
     expect(suggestion.Plains + suggestion.Island + suggestion.Swamp + suggestion.Mountain + suggestion.Forest).toBe(0);
   });
 });

@@ -5,6 +5,8 @@ import {
   canViewPool,
   canViewSeasonDecklists,
   canViewSeasonPools,
+  isArchiveRound,
+  isDecklistVisibleToViewer,
   isPublicDecklistStatus,
 } from '../../lib/visibilityRules.js';
 
@@ -22,7 +24,29 @@ const hiddenSeason = {
 
 const alice = { id: 'user-alice', role: 'user' as const };
 const bob = { id: 'user-bob', role: 'user' as const };
+const charlie = { id: 'user-charlie', role: 'user' as const };
 const admin = { id: 'user-admin', role: 'admin' as const };
+
+const leftoverDraft = {
+  userId: bob.id,
+  status: 'draft' as const,
+  eventStatus: 'completed' as const,
+  roundStatus: 'completed' as const,
+};
+
+const currentForeignDraft = {
+  userId: bob.id,
+  status: 'draft' as const,
+  eventStatus: 'active' as const,
+  roundStatus: 'in_progress' as const,
+};
+
+const aliceCurrentDraft = {
+  userId: alice.id,
+  status: 'draft' as const,
+  eventStatus: 'active' as const,
+  roundStatus: 'in_progress' as const,
+};
 
 describe('visibilityRules', () => {
   describe('canViewSeasonPools', () => {
@@ -131,6 +155,143 @@ describe('visibilityRules', () => {
 
     it('treats draft as not public', () => {
       expect(isPublicDecklistStatus('draft')).toBe(false);
+    });
+  });
+
+  describe('isArchiveRound', () => {
+    it('is true when the round is completed', () => {
+      expect(isArchiveRound({ status: 'active' }, { status: 'completed' })).toBe(true);
+    });
+
+    it('is true when the event is completed even if the round is still in progress', () => {
+      expect(isArchiveRound({ status: 'completed' }, { status: 'in_progress' })).toBe(true);
+    });
+
+    it('is true when the event is completed even if the round is not started', () => {
+      expect(isArchiveRound({ status: 'completed' }, { status: 'not_started' })).toBe(true);
+    });
+
+    it('is false for an active event with an in-progress round', () => {
+      expect(isArchiveRound({ status: 'active' }, { status: 'in_progress' })).toBe(false);
+    });
+
+    it('is false for an active event with a not-started round', () => {
+      expect(isArchiveRound({ status: 'active' }, { status: 'not_started' })).toBe(false);
+    });
+
+    it('is false for a setup event with a not-started round', () => {
+      expect(isArchiveRound({ status: 'setup' }, { status: 'not_started' })).toBe(false);
+    });
+  });
+
+  describe('isDecklistVisibleToViewer', () => {
+    it('allows Charlie to see submitted and locked decks on a visible season regardless of round', () => {
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: alice.id, status: 'submitted' },
+          visibleSeason,
+          charlie,
+          { eventStatus: 'active', roundStatus: 'in_progress' },
+        ),
+      ).toBe(true);
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: alice.id, status: 'locked' },
+          visibleSeason,
+          charlie,
+          { eventStatus: 'active', roundStatus: 'in_progress' },
+        ),
+      ).toBe(true);
+    });
+
+    it('allows Charlie to see leftover drafts on an archive round of a visible season', () => {
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: leftoverDraft.userId, status: leftoverDraft.status },
+          visibleSeason,
+          charlie,
+          { eventStatus: leftoverDraft.eventStatus, roundStatus: leftoverDraft.roundStatus },
+        ),
+      ).toBe(true);
+    });
+
+    it('hides Bob current-round draft from Charlie on a visible season', () => {
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: currentForeignDraft.userId, status: currentForeignDraft.status },
+          visibleSeason,
+          charlie,
+          { eventStatus: currentForeignDraft.eventStatus, roundStatus: currentForeignDraft.roundStatus },
+        ),
+      ).toBe(false);
+    });
+
+    it('hides registered and leftover decks from Charlie on a hidden season', () => {
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: alice.id, status: 'submitted' },
+          hiddenSeason,
+          charlie,
+          { eventStatus: 'completed', roundStatus: 'completed' },
+        ),
+      ).toBe(false);
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: leftoverDraft.userId, status: leftoverDraft.status },
+          hiddenSeason,
+          charlie,
+          { eventStatus: leftoverDraft.eventStatus, roundStatus: leftoverDraft.roundStatus },
+        ),
+      ).toBe(false);
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: currentForeignDraft.userId, status: currentForeignDraft.status },
+          hiddenSeason,
+          charlie,
+          { eventStatus: currentForeignDraft.eventStatus, roundStatus: currentForeignDraft.roundStatus },
+        ),
+      ).toBe(false);
+    });
+
+    it('allows Alice to see her own current-round draft on a hidden season', () => {
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: aliceCurrentDraft.userId, status: aliceCurrentDraft.status },
+          hiddenSeason,
+          alice,
+          { eventStatus: aliceCurrentDraft.eventStatus, roundStatus: aliceCurrentDraft.roundStatus },
+        ),
+      ).toBe(true);
+    });
+
+    it('allows admin to see Bob current-round draft on a hidden season', () => {
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: currentForeignDraft.userId, status: currentForeignDraft.status },
+          hiddenSeason,
+          admin,
+          { eventStatus: currentForeignDraft.eventStatus, roundStatus: currentForeignDraft.roundStatus },
+        ),
+      ).toBe(true);
+    });
+
+    it('allows anonymous viewers leftover archive drafts but not current-round foreign drafts', () => {
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: leftoverDraft.userId, status: leftoverDraft.status },
+          visibleSeason,
+          null,
+          { eventStatus: leftoverDraft.eventStatus, roundStatus: leftoverDraft.roundStatus },
+        ),
+      ).toBe(true);
+      expect(
+        isDecklistVisibleToViewer(
+          { userId: currentForeignDraft.userId, status: currentForeignDraft.status },
+          visibleSeason,
+          null,
+          { eventStatus: currentForeignDraft.eventStatus, roundStatus: currentForeignDraft.roundStatus },
+        ),
+      ).toBe(false);
     });
   });
 });

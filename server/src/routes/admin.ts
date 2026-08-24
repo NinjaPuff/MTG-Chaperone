@@ -16,6 +16,7 @@ import {
   type DeletedCachedCard,
   type StaleReference,
 } from '../services/cardCacheService.js';
+import { dropPlayer } from '../services/playerDropService.js';
 
 const router = Router();
 
@@ -64,6 +65,12 @@ const resolveStaleActionSchema = z.union([
 
 const resolveStaleReferencesSchema = z.object({
   actions: z.array(resolveStaleActionSchema).min(1),
+});
+
+const dropPlayerSchema = z.object({
+  seasonId: z.string().uuid(),
+  eventId: z.string().uuid().optional(),
+  reason: z.string().max(500).optional(),
 });
 
 async function buildImportResponse(
@@ -269,8 +276,19 @@ router.get('/disputes', (_req, res) => {
   res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'List disputes not yet implemented' } });
 });
 
-router.post('/players/:userId/drop', (_req, res) => {
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Drop player not yet implemented' } });
+router.post('/players/:userId/drop', validateBody(dropPlayerSchema), async (req, res, next) => {
+  try {
+    const data = await dropPlayer({
+      userId: req.params.userId,
+      seasonId: req.body.seasonId,
+      eventId: req.body.eventId,
+      reason: req.body.reason,
+      droppedById: req.user!.id,
+    });
+    res.json({ success: true, ...data });
+  } catch (error) {
+    next(error);
+  }
 });
 
 export { router as adminRouter };

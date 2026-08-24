@@ -116,4 +116,64 @@ describe('HoverTarget', () => {
 
     expect(screen.getByTestId('action-Add to deck')).toBeInTheDocument();
   });
+
+  it('hides preview when the hovered target unmounts', () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+
+    const { rerender } = render(
+      <CardPreviewProvider>
+        <HoverTarget scryfallId="card-1" name="Lightning Bolt" layout={null} imageUrl="https://example.com/bolt.jpg">
+          <button type="button">Lightning Bolt</button>
+        </HoverTarget>
+        <PreviewProbe />
+      </CardPreviewProvider>,
+    );
+
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Lightning Bolt' }));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByTestId('preview-open')).toBeInTheDocument();
+
+    rerender(
+      <CardPreviewProvider>
+        <PreviewProbe />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.getByTestId('preview-closed')).toBeInTheDocument();
+  });
+
+  it('keeps preview visible when a different target unmounts', () => {
+    mockMatchMedia({ '(hover: hover)': true, '(hover: none)': false });
+
+    const { rerender } = render(
+      <CardPreviewProvider>
+        <HoverTarget scryfallId="card-1" name="Lightning Bolt" layout={null} imageUrl="https://example.com/bolt.jpg">
+          <button type="button">Lightning Bolt</button>
+        </HoverTarget>
+        <HoverTarget scryfallId="card-2" name="Opt" layout={null} imageUrl="https://example.com/opt.jpg">
+          <button type="button">Opt</button>
+        </HoverTarget>
+        <PreviewProbe />
+      </CardPreviewProvider>,
+    );
+
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Lightning Bolt' }));
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByTestId('preview-open')).toHaveTextContent('Lightning Bolt hover');
+
+    rerender(
+      <CardPreviewProvider>
+        <HoverTarget scryfallId="card-1" name="Lightning Bolt" layout={null} imageUrl="https://example.com/bolt.jpg">
+          <button type="button">Lightning Bolt</button>
+        </HoverTarget>
+        <PreviewProbe />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.getByTestId('preview-open')).toHaveTextContent('Lightning Bolt hover');
+  });
 });

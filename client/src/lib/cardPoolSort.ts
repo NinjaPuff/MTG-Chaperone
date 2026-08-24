@@ -176,6 +176,17 @@ export function getPrimaryType(typeLine: string): (typeof CARD_TYPE_ORDER)[numbe
     : 'Other';
 }
 
+export function isLandTypeLine(typeLine: string | undefined): boolean {
+  if (!typeLine) {
+    return false;
+  }
+  return /\bLand\b/i.test(typeLine);
+}
+
+export function spellCardsForCurve<T extends { typeLine?: string }>(cards: T[]): T[] {
+  return cards.filter((card) => !isLandTypeLine(card.typeLine));
+}
+
 function compareByColor(a: PoolCard, b: PoolCard) {
   const rankDiff = colorRank(a) - colorRank(b);
   if (rankDiff !== 0) {

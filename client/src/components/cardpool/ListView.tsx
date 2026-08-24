@@ -59,6 +59,7 @@ function OrganizeSections({
                 return (
                   <div
                     key={`${card.phaseLabel}-${card.scryfallId}`}
+                    data-testid={`pool-list-row-${card.scryfallId}`}
                     className={`flex items-center gap-2 py-0.5 text-sm${onCardClick ? ' cursor-pointer' : ''}`}
                     onContextMenu={onCardContextMenu ? (event) => onCardContextMenu(event, card) : undefined}
                     onClick={onCardClick ? () => onCardClick(card) : undefined}

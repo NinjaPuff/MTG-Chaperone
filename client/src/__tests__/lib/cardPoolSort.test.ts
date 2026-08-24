@@ -7,6 +7,8 @@ import {
   groupByCmc,
   groupByOrganize,
   groupByType,
+  isLandTypeLine,
+  spellCardsForCurve,
   sortCards,
 } from '../../lib/cardPoolSort';
 
@@ -68,6 +70,39 @@ describe('cardPoolSort helpers', () => {
     expect(grouped.get(0)?.map((card) => card.name)).toEqual(['Zero']);
     expect(grouped.get(2)?.map((card) => card.name)).toEqual(['Two']);
     expect(grouped.get(7)?.map((card) => card.name)).toEqual(['Eight']);
+  });
+
+  it('returns true for artifact lands when checking land type lines', () => {
+    expect(isLandTypeLine('Artifact Land')).toBe(true);
+  });
+
+  it('returns true for creature lands when checking land type lines', () => {
+    expect(isLandTypeLine('Land Creature — Forest Dryad')).toBe(true);
+  });
+
+  it('returns false for missing type lines', () => {
+    expect(isLandTypeLine(undefined)).toBe(false);
+  });
+
+  it('filters lands out of spell cards for curve helpers', () => {
+    const cards = [
+      makeCard({ name: 'Plains', typeLine: 'Basic Land — Plains', cmc: 0 }),
+      makeCard({ name: 'Darksteel Citadel', typeLine: 'Artifact Land', cmc: 0 }),
+      makeCard({ name: 'Dryad Arbor', typeLine: 'Land Creature — Forest Dryad', cmc: 0 }),
+      makeCard({ name: 'Ornithopter', typeLine: 'Artifact Creature — Thopter', cmc: 0 }),
+    ];
+
+    expect(spellCardsForCurve(cards).map((card) => card.name)).toEqual(['Ornithopter']);
+  });
+
+  it('keeps cards with missing type lines when filtering lands for curve helpers', () => {
+    const cards: Array<{ name: string; typeLine?: string }> = [
+      { name: 'Unknown' },
+      { name: 'Plains', typeLine: 'Basic Land — Plains' },
+      { name: 'Shock', typeLine: 'Instant' },
+    ];
+
+    expect(spellCardsForCurve(cards).map((card) => card.name)).toEqual(['Unknown', 'Shock']);
   });
 
   it('flattens entries by scryfall id in flat mode', () => {

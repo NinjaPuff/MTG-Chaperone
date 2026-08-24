@@ -64,6 +64,8 @@ describe('ImportDeckDialog', () => {
       expect(screen.getByText('Old Event')).toBeInTheDocument();
     });
 
+    expect(mocks.authApiRequest).toHaveBeenCalledWith('/api/decklists/my-season/season-1');
+
     expect(screen.getByText(/Completed Deck - Round 1/)).toBeInTheDocument();
     expect(screen.queryByText(/Current Event Deck/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Active Deck/)).not.toBeInTheDocument();

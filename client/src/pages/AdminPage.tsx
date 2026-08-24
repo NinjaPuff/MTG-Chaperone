@@ -23,6 +23,7 @@ import {
 import { SetSymbolGroup } from '@/components/SetSymbolGroup';
 import { primaryName, profileSubtitle } from '@/lib/userDisplay';
 import { isBracketFormat } from '@mtg-league/shared';
+import { minDeckSizeSelectOptions } from '@/lib/minDeckSize';
 
 type League = {
   id: string;
@@ -1977,9 +1978,8 @@ export function AdminPage() {
                     </label>
                     <label className="text-sm font-medium">
                       Min Deck Size
-                      <input
-                        type="number"
-                        min={1}
+                      <select
+                        data-testid="min-deck-size-select"
                         className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                         value={eventForm.config.minDeckSize}
                         onChange={(event) =>
@@ -1988,7 +1988,13 @@ export function AdminPage() {
                             config: { ...prev.config, minDeckSize: Number(event.target.value) },
                           }))
                         }
-                      />
+                      >
+                        {minDeckSizeSelectOptions(eventForm.config.minDeckSize).map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                     <label className="text-sm font-medium">
                       Point Multiplier
@@ -2233,9 +2239,8 @@ export function AdminPage() {
                           </label>
                           <label className="text-sm font-medium">
                             Min Deck Size
-                            <input
-                              type="number"
-                              min={1}
+                            <select
+                              data-testid="min-deck-size-select"
                               className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                               value={editEventForm.config.minDeckSize}
                               onChange={(event) =>
@@ -2244,7 +2249,13 @@ export function AdminPage() {
                                   config: { ...prev.config, minDeckSize: Number(event.target.value) },
                                 }))
                               }
-                            />
+                            >
+                              {minDeckSizeSelectOptions(editEventForm.config.minDeckSize).map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
                           </label>
                           <label className="text-sm font-medium">
                             Point Multiplier

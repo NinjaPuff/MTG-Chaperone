@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prismaMock, resetPrismaMock } from '../helpers/prismaMock.js';
+import { AppError } from '../../middleware/errorHandler.js';
 
 process.env.NODE_ENV = 'test';
 
@@ -76,6 +77,18 @@ describe('decklists routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.id).toBe('deck-1');
     expect(mocks.getDecklistById).toHaveBeenCalledWith('deck-1', { id: 'user-1', role: 'user' });
+  });
+
+  it('returns 403 when getDecklistById forbids a current-round foreign draft', async () => {
+    mocks.getDecklistById.mockRejectedValue(
+      new AppError(403, 'FORBIDDEN', 'You do not have permission to access this decklist'),
+    );
+
+    const response = await request(app).get('/api/decklists/bob-w2-r2-draft').set('x-test-user', 'user-charlie');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+    expect(mocks.listDecklistsForSeason).not.toHaveBeenCalled();
   });
 
   it('lists user decklists for a season', async () => {

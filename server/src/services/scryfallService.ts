@@ -1,6 +1,6 @@
 import { expandCardNameLookupVariants } from '@mtg-league/shared';
 import { AppError } from '../middleware/errorHandler.js';
-import { isPaperPrinting, resolveTypeLine } from '../lib/scryfallCardNormalize.js';
+import { isPaperPrinting, needsFaceCmcRefresh, resolveCmc, resolveTypeLine } from '../lib/scryfallCardNormalize.js';
 import { prisma } from '../lib/prisma.js';
 import { Prisma } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
@@ -47,6 +47,7 @@ type ScryfallCard = {
   card_faces?: Array<{
     name?: string;
     mana_cost?: string;
+    cmc?: number;
     type_line?: string;
     image_uris?: Record<string, string>;
   }>;
@@ -234,7 +235,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       oracleText: card.oracle_text ?? null,
       colors: card.colors ?? [],
       colorIdentity: card.color_identity ?? [],
-      cmc: card.cmc ?? 0,
+      cmc: resolveCmc(card),
       rarity: card.rarity,
       setCode: card.set.toUpperCase(),
       collectorNumber: card.collector_number ?? null,
@@ -252,7 +253,7 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       oracleText: card.oracle_text ?? null,
       colors: card.colors ?? [],
       colorIdentity: card.color_identity ?? [],
-      cmc: card.cmc ?? 0,
+      cmc: resolveCmc(card),
       rarity: card.rarity,
       setCode: card.set.toUpperCase(),
       collectorNumber: card.collector_number ?? null,
@@ -635,7 +636,15 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
     const staleDoubleFacedIds = [
       ...new Set(
         results
-          .filter((card) => card.manaCost === null && card.cmc > 0 && card.name.includes('//'))
+          .filter((card) =>
+            needsFaceCmcRefresh({
+              name: card.name,
+              layout: card.layout ?? null,
+              manaCost: card.manaCost,
+              cmc: card.cmc,
+              typeLine: card.typeLine ?? '',
+            }),
+          )
           .map((card) => card.scryfallId),
       ),
     ];
@@ -644,8 +653,8 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       try {
         const card = await fetchScryfall<ScryfallCard>(`${SCRYFALL_BASE_URL}/cards/${scryfallId}`);
         await upsertCard(card);
-      } catch {
-        // Ignore refresh failures and preserve current cache row.
+      } catch (error) {
+        console.warn(`Failed refreshing stale DFC cache row: ${scryfallId}`, error);
       }
     }
 
@@ -677,7 +686,15 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
 
     const staleDoubleFacedIds = [...new Set(
       cached
-        .filter((card) => card.manaCost === null && card.cmc > 0 && card.name.includes('//'))
+        .filter((card) =>
+          needsFaceCmcRefresh({
+            name: card.name,
+            layout: card.layout ?? null,
+            manaCost: card.manaCost,
+            cmc: card.cmc,
+            typeLine: card.typeLine ?? '',
+          }),
+        )
         .map((card) => card.scryfallId),
     )];
 
@@ -693,8 +710,8 @@ export function createScryfallService(partialDeps?: Partial<ScryfallDeps>) {
       try {
         const card = await fetchScryfall<ScryfallCard>(`${SCRYFALL_BASE_URL}/cards/${scryfallId}`);
         await upsertCard(card);
-      } catch {
-        // Ignore refresh failures and preserve current cache row.
+      } catch (error) {
+        console.warn(`Failed refreshing stale DFC cache row: ${scryfallId}`, error);
       }
     }
 

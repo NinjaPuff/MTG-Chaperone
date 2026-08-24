@@ -24,6 +24,26 @@ function makeCard(overrides: Partial<PoolCard> = {}): PoolCard {
 }
 
 describe('CurveView', () => {
+  it('does not render lands in the curve columns', () => {
+    render(
+      <CardPreviewProvider>
+        <CurveView
+          cards={[
+            makeCard({ scryfallId: 'land-1', name: 'Plains', typeLine: 'Basic Land — Plains', cmc: 0, quantity: 1 }),
+            makeCard({ scryfallId: 'spell-1', name: 'Ornithopter', typeLine: 'Artifact Creature — Thopter', cmc: 0, quantity: 1 }),
+          ]}
+          sortKey="name"
+          groupMode="flat"
+          organizeBy="cmc"
+          cardWidth={180}
+        />
+      </CardPreviewProvider>,
+    );
+
+    expect(screen.queryByText('Plains')).not.toBeInTheDocument();
+    expect(screen.getByText('Ornithopter')).toBeInTheDocument();
+  });
+
   it('shows total copy count in the mana bucket label', () => {
     render(
       <CardPreviewProvider>

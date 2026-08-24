@@ -18,7 +18,6 @@ function makeDeck(cards: DeckBuilderCard[] = []): BuilderDeck {
       Swamp: 0,
       Mountain: 0,
       Forest: 0,
-      Wastes: 0,
     },
   };
 }
@@ -175,6 +174,25 @@ describe('DeckSidebar', () => {
     expect(screen.queryByText('Always visible drop zone.')).not.toBeInTheDocument();
   });
 
+  it('renders prep size toggle when provided', () => {
+    renderWithAppProviders(
+      <DeckSidebar
+        {...defaultSidebarProps}
+        prepSizeToggle={{ value: 60, onChange: vi.fn() }}
+      />,
+    );
+
+    expect(screen.getByTestId('deck-sidebar-prep-size-toggle')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '40' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '60' })).toBeInTheDocument();
+  });
+
+  it('does not render prep size toggle when omitted', () => {
+    renderWithAppProviders(<DeckSidebar {...defaultSidebarProps} />);
+
+    expect(screen.queryByTestId('deck-sidebar-prep-size-toggle')).not.toBeInTheDocument();
+  });
+
   it('excludes sideboard cards from suggest-lands calculation', async () => {
     const onBasicLandsChange = vi.fn();
     const mainCards = Array.from({ length: 26 }, (_, i) =>
@@ -217,7 +235,7 @@ describe('DeckSidebar', () => {
       expect(onBasicLandsChange).toHaveBeenCalledTimes(1);
     });
     const suggested = onBasicLandsChange.mock.calls[0][1];
-    const totalLands = suggested.Plains + suggested.Island + suggested.Swamp + suggested.Mountain + suggested.Forest + suggested.Wastes;
+    const totalLands = suggested.Plains + suggested.Island + suggested.Swamp + suggested.Mountain + suggested.Forest;
     expect(totalLands).toBe(14);
     expect(suggested.Forest).toBe(14);
   });

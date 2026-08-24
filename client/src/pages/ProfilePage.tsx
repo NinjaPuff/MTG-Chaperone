@@ -394,7 +394,7 @@ export function ProfilePage() {
           ) : null}
           {profile.links.decklistsVisible ? (
             <Link
-              to="/decks"
+              to={`/decks?player=${profile.user.slug}`}
               className="rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-muted"
             >
               Browse Decklists

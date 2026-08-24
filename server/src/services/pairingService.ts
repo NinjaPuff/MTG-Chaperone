@@ -1,5 +1,7 @@
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
+import { computeStandings } from './standingsService.js';
+import { buildPairKey, pairCompanionSwiss } from './companionSwissPairing.js';
 
 type Pair = { player1Id: string; player2Id: string | null; isBye: boolean };
 type PlayerRankStat = { userId: string; matchWins: number; gameWins: number; gameLosses: number };
@@ -68,6 +70,24 @@ async function getSeasonPlayerIdsForEvent(eventId: string) {
   return { event, playerIds: ids };
 }
 
+async function filterDroppedPlayers(seasonId: string, eventId: string, userIds: string[]) {
+  if (userIds.length === 0) {
+    return userIds;
+  }
+
+  const drops = await prisma.playerDrop.findMany({
+    where: {
+      seasonId,
+      userId: { in: userIds },
+      OR: [{ eventId }, { eventId: null }],
+    },
+    select: { userId: true },
+  });
+
+  const droppedIds = new Set(drops.map((drop) => drop.userId));
+  return userIds.filter((userId) => !droppedIds.has(userId));
+}
+
 function mergeRankedWithFallback(rankedPlayerIds: string[], fallbackPlayerIds: string[]) {
   const rankedSet = new Set(rankedPlayerIds);
   const merged = [...rankedPlayerIds];
@@ -125,6 +145,9 @@ export function rankPlayersByMatchResults(
 
     if (match.isBye || !p2) {
       p1.matchWins += 1;
+      if (p1GamesWon === 0) {
+        p1.gameWins += 2;
+      }
       continue;
     }
 
@@ -297,13 +320,26 @@ async function getRoundOneSeededOrder(eventId: string, fallbackPlayerIds: string
   return resolveSeededPlayerOrder(eventId);
 }
 
-export async function generateSwissPairings(roundId: string) {
+const SCORING_MATCH_STATUSES = new Set(['reported', 'confirmed', 'resolved']);
+
+export async function generateSwissPairings(roundId: string, options?: { random?: () => number }) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     include: {
       event: {
         include: {
-          season: true,
+          season: {
+            include: {
+              pointConfig: true,
+              league: {
+                include: {
+                  memberships: {
+                    select: { userId: true },
+                  },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -312,21 +348,72 @@ export async function generateSwissPairings(roundId: string) {
     throw new AppError(404, 'NOT_FOUND', 'Round not found');
   }
 
-  const standings = await prisma.standing.findMany({
-    where: { seasonId: round.event.seasonId },
-    orderBy: [{ points: 'desc' }, { omwPercent: 'desc' }, { gwPercent: 'desc' }],
-  });
-
-  let orderedPlayers = standings.map((standing) => standing.userId);
-  if (orderedPlayers.length === 0) {
-    const { playerIds } = await getSeasonPlayerIdsForEvent(round.eventId);
-    orderedPlayers = playerIds;
+  const memberIds = round.event.season.league.memberships.map((membership) => membership.userId);
+  const playerIds = await filterDroppedPlayers(round.event.seasonId, round.eventId, memberIds);
+  if (playerIds.length === 0) {
+    return [];
   }
 
-  return pairSequential(orderedPlayers);
+  const eventMatches = await prisma.match.findMany({
+    where: {
+      roundId: { not: roundId },
+      round: { eventId: round.eventId },
+    },
+    select: {
+      isBye: true,
+      player1Id: true,
+      player2Id: true,
+      status: true,
+      gameResults: { select: { winnerId: true, isDraw: true } },
+      round: { select: { event: { select: { pointMultiplier: true } } } },
+    },
+  });
+
+  const playedPairs = new Set<string>();
+  const priorByeIds = new Set<string>();
+  for (const match of eventMatches) {
+    if (match.isBye || !match.player2Id) {
+      priorByeIds.add(match.player1Id);
+      continue;
+    }
+    playedPairs.add(buildPairKey(match.player1Id, match.player2Id));
+  }
+
+  const scoringMatches = eventMatches
+    .filter((match) => SCORING_MATCH_STATUSES.has(match.status))
+    .map((match) => ({
+      isBye: match.isBye,
+      player1Id: match.player1Id,
+      player2Id: match.player2Id,
+      gameResults: match.gameResults,
+      round: { event: { pointMultiplier: match.round.event.pointMultiplier } },
+    }));
+
+  const pointConfig = round.event.season.pointConfig;
+  const computed = computeStandings(round.event.seasonId, playerIds, scoringMatches, {
+    matchWinPoints: pointConfig?.matchWinPoints ?? 3,
+    matchDrawPoints: pointConfig?.matchDrawPoints ?? 1,
+    matchLossPoints: pointConfig?.matchLossPoints ?? 0,
+  });
+
+  return pairCompanionSwiss({
+    playerIds,
+    eventRecords: computed.map((row) => ({
+      userId: row.userId,
+      points: row.points,
+      omwPercent: row.omwPercent,
+      gwPercent: row.gwPercent,
+      ogwPercent: row.ogwPercent,
+    })),
+    playedPairs,
+    priorByeIds,
+    roundNumber: round.roundNumber,
+    totalRounds: round.event.totalRounds,
+    random: options?.random ?? Math.random,
+  });
 }
 
-export async function generateSeededSwissPairings(roundId: string) {
+export async function generateSeededSwissPairings(roundId: string, options?: { random?: () => number }) {
   const round = await prisma.round.findUnique({
     where: { id: roundId },
     select: { roundNumber: true, eventId: true },
@@ -336,12 +423,13 @@ export async function generateSeededSwissPairings(roundId: string) {
   }
 
   if (round.roundNumber === 1) {
-    const { playerIds } = await getSeasonPlayerIdsForEvent(round.eventId);
+    const { event, playerIds } = await getSeasonPlayerIdsForEvent(round.eventId);
     const orderedPlayerIds = await getRoundOneSeededOrder(round.eventId, playerIds);
-    return pairTopVsBottom(orderedPlayerIds);
+    const activePlayerIds = await filterDroppedPlayers(event.seasonId, round.eventId, orderedPlayerIds);
+    return pairTopVsBottom(activePlayerIds);
   }
 
-  return generateSwissPairings(roundId);
+  return generateSwissPairings(roundId, options);
 }
 
 export async function generateRoundRobinSchedule(seasonId: string, playerIds: string[]) {

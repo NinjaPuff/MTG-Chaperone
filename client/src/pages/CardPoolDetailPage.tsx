@@ -15,6 +15,7 @@ import {
   formatPhaseLabel,
   normalizePhaseLabel,
 } from '@/lib/poolPhase';
+import { adjustMenuPhaseOptions, defaultAdjustPhaseLabel } from '@/lib/poolAdjustMenu';
 import { CardPoolSearchPanel } from '@/components/cardpool/CardPoolSearchPanel';
 import { CurveView } from '@/components/cardpool/CurveView';
 import { GridView } from '@/components/cardpool/GridView';
@@ -660,20 +661,45 @@ export function CardPoolDetailPage() {
   };
 
   const handleAdminCardContextMenu = (event: MouseEvent, card: PoolCard) => {
-    if (!isAdmin) {
+    if (!canModifyPool) {
+      return;
+    }
+    const matchingPhases = Object.keys(card.phaseQuantities);
+    const allowedPhases = adjustMenuPhaseOptions({
+      isAdmin,
+      addPhaseOptions,
+      availablePhaseOptions,
+      matchingPhases,
+    });
+    if (allowedPhases.length === 0) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    const matchingPhases = Object.keys(card.phaseQuantities);
-    const defaultPhase = matchingPhases[0] ?? card.phaseLabel ?? availablePhaseOptions[0] ?? formatPhaseLabel(1);
     setAdminContextMenu({
       pageX: event.pageX,
       pageY: event.pageY,
       card,
-      phaseLabel: defaultPhase,
+      phaseLabel: defaultAdjustPhaseLabel({
+        selectedAddPhase: phaseLabel,
+        phaseQuantities: card.phaseQuantities,
+        allowedPhases,
+        cardPhaseLabel: card.phaseLabel,
+      }),
     });
   };
+
+  const contextMenuPhaseOptions = useMemo(() => {
+    if (!adminContextMenu) {
+      return [];
+    }
+    return adjustMenuPhaseOptions({
+      isAdmin,
+      addPhaseOptions,
+      availablePhaseOptions,
+      matchingPhases: Object.keys(adminContextMenu.card.phaseQuantities),
+    });
+  }, [adminContextMenu, addPhaseOptions, availablePhaseOptions, isAdmin]);
 
   const selectedPhaseQuantity = adminContextMenu
     ? (adminContextMenu.card.phaseQuantities[adminContextMenu.phaseLabel] ?? 0)
@@ -1150,6 +1176,8 @@ export function CardPoolDetailPage() {
             <div className="space-y-3 rounded-lg border border-border bg-card p-6">
         {isAdmin ? (
           <p className="text-xs text-muted-foreground">Admin tip: right-click any card to stage add/remove changes in a specific acquisition group.</p>
+        ) : canModifyPool ? (
+          <p className="text-xs text-muted-foreground">Tip: right-click a card to stage removals from editable phases.</p>
         ) : null}
         <ViewToolbar
           viewMode={viewMode}
@@ -1232,7 +1260,7 @@ export function CardPoolDetailPage() {
             onCardContextMenu={handleAdminCardContextMenu}
           />
         ) : null}
-        {isAdmin && adminContextMenu ? (
+        {adminContextMenu ? (
           <div
             className="absolute z-50 w-72 rounded-md border border-border bg-popover p-3 shadow-xl"
             style={{ left: Math.max(8, adminContextMenu.pageX), top: Math.max(8, adminContextMenu.pageY) }}
@@ -1251,7 +1279,7 @@ export function CardPoolDetailPage() {
                 }
                 disabled={applyingStagedChanges}
               >
-                {availablePhaseOptions.map((option) => (
+                {contextMenuPhaseOptions.map((option) => (
                   <option key={option} value={option}>
                     {option}
                   </option>
@@ -1268,15 +1296,17 @@ export function CardPoolDetailPage() {
                   : `Remove -${stagedRemovalForSelection.quantity}`}
               </p>
             ) : null}
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
-                onClick={() => stagePoolChange('add')}
-                disabled={applyingStagedChanges}
-              >
-                Stage +1
-              </button>
+            <div className={`mt-3 grid gap-2 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                  onClick={() => stagePoolChange('add')}
+                  disabled={applyingStagedChanges}
+                >
+                  Stage +1
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="rounded border border-border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"

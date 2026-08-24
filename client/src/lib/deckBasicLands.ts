@@ -1,7 +1,7 @@
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
 import type { BasicLandSuggestion } from '@/lib/suggestBasicLands';
 
-export const BASIC_LAND_ORDER = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest', 'Wastes'] as const;
+export const BASIC_LAND_ORDER = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] as const;
 
 export type BasicLandCatalogEntry = {
   cachedCardId: string;
@@ -18,7 +18,6 @@ export function getDefaultBasicLandCounts(): BasicLandSuggestion {
     Swamp: 0,
     Mountain: 0,
     Forest: 0,
-    Wastes: 0,
   };
 }
 

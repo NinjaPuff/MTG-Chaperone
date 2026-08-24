@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { DeckAnalyticsView } from '@/components/deckbuilder/DeckAnalyticsView';
+import { DeckCardList } from '@/components/deckbuilder/DeckCardList';
 import { ApiError, apiRequest } from '@/lib/api';
+import { seasonDecklistToBuilderDeck, type SeasonArchiveCachedCard } from '@/lib/archiveDeck';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { primaryName } from '@/lib/userDisplay';
@@ -40,24 +43,204 @@ type SeasonDecklist = {
     id: string;
     quantity: number;
     zone: 'main' | 'sideboard';
-    cachedCard: {
-      name: string;
-      manaCost: string | null;
-    };
+    cachedCard: SeasonArchiveCachedCard;
   }>;
 };
 
-type PreviousDeckGroup = {
+type PlayerRoundGroup = {
+  playerKey: string;
+  playerName: string;
+  decks: SeasonDecklist[];
+};
+
+type RoundGroup = {
+  roundId: string;
+  roundNumber: number;
+  players: PlayerRoundGroup[];
+};
+
+type EventGroup = {
   eventId: string;
   eventName: string;
   orderIndex: number;
-  decks: SeasonDecklist[];
+  rounds: RoundGroup[];
 };
+
+function isArchiveRound(
+  event: { status: 'setup' | 'active' | 'completed' },
+  round: { status: 'not_started' | 'in_progress' | 'completed' },
+) {
+  return event.status === 'completed' || round.status === 'completed';
+}
+
+function isRegisteredStatus(status: SeasonDecklist['status']) {
+  return status === 'submitted' || status === 'locked';
+}
+
+function buildEventGroups(decks: SeasonDecklist[]): EventGroup[] {
+  const byEvent = new Map<string, SeasonDecklist[]>();
+  for (const deck of decks) {
+    const list = byEvent.get(deck.event.id) ?? [];
+    list.push(deck);
+    byEvent.set(deck.event.id, list);
+  }
+
+  return [...byEvent.entries()]
+    .map(([eventId, eventDecks]) => {
+      const first = eventDecks[0];
+      const byRound = new Map<string, SeasonDecklist[]>();
+      for (const deck of eventDecks) {
+        const list = byRound.get(deck.round.id) ?? [];
+        list.push(deck);
+        byRound.set(deck.round.id, list);
+      }
+
+      const rounds = [...byRound.entries()]
+        .map(([roundId, roundDecks]) => {
+          const byPlayer = new Map<string, SeasonDecklist[]>();
+          for (const deck of roundDecks) {
+            const key = deck.user?.id ?? deck.id;
+            const list = byPlayer.get(key) ?? [];
+            list.push(deck);
+            byPlayer.set(key, list);
+          }
+
+          const players = [...byPlayer.entries()]
+            .map(([playerKey, playerDecks]) => ({
+              playerKey,
+              playerName: playerDecks[0]?.user ? primaryName(playerDecks[0].user) : '',
+              decks: [...playerDecks].sort((a, b) => {
+                const registeredDelta = Number(isRegisteredStatus(b.status)) - Number(isRegisteredStatus(a.status));
+                if (registeredDelta !== 0) {
+                  return registeredDelta;
+                }
+                return a.orderIndex - b.orderIndex;
+              }),
+            }))
+            .sort((a, b) => a.playerName.localeCompare(b.playerName));
+
+          return {
+            roundId,
+            roundNumber: roundDecks[0]?.round.roundNumber ?? 0,
+            players,
+          };
+        })
+        .sort((a, b) => a.roundNumber - b.roundNumber);
+
+      return {
+        eventId,
+        eventName: first?.event.name ?? eventId,
+        orderIndex: first?.event.orderIndex ?? 0,
+        rounds,
+      };
+    })
+    .sort((a, b) => b.orderIndex - a.orderIndex);
+}
+
+function ArchiveDeckRow({ decklist, playerName }: { decklist: SeasonDecklist; playerName: string }) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'details'>('list');
+  const registered = isRegisteredStatus(decklist.status);
+  const builderDeck = seasonDecklistToBuilderDeck(decklist);
+  const mainCards = builderDeck.cards.filter((card) => card.zone === 'main');
+  const sideboardCards = builderDeck.cards.filter((card) => card.zone === 'sideboard');
+
+  return (
+    <details
+      className="rounded-md border border-border/70 bg-card p-3"
+      onToggle={(event) => {
+        const nextOpen = event.currentTarget.open;
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setView('list');
+        }
+      }}
+    >
+      <summary className="cursor-pointer text-sm font-medium">
+        {playerName ? `${playerName} — ` : ''}
+        {decklist.name ?? `Deck ${decklist.orderIndex + 1}`}{' '}
+        <span className="text-xs font-semibold">{registered ? 'Registered' : 'Unregistered'}</span>{' '}
+        <span className="text-xs text-muted-foreground">(read-only)</span>
+      </summary>
+      {open ? (
+        <div className="mt-3 space-y-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-xs text-muted-foreground">View</span>
+            <div className="inline-flex rounded-md bg-muted p-0.5" role="group" aria-label="Deck view">
+              <button
+                type="button"
+                aria-pressed={view === 'list'}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                  view === 'list'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setView('list')}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                aria-pressed={view === 'details'}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                  view === 'details'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setView('details')}
+              >
+                Details
+              </button>
+            </div>
+          </div>
+          {view === 'details' ? (
+            <DeckAnalyticsView deck={builderDeck} editable={false} showBuilderChrome={false} />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <DeckCardList title="Main Deck" emptyText="No cards" cards={mainCards} />
+              <DeckCardList title="Sideboard" emptyText="No cards" cards={sideboardCards} />
+            </div>
+          )}
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
+function DeckArchiveList({ groups }: { groups: EventGroup[] }) {
+  return (
+    <div className="mt-3 space-y-3">
+      {groups.map((group) => (
+        <div key={group.eventId} className="rounded-lg border border-border/70 bg-background/50 p-3">
+          <h3 className="text-sm font-semibold">{group.eventName}</h3>
+          <div className="mt-3 space-y-4">
+            {group.rounds.map((round) => (
+              <div key={round.roundId} className="space-y-2">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Round {round.roundNumber}
+                </h4>
+                {round.players.map((player) => (
+                  <div key={player.playerKey} className="space-y-2">
+                    {player.decks.map((decklist) => (
+                      <ArchiveDeckRow key={decklist.id} decklist={decklist} playerName={player.playerName} />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function DecklistsPage() {
   const { user } = useAuth();
   const { activeSeasonId, isLoading: loadingLeague } = useCurrentLeague();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const playerSlug = searchParams.get('player');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentEvent, setCurrentEvent] = useState<SeasonEvent | null>(null);
@@ -87,19 +270,11 @@ export function DecklistsPage() {
           null;
         setCurrentEvent(activeEvent);
 
-        if (user) {
-          const myDecklistsResponse = await apiRequest<ApiListResponse<SeasonDecklist>>(
-            `/api/decklists/my-season/${activeSeasonId}`,
-          );
-          setSeasonDecklists(myDecklistsResponse.data);
-          setDecklistVisibility(true);
-        } else {
-          const seasonResponse = await apiRequest<ApiListResponse<SeasonDecklist>>(
-            `/api/seasons/${activeSeasonId}/decklists`,
-          );
-          setSeasonDecklists(seasonResponse.data);
-          setDecklistVisibility(seasonResponse.meta?.decklistVisibility ?? true);
-        }
+        const seasonResponse = await apiRequest<ApiListResponse<SeasonDecklist>>(
+          `/api/seasons/${activeSeasonId}/decklists`,
+        );
+        setSeasonDecklists(seasonResponse.data);
+        setDecklistVisibility(seasonResponse.meta?.decklistVisibility ?? true);
       } catch (loadError) {
         setError(loadError instanceof ApiError ? loadError.message : 'Unable to load deck context');
       } finally {
@@ -108,34 +283,52 @@ export function DecklistsPage() {
     };
 
     void run();
-  }, [activeSeasonId, loadingLeague, user]);
+  }, [activeSeasonId, loadingLeague]);
 
-  const previousDecks = useMemo(
-    () => seasonDecklists.filter((decklist) => decklist.event.status === 'completed'),
+  const archiveDecks = useMemo(
+    () => seasonDecklists.filter((decklist) => isArchiveRound(decklist.event, decklist.round)),
     [seasonDecklists],
   );
-  const previousDeckGroups = useMemo<PreviousDeckGroup[]>(() => {
-    const grouped = new Map<string, PreviousDeckGroup>();
-    for (const deck of previousDecks) {
-      const existing = grouped.get(deck.event.id);
-      if (existing) {
-        existing.decks.push(deck);
-        continue;
-      }
-      grouped.set(deck.event.id, {
-        eventId: deck.event.id,
-        eventName: deck.event.name,
-        orderIndex: deck.event.orderIndex,
-        decks: [deck],
-      });
-    }
 
-    const groups = [...grouped.values()].sort((a, b) => b.orderIndex - a.orderIndex);
-    for (const group of groups) {
-      group.decks.sort((a, b) => a.round.roundNumber - b.round.roundNumber || a.orderIndex - b.orderIndex);
+  const myArchiveDecks = useMemo(() => {
+    if (!user || playerSlug) {
+      return [];
     }
-    return groups;
-  }, [previousDecks]);
+    return archiveDecks.filter((decklist) => decklist.user?.id === user.id);
+  }, [archiveDecks, playerSlug, user]);
+
+  const leagueArchiveDecks = useMemo(() => {
+    if (playerSlug) {
+      return archiveDecks.filter((decklist) => decklist.user?.slug === playerSlug);
+    }
+    if (!user) {
+      return archiveDecks;
+    }
+    return archiveDecks.filter((decklist) => decklist.user?.id !== user.id);
+  }, [archiveDecks, playerSlug, user]);
+
+  const myGroups = useMemo(() => buildEventGroups(myArchiveDecks), [myArchiveDecks]);
+  const leagueGroups = useMemo(() => buildEventGroups(leagueArchiveDecks), [leagueArchiveDecks]);
+
+  const scopedPlayerName = useMemo(() => {
+    if (!playerSlug) {
+      return null;
+    }
+    const match = seasonDecklists.find((decklist) => decklist.user?.slug === playerSlug);
+    return match?.user ? primaryName(match.user) : null;
+  }, [playerSlug, seasonDecklists]);
+
+  const archiveHeading = playerSlug
+    ? scopedPlayerName
+      ? `${scopedPlayerName}'s decklists`
+      : "This player's decklists"
+    : 'League decks';
+
+  const pageSubtitle = playerSlug
+    ? 'Browse previous-round decklists for this player.'
+    : user
+      ? 'View and build decklists from your card pool.'
+      : 'Browse previous-round decklists for the current season.';
 
   const openCurrentDeckbuilder = () => {
     if (!currentEvent) {
@@ -144,18 +337,31 @@ export function DecklistsPage() {
     navigate(`/events/${currentEvent.id}/build`);
   };
 
+  const leagueEmptyCopy = (() => {
+    if (playerSlug && leagueArchiveDecks.length === 0) {
+      return 'No previous-round decks recorded for this player.';
+    }
+    if (!playerSlug && decklistVisibility === false && user?.role !== 'admin') {
+      return user
+        ? 'Decklists are hidden for this season.'
+        : 'Decklists are hidden for this season. Sign in to view your own decklists.';
+    }
+    if (leagueGroups.length === 0) {
+      return 'No previous decklists yet.';
+    }
+    return null;
+  })();
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Decklists</h1>
-        <p className="text-muted-foreground mt-1">
-          {user ? 'View and build decklists from your card pool.' : 'Browse submitted decklists for the current season.'}
-        </p>
+        <p className="text-muted-foreground mt-1">{pageSubtitle}</p>
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      {user ? (
+      {user && !playerSlug ? (
         <div className="rounded-lg border border-border bg-card p-6">
           <h2 className="text-lg font-semibold">Current Event Deck</h2>
           {loading ? <p className="mt-2 text-sm text-muted-foreground">Detecting current event...</p> : null}
@@ -177,71 +383,21 @@ export function DecklistsPage() {
         </div>
       ) : null}
 
+      {user && !playerSlug ? (
+        <div className="rounded-lg border border-border bg-card p-6">
+          <h2 className="text-lg font-semibold">Your previous decks</h2>
+          {myGroups.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">No previous decklists yet.</p>
+          ) : (
+            <DeckArchiveList groups={myGroups} />
+          )}
+        </div>
+      ) : null}
+
       <div className="rounded-lg border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">{user ? 'Previous Decklists This Season' : 'Season Decklists'}</h2>
-        {!user && decklistVisibility === false ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            Decklists are hidden for this season. Sign in to view your own decklists.
-          </p>
-        ) : previousDeckGroups.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No previous decklists yet.</p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {previousDeckGroups.map((group) => (
-              <div key={group.eventId} className="rounded-lg border border-border/70 bg-background/50 p-3">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold">{group.eventName}</h3>
-                  <span className="text-xs text-muted-foreground">
-                    {group.decks.length} {group.decks.length === 1 ? 'deck' : 'decks'}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {group.decks.map((decklist) => {
-                    const mainEntries = decklist.entries.filter((entry) => entry.zone === 'main');
-                    const sideEntries = decklist.entries.filter((entry) => entry.zone === 'sideboard');
-                    return (
-                      <details key={decklist.id} className="rounded-md border border-border/70 bg-card p-3">
-                        <summary className="cursor-pointer text-sm font-medium">
-                          {decklist.user ? `${primaryName(decklist.user)} — ` : ''}
-                          {decklist.name ?? `Deck ${decklist.orderIndex + 1}`} - Round {decklist.round.roundNumber}{' '}
-                          <span className="text-xs text-muted-foreground">(read-only)</span>
-                        </summary>
-                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Main Deck
-                            </p>
-                            <div className="mt-1 space-y-1 text-sm">
-                              {mainEntries.length === 0 ? <p className="text-muted-foreground">No cards</p> : null}
-                              {mainEntries.map((entry) => (
-                                <p key={entry.id}>
-                                  {entry.quantity}x {entry.cachedCard.name}
-                                </p>
-                              ))}
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                              Sideboard
-                            </p>
-                            <div className="mt-1 space-y-1 text-sm">
-                              {sideEntries.length === 0 ? <p className="text-muted-foreground">No cards</p> : null}
-                              {sideEntries.map((entry) => (
-                                <p key={entry.id}>
-                                  {entry.quantity}x {entry.cachedCard.name}
-                                </p>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </details>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        <h2 className="text-lg font-semibold">{archiveHeading}</h2>
+        {leagueEmptyCopy ? <p className="mt-2 text-sm text-muted-foreground">{leagueEmptyCopy}</p> : null}
+        {!leagueEmptyCopy ? <DeckArchiveList groups={leagueGroups} /> : null}
 
         <Link to="/schedule" className="mt-4 inline-block text-sm underline">
           Go to schedule

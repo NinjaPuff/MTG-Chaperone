@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { PoolCard } from '@/components/cardpool/types';
 import {
   buildVirtualGridRows,
+  computeGridCellWidth,
   computeGridColumnCount,
+  computeWindowScrollMargin,
   estimateVirtualGridRowHeight,
 } from '../../lib/virtualGridRows';
 
@@ -111,6 +113,67 @@ describe('buildVirtualGridRows', () => {
     }
   });
 
+  it('chunks mana-value groups into section headers then card rows', () => {
+    const rows = buildVirtualGridRows(mixedTypeCards, {
+      sortKey: 'name',
+      groupMode: 'flat',
+      organizeBy: 'cmc',
+      columnCount: 2,
+    });
+
+    expect(rows.map((row) => row.kind).every((kind) => kind === 'section-header' || kind === 'card-row')).toBe(
+      true,
+    );
+
+    for (const [index, row] of rows.entries()) {
+      if (row.kind === 'section-header') {
+        expect(rows[index + 1]?.kind).toBe('card-row');
+        expect('cards' in row).toBe(false);
+      }
+      if (row.kind === 'card-row') {
+        expect(row.cards.length).toBeGreaterThan(0);
+        expect(row.cards.length).toBeLessThanOrEqual(2);
+      }
+    }
+  });
+
+  it('keeps phase headers ahead of section headers and card rows', () => {
+    const phaseCards = [
+      makeCard({
+        scryfallId: 'bolt',
+        name: 'Lightning Bolt',
+        typeLine: 'Instant',
+        cmc: 1,
+        phaseLabel: 'Initial Pool',
+        phaseQuantities: { 'Initial Pool': 1 },
+      }),
+      makeCard({
+        scryfallId: 'shock',
+        name: 'Shock',
+        typeLine: 'Instant',
+        cmc: 1,
+        phaseLabel: 'Event 1',
+        phaseQuantities: { 'Event 1': 1 },
+      }),
+    ];
+
+    const rows = buildVirtualGridRows(phaseCards, {
+      sortKey: 'name',
+      groupMode: 'phase',
+      organizeBy: 'type',
+      columnCount: 3,
+    });
+
+    expect(rows.map((row) => row.kind)).toEqual([
+      'phase-header',
+      'section-header',
+      'card-row',
+      'phase-header',
+      'section-header',
+      'card-row',
+    ]);
+  });
+
   it('inserts phase headers before each phase section group', () => {
     const phaseCards = [
       makeCard({
@@ -142,6 +205,14 @@ describe('buildVirtualGridRows', () => {
   });
 });
 
+describe('computeGridCellWidth', () => {
+  it('returns stretched cell width for 800px container and 3 columns', () => {
+    const cellWidth = computeGridCellWidth(800, 3, 8);
+    expect(cellWidth).toBe((800 - 16) / 3);
+    expect(cellWidth).not.toBe(200);
+  });
+});
+
 describe('estimateVirtualGridRowHeight', () => {
   it('returns fixed heights for headers', () => {
     expect(
@@ -159,5 +230,38 @@ describe('estimateVirtualGridRowHeight', () => {
     expect(
       estimateVirtualGridRowHeight({ kind: 'card-row', id: 'row', cards: [] }, 220),
     ).toBe(Math.round(220 * (680 / 488)) + 8);
+  });
+
+  it('estimates card rows from cell width rather than slider width', () => {
+    const cellWidth = computeGridCellWidth(800, 3, 8);
+    const cellEstimate = estimateVirtualGridRowHeight({ kind: 'card-row', id: 'row', cards: [] }, cellWidth);
+    const sliderEstimate = estimateVirtualGridRowHeight({ kind: 'card-row', id: 'row', cards: [] }, 200);
+
+    expect(cellEstimate).toBe(Math.round(cellWidth * (680 / 488)) + 8);
+    expect(cellEstimate).toBeGreaterThan(sliderEstimate);
+  });
+});
+
+describe('computeWindowScrollMargin', () => {
+  it('uses bounding rect top plus scrollY when the grid is flush with the viewport', () => {
+    const element = {
+      getBoundingClientRect: () => ({ top: 0 }),
+      offsetTop: 48,
+    } as HTMLElement;
+
+    expect(computeWindowScrollMargin(element, 800)).toBe(800);
+  });
+
+  it('uses bounding rect top when the page has not scrolled', () => {
+    const element = {
+      getBoundingClientRect: () => ({ top: 400 }),
+      offsetTop: 48,
+    } as HTMLElement;
+
+    expect(computeWindowScrollMargin(element, 0)).toBe(400);
+  });
+
+  it('returns 0 when the element is missing', () => {
+    expect(computeWindowScrollMargin(null, 800)).toBe(0);
   });
 });

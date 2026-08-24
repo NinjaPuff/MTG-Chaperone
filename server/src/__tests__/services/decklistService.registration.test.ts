@@ -312,7 +312,7 @@ describe('decklistService registration behaviors', () => {
       eventId: 'event-1',
       roundId: 'round-1',
       status: 'draft',
-      event: { config: { minDeckSize: 40, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
+      event: { config: { minDeckSize: 2, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
       round: { roundNumber: 1 },
       entries: [{ cachedCardId: 'card-1', quantity: 2, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
     });
@@ -383,6 +383,132 @@ describe('decklistService registration behaviors', () => {
     expect(invalidResult.isValid).toBe(false);
     expect(invalidResult.errors[0]).toContain('Too many copies allocated');
     expect(invalidResult.invalidCardIds).toContain('card-1');
+  });
+
+  it('returns a validation error when main deck is below minimum size', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-1',
+      status: 'draft',
+      event: { config: { minDeckSize: 40, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
+      round: { roundNumber: 1 },
+      entries: [{ cachedCardId: 'card-1', quantity: 39, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [{ cachedCardId: 'card-1', quantity: 40, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        },
+      ],
+    });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ entries: [{ cachedCardId: 'card-1', quantity: 1 }] }]);
+    prismaMock.cachedCard.findMany.mockResolvedValue([]);
+
+    const result = await validateDecklist('deck-1', 'user-1');
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContain('Main deck is below minimum size (39/40)');
+    expect(result.warnings).not.toContain('Main deck is below minimum size (39/40)');
+  });
+
+  it('should_put_size_shortfall_in_errors_when_main_is_empty', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-1',
+      status: 'draft',
+      event: { config: { minDeckSize: 40, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
+      round: { roundNumber: 1 },
+      entries: [],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [{ cachedCardId: 'card-1', quantity: 40, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        },
+      ],
+    });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.decklist.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    prismaMock.cachedCard.findMany.mockResolvedValue([]);
+
+    const result = await validateDecklist('deck-1', 'user-1');
+
+    expect(result.isValid).toBe(false);
+    expect(result.errors).toContain('Main deck is below minimum size (0/40)');
+  });
+
+  it('should_be_valid_when_main_meets_minDeckSize_and_allocation_ok', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-1',
+      status: 'draft',
+      event: { config: { minDeckSize: 40, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
+      round: { roundNumber: 1 },
+      entries: [{ cachedCardId: 'card-1', quantity: 40, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [{ cachedCardId: 'card-1', quantity: 40, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        },
+      ],
+    });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.decklist.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    prismaMock.cachedCard.findMany.mockResolvedValue([]);
+
+    const result = await validateDecklist('deck-1', 'user-1');
+
+    expect(result.isValid).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('should_keep_sideboard_count_as_warning_when_fixed_15_mismatches', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      roundId: 'round-1',
+      status: 'draft',
+      event: { config: { minDeckSize: 40, sideboardRule: 'fixed_15' }, season: { id: 'season-1' } },
+      round: { roundNumber: 1 },
+      entries: [
+        { cachedCardId: 'card-1', quantity: 40, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } },
+        { cachedCardId: 'card-2', quantity: 14, zone: 'sideboard', cachedCard: { typeLine: 'Instant' } },
+      ],
+    });
+    prismaMock.cardPool.findUnique.mockResolvedValue({
+      id: 'pool-1',
+      acquisitions: [
+        {
+          entries: [
+            { cachedCardId: 'card-1', quantity: 40, cachedCard: { typeLine: 'Creature - Wizard' } },
+            { cachedCardId: 'card-2', quantity: 14, cachedCard: { typeLine: 'Instant' } },
+          ],
+        },
+      ],
+    });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.decklist.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    prismaMock.cachedCard.findMany.mockResolvedValue([]);
+
+    const result = await validateDecklist('deck-1', 'user-1');
+
+    expect(result.isValid).toBe(true);
+    expect(result.warnings).toContain('Sideboard count is 14; expected 15');
+    expect(result.errors).not.toContain('Sideboard count is 14; expected 15');
   });
 
   it('applies minimum-changes warnings using only registered prior-round decks', async () => {

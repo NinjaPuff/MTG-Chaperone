@@ -9,9 +9,10 @@ import { completeEvent, createEvent, getEvent, resetEvent, startEvent, updateEve
 import { createRound } from '../services/roundService.js';
 import { recomputeStandings } from '../services/standingsService.js';
 import { getEventResults } from '../services/eventRankingService.js';
-import { listMyDecklistsForEvent, listMyDecklistsForRound } from '../services/decklistService.js';
+import { listMyDecklistsForEvent, listMyDecklistsForRound, listVisibleDecklistsForEvent } from '../services/decklistService.js';
 import { USER_PUBLIC_SELECT } from '../lib/userSelect.js';
 import { getBracketState } from '../services/bracketService.js';
+import { minDeckSizeSchema } from '../lib/minDeckSizeSchema.js';
 
 const router = Router();
 const EVENT_FORMATS = [
@@ -28,7 +29,7 @@ const eventConfigSchema = z
     format: z.enum(EVENT_FORMATS).optional(),
     bestOfN: z.number().int().positive().optional(),
     deckCount: z.number().int().positive().optional(),
-    minDeckSize: z.number().int().positive().optional(),
+    minDeckSize: minDeckSizeSchema.optional(),
     sideboardRule: z.enum(['entire_pool', 'fixed_15', 'none']).optional(),
     schedulingType: z.enum(['fixed_deadlines', 'open_window', 'weekly_auto']).optional(),
     deckLockingMode: z.enum(['required_before_round', 'free_modification', 'admin_locked']).optional(),
@@ -320,17 +321,10 @@ router.post('/:eventId/rounds', requireAuth, requireAdmin, async (req, res, next
   }
 });
 
-router.get('/:eventId/decklists', async (req, res, next) => {
+router.get('/:eventId/decklists', optionalAuth, async (req, res, next) => {
   try {
-    const decklists = await prisma.decklist.findMany({
-      where: { eventId: req.params.eventId },
-      include: {
-        user: {
-          select: USER_PUBLIC_SELECT,
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    const viewer = req.user ? { id: req.user.id, role: req.user.role } : null;
+    const decklists = await listVisibleDecklistsForEvent(req.params.eventId, viewer);
     res.json({ data: decklists });
   } catch (error) {
     next(error);

@@ -243,12 +243,12 @@ Three pairing systems: Swiss, Seeded Swiss, and Round Robin. Round Robin can spa
 
 ### Acceptance Criteria
 
-- [ ] Swiss: pair players with the same or similar record, avoiding repeat pairings when possible
-- [ ] Seeded Swiss: round 1 seeded by configurable source (previous_season, previous_event, manual); subsequent rounds use Swiss
+- [x] Swiss: pair players with the same or similar record, avoiding repeat pairings when possible
+- [x] Seeded Swiss: round 1 seeded by configurable source (previous_season, previous_event, manual); subsequent rounds use Swiss
 - [ ] Round Robin: generate all-play-all schedule at season start, distribute across multiple events (3-4 rounds each)
 - [ ] Round Robin schedule visibility is configurable per league
-- [ ] Admin can regenerate pairings for a round that hasn't started
-- [ ] Odd number of players: assign a bye to the lowest-ranked player without a prior bye
+- [x] Admin can regenerate pairings for a round that hasn't started
+- [x] Odd number of players: assign a bye to the lowest-ranked player without a prior bye
 
 ---
 
@@ -346,6 +346,35 @@ Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for seal
 - [ ] "Import from previous round" copies a prior decklist as starting point
 - [ ] Deck locking configurable per event (required_before_round, free_modification, admin_locked)
 
+### Previous-round league deck archive
+
+Players and spectators can browse other players’ decks from completed previous rounds on `/decks`. Registered (`submitted`/`locked`) lists are the official source of truth. Leftover created (`draft`) decks for a completed round are still listed so the league can see what someone built even if they never hit Register. Other players’ in-progress current-round drafts stay private.
+
+#### User Stories
+
+- As a player, I want to browse other players’ previous-round decks on `/decks` so I can see what the league played.
+- As a spectator, I want the same archive when season decklist visibility is on.
+- As a player who never hit Register, I still want my leftover created deck visible after the round completes so the league can see what I built.
+- As a player, I do not want others to see my in-progress current-round draft.
+
+#### Acceptance Criteria
+
+- [x] Logged-in `/decks` loads the season visible-decklist list, not only `my-season`
+- [x] Archive grouping is event → round → player; registered decks appear before unregistered created decks
+- [x] Registered (`submitted`/`locked`) decks are badged Registered and treated as the official list
+- [x] After a round is `completed`, other players’ leftover `draft` decks for that round are listed and labeled Unregistered
+- [x] Players who never registered still appear if they have a created deck for that previous round
+- [x] Other players’ drafts for the current in-progress / not-started round are omitted from the list and `GET /api/decklists/:id` returns 403
+- [x] Completed earlier rounds of an active event appear in the archive
+- [x] Opening an archive row succeeds (`GET /api/decklists/:id` uses the same visibility predicate as the list)
+- [x] Viewing another player’s deck is read-only; the owner still edits in the existing builder
+- [x] When `decklistVisibility` is off, other members and spectators see no archive (owner and site admin excepted)
+- [x] `GET /api/events/:eventId/decklists` applies the same visibility filter
+- [x] Profile “Browse Decklists” opens `/decks?player=:slug` when decklists are visible
+- [x] Expanded archive row defaults to a hoverable Main/Sideboard list (`DeckCardList` / `HoverTarget`); List/Details toggle opens read-only curve/stacks; no Register, Unregister, or Enable editing
+- [x] `/decks?player=:slug` heading is `{primaryName}'s decklists` (fallback `This player's decklists`) and hides Open Current Deckbuilder, including the signed-in user's own slug
+- [x] Expanded archive cards use the same hover preview as pools; season list does not add `imageUris`
+
 ### Planned for Later
 
 - Deck-level description/primer notes
@@ -425,6 +454,7 @@ Public profile pages showing a player's current and historical performance acros
 - [ ] Career history: list of past seasons with final records and standings
 - [ ] Match log: recent matches with results and opponents
 - [ ] Links to decklists and card pool (respecting privacy settings)
+- [x] Profile decklist link is player-scoped (`/decks?player=:slug`) and still respects season privacy
 - [ ] Publicly viewable by all visitors
 
 ---

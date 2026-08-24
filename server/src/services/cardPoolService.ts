@@ -6,6 +6,7 @@ import {
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { expandPhaseLabelMatches, normalizePhaseLabel } from '../lib/poolRules.js';
+import { needsFaceCmcRefresh } from '../lib/scryfallCardNormalize.js';
 import {
   bulkLookupForPoolImport,
   getCard,
@@ -28,20 +29,30 @@ async function refreshStaleDfcManaCost(cachedCardIds: string[]) {
     select: {
       scryfallId: true,
       name: true,
+      layout: true,
       manaCost: true,
       cmc: true,
+      typeLine: true,
     },
   });
 
   const staleIds = cards
-    .filter((card) => card.manaCost === null && card.cmc > 0 && card.name.includes('//'))
+    .filter((card) =>
+      needsFaceCmcRefresh({
+        name: card.name,
+        layout: card.layout,
+        manaCost: card.manaCost,
+        cmc: card.cmc,
+        typeLine: card.typeLine,
+      }),
+    )
     .map((card) => card.scryfallId);
 
   for (const scryfallId of staleIds) {
     try {
       await getCard(scryfallId);
-    } catch {
-      // Ignore refresh failures; create flow will still use cached row.
+    } catch (error) {
+      console.warn(`Failed refreshing stale DFC cache row: ${scryfallId}`, error);
     }
   }
 }

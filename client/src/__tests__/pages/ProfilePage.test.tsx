@@ -163,6 +163,37 @@ describe('ProfilePage', () => {
     expect(screen.getByText('75%')).toBeInTheDocument();
     expect(screen.getByText('Edit Profile')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View Card Pool' })).toHaveAttribute('href', '/pools/pool-1');
+    expect(screen.getByRole('link', { name: 'Browse Decklists' })).toHaveAttribute(
+      'href',
+      '/decks?player=google-name',
+    );
+  });
+
+  it('hides the decklist link when season privacy turns decklists off', async () => {
+    mocks.apiRequest.mockImplementation(async (path: string) => {
+      if (path.startsWith('/api/users/google-name/match-history')) {
+        return {
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+        };
+      }
+      if (path === '/api/users/google-name') {
+        return {
+          data: {
+            ...publicProfile,
+            links: { ...publicProfile.links, decklistsVisible: false },
+          },
+        };
+      }
+      throw new Error(`Unexpected path: ${path}`);
+    });
+
+    renderProfile('/profile/google-name');
+
+    await waitFor(() => {
+      expect(screen.getByText('Decklists hidden by season privacy')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('link', { name: 'Browse Decklists' })).not.toBeInTheDocument();
   });
 
   it('submits profile edits with authApiRequest for owners', async () => {
