@@ -371,6 +371,9 @@ Players and spectators can browse other players’ decks from completed previous
 - [x] When `decklistVisibility` is off, other members and spectators see no archive (owner and site admin excepted)
 - [x] `GET /api/events/:eventId/decklists` applies the same visibility filter
 - [x] Profile “Browse Decklists” opens `/decks?player=:slug` when decklists are visible
+- [x] Expanded archive row defaults to a hoverable Main/Sideboard list (`DeckCardList` / `HoverTarget`); List/Details toggle opens read-only curve/stacks; no Register, Unregister, or Enable editing
+- [x] `/decks?player=:slug` heading is `{primaryName}'s decklists` (fallback `This player's decklists`) and hides Open Current Deckbuilder, including the signed-in user's own slug
+- [x] Expanded archive cards use the same hover preview as pools; season list does not add `imageUris`
 
 ### Planned for Later
 

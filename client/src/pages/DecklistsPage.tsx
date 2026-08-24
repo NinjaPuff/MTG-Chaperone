@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { DeckAnalyticsView } from '@/components/deckbuilder/DeckAnalyticsView';
+import { DeckCardList } from '@/components/deckbuilder/DeckCardList';
 import { ApiError, apiRequest } from '@/lib/api';
+import { seasonDecklistToBuilderDeck, type SeasonArchiveCachedCard } from '@/lib/archiveDeck';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { primaryName } from '@/lib/userDisplay';
@@ -40,10 +43,7 @@ type SeasonDecklist = {
     id: string;
     quantity: number;
     zone: 'main' | 'sideboard';
-    cachedCard: {
-      name: string;
-      manaCost: string | null;
-    };
+    cachedCard: SeasonArchiveCachedCard;
   }>;
 };
 
@@ -137,6 +137,76 @@ function buildEventGroups(decks: SeasonDecklist[]): EventGroup[] {
     .sort((a, b) => b.orderIndex - a.orderIndex);
 }
 
+function ArchiveDeckRow({ decklist, playerName }: { decklist: SeasonDecklist; playerName: string }) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<'list' | 'details'>('list');
+  const registered = isRegisteredStatus(decklist.status);
+  const builderDeck = seasonDecklistToBuilderDeck(decklist);
+  const mainCards = builderDeck.cards.filter((card) => card.zone === 'main');
+  const sideboardCards = builderDeck.cards.filter((card) => card.zone === 'sideboard');
+
+  return (
+    <details
+      className="rounded-md border border-border/70 bg-card p-3"
+      onToggle={(event) => {
+        const nextOpen = event.currentTarget.open;
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setView('list');
+        }
+      }}
+    >
+      <summary className="cursor-pointer text-sm font-medium">
+        {playerName ? `${playerName} — ` : ''}
+        {decklist.name ?? `Deck ${decklist.orderIndex + 1}`}{' '}
+        <span className="text-xs font-semibold">{registered ? 'Registered' : 'Unregistered'}</span>{' '}
+        <span className="text-xs text-muted-foreground">(read-only)</span>
+      </summary>
+      {open ? (
+        <div className="mt-3 space-y-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="text-xs text-muted-foreground">View</span>
+            <div className="inline-flex rounded-md bg-muted p-0.5" role="group" aria-label="Deck view">
+              <button
+                type="button"
+                aria-pressed={view === 'list'}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                  view === 'list'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setView('list')}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                aria-pressed={view === 'details'}
+                className={`rounded px-2 py-0.5 text-xs font-medium transition-colors ${
+                  view === 'details'
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                onClick={() => setView('details')}
+              >
+                Details
+              </button>
+            </div>
+          </div>
+          {view === 'details' ? (
+            <DeckAnalyticsView deck={builderDeck} editable={false} showBuilderChrome={false} />
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              <DeckCardList title="Main Deck" emptyText="No cards" cards={mainCards} />
+              <DeckCardList title="Sideboard" emptyText="No cards" cards={sideboardCards} />
+            </div>
+          )}
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
 function DeckArchiveList({ groups }: { groups: EventGroup[] }) {
   return (
     <div className="mt-3 space-y-3">
@@ -151,49 +221,9 @@ function DeckArchiveList({ groups }: { groups: EventGroup[] }) {
                 </h4>
                 {round.players.map((player) => (
                   <div key={player.playerKey} className="space-y-2">
-                    {player.decks.map((decklist) => {
-                      const mainEntries = decklist.entries.filter((entry) => entry.zone === 'main');
-                      const sideEntries = decklist.entries.filter((entry) => entry.zone === 'sideboard');
-                      const registered = isRegisteredStatus(decklist.status);
-                      return (
-                        <details key={decklist.id} className="rounded-md border border-border/70 bg-card p-3">
-                          <summary className="cursor-pointer text-sm font-medium">
-                            {player.playerName ? `${player.playerName} — ` : ''}
-                            {decklist.name ?? `Deck ${decklist.orderIndex + 1}`}{' '}
-                            <span className="text-xs font-semibold">{registered ? 'Registered' : 'Unregistered'}</span>{' '}
-                            <span className="text-xs text-muted-foreground">(read-only)</span>
-                          </summary>
-                          <div className="mt-3 grid gap-3 md:grid-cols-2">
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                Main Deck
-                              </p>
-                              <div className="mt-1 space-y-1 text-sm">
-                                {mainEntries.length === 0 ? <p className="text-muted-foreground">No cards</p> : null}
-                                {mainEntries.map((entry) => (
-                                  <p key={entry.id}>
-                                    {entry.quantity}x {entry.cachedCard.name}
-                                  </p>
-                                ))}
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                Sideboard
-                              </p>
-                              <div className="mt-1 space-y-1 text-sm">
-                                {sideEntries.length === 0 ? <p className="text-muted-foreground">No cards</p> : null}
-                                {sideEntries.map((entry) => (
-                                  <p key={entry.id}>
-                                    {entry.quantity}x {entry.cachedCard.name}
-                                  </p>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </details>
-                      );
-                    })}
+                    {player.decks.map((decklist) => (
+                      <ArchiveDeckRow key={decklist.id} decklist={decklist} playerName={player.playerName} />
+                    ))}
                   </div>
                 ))}
               </div>
@@ -280,6 +310,26 @@ export function DecklistsPage() {
   const myGroups = useMemo(() => buildEventGroups(myArchiveDecks), [myArchiveDecks]);
   const leagueGroups = useMemo(() => buildEventGroups(leagueArchiveDecks), [leagueArchiveDecks]);
 
+  const scopedPlayerName = useMemo(() => {
+    if (!playerSlug) {
+      return null;
+    }
+    const match = seasonDecklists.find((decklist) => decklist.user?.slug === playerSlug);
+    return match?.user ? primaryName(match.user) : null;
+  }, [playerSlug, seasonDecklists]);
+
+  const archiveHeading = playerSlug
+    ? scopedPlayerName
+      ? `${scopedPlayerName}'s decklists`
+      : "This player's decklists"
+    : 'League decks';
+
+  const pageSubtitle = playerSlug
+    ? 'Browse previous-round decklists for this player.'
+    : user
+      ? 'View and build decklists from your card pool.'
+      : 'Browse previous-round decklists for the current season.';
+
   const openCurrentDeckbuilder = () => {
     if (!currentEvent) {
       return;
@@ -291,7 +341,7 @@ export function DecklistsPage() {
     if (playerSlug && leagueArchiveDecks.length === 0) {
       return 'No previous-round decks recorded for this player.';
     }
-    if (decklistVisibility === false && user?.role !== 'admin') {
+    if (!playerSlug && decklistVisibility === false && user?.role !== 'admin') {
       return user
         ? 'Decklists are hidden for this season.'
         : 'Decklists are hidden for this season. Sign in to view your own decklists.';
@@ -306,14 +356,12 @@ export function DecklistsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Decklists</h1>
-        <p className="text-muted-foreground mt-1">
-          {user ? 'View and build decklists from your card pool.' : 'Browse previous-round decklists for the current season.'}
-        </p>
+        <p className="text-muted-foreground mt-1">{pageSubtitle}</p>
       </div>
 
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-      {user ? (
+      {user && !playerSlug ? (
         <div className="rounded-lg border border-border bg-card p-6">
           <h2 className="text-lg font-semibold">Current Event Deck</h2>
           {loading ? <p className="mt-2 text-sm text-muted-foreground">Detecting current event...</p> : null}
@@ -347,7 +395,7 @@ export function DecklistsPage() {
       ) : null}
 
       <div className="rounded-lg border border-border bg-card p-6">
-        <h2 className="text-lg font-semibold">League decks</h2>
+        <h2 className="text-lg font-semibold">{archiveHeading}</h2>
         {leagueEmptyCopy ? <p className="mt-2 text-sm text-muted-foreground">{leagueEmptyCopy}</p> : null}
         {!leagueEmptyCopy ? <DeckArchiveList groups={leagueGroups} /> : null}
 

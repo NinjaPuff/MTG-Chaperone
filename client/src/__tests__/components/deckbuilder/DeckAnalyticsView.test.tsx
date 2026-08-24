@@ -288,4 +288,12 @@ describe('DeckAnalyticsView', () => {
 
     expect(screen.getByTestId('deck-analytics-build-hint')).toBeInTheDocument();
   });
+
+  it('hides_builder_chrome_when_showBuilderChrome_is_false', () => {
+    renderWithAppProviders(<DeckAnalyticsView deck={makeDeck()} showBuilderChrome={false} />);
+
+    expect(screen.queryByTestId('deck-analytics-enable-editing')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('deck-analytics-build-hint')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Curve' })).toBeInTheDocument();
+  });
 });

@@ -12,6 +12,7 @@ type DeckAnalyticsViewProps = {
   deck: BuilderDeck;
   poolImageByCardId?: Map<string, string>;
   editable?: boolean;
+  showBuilderChrome?: boolean;
   onCardClick?: (card: DeckBuilderCard, deckId: string) => void;
   onCardContextMenu?: (event: MouseEvent, card: DeckBuilderCard, deckId: string) => void;
 };
@@ -40,7 +41,14 @@ function toPoolCards(deck: BuilderDeck, poolImageByCardId?: Map<string, string>)
   });
 }
 
-export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, onCardClick, onCardContextMenu }: DeckAnalyticsViewProps) {
+export function DeckAnalyticsView({
+  deck,
+  poolImageByCardId,
+  editable = false,
+  showBuilderChrome = true,
+  onCardClick,
+  onCardContextMenu,
+}: DeckAnalyticsViewProps) {
   const [viewMode, setViewMode] = useState<'curve' | 'stacks'>('curve');
   const [splitCreatureRows, setSplitCreatureRows] = useState(true);
   const [detailsEditing, setDetailsEditing] = useState(false);
@@ -171,21 +179,25 @@ export function DeckAnalyticsView({ deck, poolImageByCardId, editable = false, o
             Combined curve
           </label>
         ) : null}
-        <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            data-testid="deck-analytics-enable-editing"
-            className="h-3.5 w-3.5 rounded border-border bg-background accent-primary"
-            checked={editable && detailsEditing}
-            disabled={!editable}
-            onChange={(event) => setDetailsEditing(event.target.checked)}
-          />
-          Enable editing
-        </label>
+        {showBuilderChrome ? (
+          <label className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              data-testid="deck-analytics-enable-editing"
+              className="h-3.5 w-3.5 rounded border-border bg-background accent-primary"
+              checked={editable && detailsEditing}
+              disabled={!editable}
+              onChange={(event) => setDetailsEditing(event.target.checked)}
+            />
+            Enable editing
+          </label>
+        ) : null}
       </div>
-      <p className="text-xs text-muted-foreground" data-testid="deck-analytics-build-hint">
-        Add cards in Build.
-      </p>
+      {showBuilderChrome ? (
+        <p className="text-xs text-muted-foreground" data-testid="deck-analytics-build-hint">
+          Add cards in Build.
+        </p>
+      ) : null}
 
       {viewMode === 'curve' ? (
         <>
