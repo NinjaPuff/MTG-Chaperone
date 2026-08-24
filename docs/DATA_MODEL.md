@@ -456,9 +456,9 @@ draft ──→ submitted ──→ locked
 
 | State | Description |
 |---|---|
-| `draft` | Player is building or editing the deck. Not yet visible to opponents. |
-| `submitted` | Player has submitted the deck for the round. May still be retracted depending on event config. |
-| `locked` | The deck is immutable. Locked by admin action or automatically when the round begins (per `deckLockingMode`). |
+| `draft` | Player is building or editing the deck. Owner and site admins can always see it. Other viewers see a leftover draft only after the deck’s round is `completed` or the event is `completed`, and only when `season.decklistVisibility` is on. Current-round in-progress drafts stay private. |
+| `submitted` | Player has submitted the deck for the round. This is an official registered list. May still be retracted depending on event config. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
+| `locked` | The deck is immutable. This is an official registered list. Locked by admin action, match reporting, or round completion (per format / `deckLockingMode`). Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
 
 | Transition | Trigger |
 |---|---|
@@ -496,7 +496,9 @@ draft ──→ submitted ──→ locked
 
 ## 5. Privacy Model
 
-Three boolean flags on the **League** entity control data visibility for members and spectators:
+Runtime checks use the flags on **Season** (`poolVisibility`, `decklistVisibility`, `scheduleVisibility`). Site admins bypass them. Submitted and locked decklists are the official public lists when `decklistVisibility` is on. Leftover `draft` decks become visible to the same audience only after the round (or event) is completed. Current-round foreign drafts stay owner/admin-only.
+
+Three boolean flags on Season (also duplicated on League in the schema) control data visibility for members and spectators:
 
 | Flag | Default | When `false` |
 |---|---|---|

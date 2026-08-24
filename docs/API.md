@@ -260,12 +260,9 @@ Get league details by slug.
   "description": "Weekly sealed league for our LGS crew",
   "ownerId": "clxuser789",
   "memberCount": 12,
-  "settings": {
-    "decklistPrivacy": "afterRound",
-    "cardPoolPrivacy": "visible",
-    "requireDecklistSubmission": true,
-    "peerApprovalForAcquisitions": false
-  },
+  "poolVisibility": true,
+  "decklistVisibility": true,
+  "scheduleVisibility": true,
   "activeSeason": {
     "number": 3,
     "name": "Season 3 — Outlaws of Thunder Junction",
@@ -293,13 +290,7 @@ Update league settings. Only accessible by league admins.
 ```json
 {
   "name": "Updated League Name",
-  "description": "New description",
-  "settings": {
-    "decklistPrivacy": "hidden",
-    "cardPoolPrivacy": "hidden",
-    "requireDecklistSubmission": false,
-    "peerApprovalForAcquisitions": true
-  }
+  "description": "New description"
 }
 ```
 
@@ -1239,11 +1230,11 @@ Get the current standings for a season, sorted by match points then tiebreakers.
 
 #### `GET /api/seasons/:seasonId/card-pools`
 
-List card pools for a season. Visibility depends on league privacy settings.
+List card pools for a season. Visibility depends on season `poolVisibility` (boolean). Site admins bypass it. Owners always see their own pools.
 
 | Property | Value |
 |----------|-------|
-| Auth     | Depends on privacy settings (public if `cardPoolPrivacy: "visible"`, authenticated otherwise) |
+| Auth     | Optional. Same `poolVisibility` predicate as other pool list/get routes. |
 | Params   | `seasonId` (string) |
 
 **Response `200`:**
@@ -1456,40 +1447,54 @@ Reject a pending acquisition with a reason.
 
 ### Decklists (`/api/decklists`)
 
-#### `GET /api/events/:eventId/decklists`
+Season `decklistVisibility` (boolean, default `true`) gates public decklist access. Site admins bypass it. Owners always see their own decks.
 
-List decklists for an event. Visibility depends on league privacy settings (`decklistPrivacy`).
+**Who can see a deck**
+
+- Owner or site admin: any status.
+- Everyone else, when `decklistVisibility` is on:
+  - `submitted` and `locked` (official registered lists), including the current round.
+  - leftover `draft` decks only when the event is `completed` or the round is `completed`.
+- Everyone else, when `decklistVisibility` is off: nothing (`403` / omitted from lists).
+
+`GET /api/decklists/:id` uses the same predicate as the list endpoints. A row returned by a list is openable. Other players’ current-round `draft` decks return `403 FORBIDDEN`.
+
+#### `GET /api/seasons/:seasonId/decklists`
+
+List season decklists the viewer may see (registered decks plus leftover previous-round drafts).
 
 | Property | Value |
 |----------|-------|
-| Auth     | Depends on privacy settings |
-| Params   | `eventId` (string) |
-| Query Params | `roundNumber` (int, optional) — filter by round |
+| Auth     | Optional |
+| Params   | `seasonId` (UUID) |
 
-**Privacy behavior:**
-- `"visible"` — all decklists visible to everyone
-- `"afterRound"` — decklists visible after the round completes
-- `"afterEvent"` — decklists visible after the event completes
-- `"hidden"` — only visible to the owner and admins
+**Response `200`:** `{ "data": [ ...decklists with user, event, round, entries... ], "meta": { "decklistVisibility": true } }`
 
-**Response `200`:**
+**Errors:** `NOT_FOUND`
 
-```json
-{
-  "data": [
-    {
-      "id": "clxdeck001",
-      "owner": { "id": "clxuser001", "displayName": "WizardPlayer42" },
-      "roundNumber": 1,
-      "status": "submitted",
-      "cardCount": 40,
-      "mainboardCount": 40,
-      "sideboardCount": 56,
-      "updatedAt": "2026-04-14T19:00:00Z"
-    }
-  ]
-}
-```
+#### `GET /api/decklists/my-season/:seasonId`
+
+List the authenticated user’s own decks for a season, all statuses. Used by the deckbuilder import dialog. Not a public archive.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Authenticated |
+| Params   | `seasonId` (UUID) |
+
+**Errors:** `UNAUTHORIZED`, `NOT_FOUND`
+
+#### `GET /api/events/:eventId/decklists`
+
+List event decklists the viewer may see. Same visibility predicate as the season list (not an unfiltered dump).
+
+| Property | Value |
+|----------|-------|
+| Auth     | Optional |
+| Params   | `eventId` (UUID) |
+
+**Response `200`:** `{ "data": [ ...filtered decklists... ] }`
+
+**Errors:** `NOT_FOUND`
 
 ---
 
@@ -1499,7 +1504,7 @@ Get a full decklist with all card entries.
 
 | Property | Value |
 |----------|-------|
-| Auth     | Depends on privacy settings |
+| Auth     | Optional. Same visibility predicate as the season/event lists. |
 | Params   | `decklistId` (string) |
 
 **Response `200`:**
@@ -1665,7 +1670,7 @@ Export a decklist as a text format compatible with popular MTG platforms.
 
 | Property | Value |
 |----------|-------|
-| Auth     | Depends on privacy settings |
+| Auth     | Optional. Same visibility predicate as `GET /api/decklists/:decklistId`. |
 | Params   | `decklistId` (string), `format` (`mtgo` \| `arena` \| `moxfield`) |
 
 **Response `200` (Content-Type: text/plain):**
