@@ -80,6 +80,10 @@ describe('cardPoolSort helpers', () => {
     expect(isLandTypeLine('Land Creature — Forest Dryad')).toBe(true);
   });
 
+  it('returns false for missing type lines', () => {
+    expect(isLandTypeLine(undefined)).toBe(false);
+  });
+
   it('filters lands out of spell cards for curve helpers', () => {
     const cards = [
       makeCard({ name: 'Plains', typeLine: 'Basic Land — Plains', cmc: 0 }),
@@ -89,6 +93,16 @@ describe('cardPoolSort helpers', () => {
     ];
 
     expect(spellCardsForCurve(cards).map((card) => card.name)).toEqual(['Ornithopter']);
+  });
+
+  it('keeps cards with missing type lines when filtering lands for curve helpers', () => {
+    const cards: Array<{ name: string; typeLine?: string }> = [
+      { name: 'Unknown' },
+      { name: 'Plains', typeLine: 'Basic Land — Plains' },
+      { name: 'Shock', typeLine: 'Instant' },
+    ];
+
+    expect(spellCardsForCurve(cards).map((card) => card.name)).toEqual(['Unknown', 'Shock']);
   });
 
   it('flattens entries by scryfall id in flat mode', () => {

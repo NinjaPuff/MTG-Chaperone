@@ -89,6 +89,12 @@ describe('MiniManaCurve', () => {
     expect(container.querySelector('[aria-label="0: 2 total (0 creatures, 2 non-creatures)"]')).not.toBeInTheDocument();
   });
 
+  it('keeps cards with missing typeLine in the rendered curve', () => {
+    const { container } = render(<MiniManaCurve cards={[{ cmc: 2, quantity: 1 }]} />);
+
+    expect(container.querySelector('[aria-label="2: 1 total (0 creatures, 1 non-creatures)"]')).toBeInTheDocument();
+  });
+
   it('keeps zero-cmc spells in the rendered zero bucket', () => {
     const { container } = render(
       <MiniManaCurve cards={[{ cmc: 0, quantity: 1, typeLine: 'Artifact Creature — Thopter' }]} />,
