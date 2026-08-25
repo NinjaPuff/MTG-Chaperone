@@ -30,6 +30,8 @@ export type DeckShareEntry = {
   typeLine: string;
   cmc: number;
   colorIdentity: string[];
+  setCode?: string | null;
+  collectorNumber?: string | null;
 };
 
 export type DeckSharePayload = {
@@ -86,6 +88,10 @@ export function canonicalizeDeckShareEntries(entries: DeckShareEntry[]): DeckSha
       typeLine: entry.typeLine,
       cmc: entry.cmc,
       colorIdentity: [...entry.colorIdentity],
+      ...(entry.setCode != null && entry.setCode !== '' ? { setCode: entry.setCode } : {}),
+      ...(entry.collectorNumber != null && entry.collectorNumber !== ''
+        ? { collectorNumber: entry.collectorNumber }
+        : {}),
     }))
     .sort((left, right) => {
       const zoneDiff = zoneRank(left.zone) - zoneRank(right.zone);

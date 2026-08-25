@@ -45,6 +45,12 @@ function parseShareEntry(value: unknown): DeckShareEntry {
     typeLine,
     cmc,
     colorIdentity: [...colorIdentity],
+    ...(typeof value.setCode === 'string' && value.setCode.trim()
+      ? { setCode: value.setCode.trim().toUpperCase() }
+      : {}),
+    ...(typeof value.collectorNumber === 'string' && value.collectorNumber.trim()
+      ? { collectorNumber: value.collectorNumber.trim() }
+      : {}),
   };
 }
 

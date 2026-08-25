@@ -23,6 +23,7 @@ import { DragGhost } from '@/components/deckbuilder/DragGhost';
 import { DragProvider } from '@/components/deckbuilder/DragContext';
 import { ImportDeckDialog, type ImportEntry } from '@/components/deckbuilder/ImportDeckDialog';
 import { ShareDeckDialog } from '@/components/deckbuilder/ShareDeckDialog';
+import { ExportDeckDialog } from '@/components/deckbuilder/ExportDeckDialog';
 import { PoolCardBadge } from '@/components/deckbuilder/PoolCardBadge';
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
 import { toDeckSharePayload } from '@/lib/archiveDeck';
@@ -59,6 +60,8 @@ type DecklistEntryResponse = {
     typeLine: string;
     cmc: number;
     colorIdentity: string[];
+    setCode?: string | null;
+    collectorNumber?: string | null;
   };
 };
 
@@ -155,6 +158,8 @@ function toDeckCards(entries: DecklistEntryResponse[]): DeckBuilderCard[] {
     quantity: entry.quantity,
     zone: entry.zone,
     colorIdentity: entry.cachedCard.colorIdentity ?? [],
+    setCode: entry.cachedCard.setCode ?? null,
+    collectorNumber: entry.cachedCard.collectorNumber ?? null,
   }));
 }
 
@@ -196,6 +201,7 @@ export function DeckBuilderPage() {
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const saveTimeoutRef = useRef<number | null>(null);
 
   const restrictedMap = useRef(
@@ -483,6 +489,7 @@ export function DeckBuilderPage() {
     !!activeDeck && activeDeck.status === 'draft' && activeDeck.orderIndex >= requiredDeckCount;
   const canImportActiveDeck = !!activeDeckEditable && !!activeSeasonId;
   const canShareActiveDeck = Boolean(activeDeck);
+  const canExportActiveDeck = Boolean(activeDeck && activeDeck.cards.length > 0);
 
   const openShare = async () => {
     if (!activeDeck || shareBusy) {
@@ -1057,6 +1064,16 @@ export function DeckBuilderPage() {
                 </button>
                 <button
                   type="button"
+                  data-testid="deck-export-button"
+                  className="shrink-0 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canExportActiveDeck}
+                  title={canExportActiveDeck ? undefined : 'Nothing to export.'}
+                  onClick={() => setShowExportDialog(true)}
+                >
+                  Export
+                </button>
+                <button
+                  type="button"
                   data-testid="deck-share-button"
                   className="shrink-0 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!canShareActiveDeck || shareBusy}
@@ -1354,6 +1371,13 @@ export function DeckBuilderPage() {
         }}
       />
       {shareUrl ? <ShareDeckDialog url={shareUrl} onClose={() => setShareUrl(null)} /> : null}
+      {showExportDialog && activeDeck ? (
+        <ExportDeckDialog
+          deckName={activeDeck.name}
+          cards={activeDeck.cards}
+          onClose={() => setShowExportDialog(false)}
+        />
+      ) : null}
       {contextMenu ? (
         <DeckBuilderContextMenu
           cardName={contextMenuCardName}

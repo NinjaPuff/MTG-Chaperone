@@ -71,15 +71,17 @@ function deck(
         id: `${id}-e1`,
         quantity: 1,
         zone: 'main' as const,
-        cachedCard: {
-          scryfallId: `${id}-shock`,
-          name: 'Shock',
-          layout: 'normal',
-          manaCost: '{R}',
-          typeLine: 'Instant',
-          cmc: 1,
-          colorIdentity: ['R'],
-        },
+          cachedCard: {
+            scryfallId: `${id}-shock`,
+            name: 'Shock',
+            layout: 'normal',
+            manaCost: '{R}',
+            typeLine: 'Instant',
+            cmc: 1,
+            colorIdentity: ['R'],
+            setCode: 'M10',
+            collectorNumber: '146',
+          },
       },
     ],
   };
@@ -567,6 +569,15 @@ describe('DecklistsPage league archive', () => {
     expect(aliceRow.querySelector('summary')).not.toContainElement(
       within(aliceRow).getByRole('button', { name: 'Share' }),
     );
+    expect(within(aliceRow).getByRole('button', { name: 'Export' })).toBeInTheDocument();
+    expect(aliceRow.querySelector('summary')).not.toContainElement(
+      within(aliceRow).getByRole('button', { name: 'Export' }),
+    );
+
+    fireEvent.click(within(bobRow).getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('dialog', { name: 'Export deck' })).toBeInTheDocument();
+    expect(screen.getByTestId('deck-export-text')).toHaveTextContent('1 Shock (M10) 146');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 
     fireEvent.click(within(bobRow).getByRole('button', { name: 'Share' }));
     const url = (await screen.findByText(/\/share\/decks\/tok-bob-w1-locked/)).textContent ?? '';
@@ -606,6 +617,7 @@ describe('DecklistsPage share visibility', () => {
       expect(within(archiveDetails('Bob Locked')).getByText('Shock')).toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: 'Share' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument();
   });
 
   it('keeps Share on Alice rows at /decks?player=alice', async () => {

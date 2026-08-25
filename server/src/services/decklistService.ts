@@ -625,6 +625,8 @@ const seasonDecklistInclude = {
           typeLine: true,
           cmc: true,
           colorIdentity: true,
+          setCode: true,
+          collectorNumber: true,
         },
       },
     },

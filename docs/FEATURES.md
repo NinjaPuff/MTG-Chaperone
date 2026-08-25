@@ -340,7 +340,7 @@ Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for seal
 - [ ] Deck size validation against event minimum (default 40)
 - [ ] Deck uniqueness validation when event has DeckUniquenessRule
 - [ ] Sideboard validation per event config (entire_pool, fixed_15, none)
-- [ ] Export: MTGO, Arena, Moxfield text formats
+- [x] Export: copy/download Moxfield/Arena and Archidekt text from the builder, archive, and share page
 - [ ] Decklist privacy follows league settings
 - [ ] Decklist states: draft → submitted → locked
 - [ ] "Import from previous round" copies a prior decklist as starting point
@@ -374,6 +374,25 @@ Players and spectators can browse other players’ decks from completed previous
 - [x] Expanded archive row defaults to a hoverable Main/Sideboard list (`DeckCardList` / `HoverTarget`); List/Details toggle opens read-only curve/stacks; no Register, Unregister, or Enable editing
 - [x] `/decks?player=:slug` heading is `{primaryName}'s decklists` (fallback `This player's decklists`) and hides Open Current Deckbuilder, including the signed-in user's own slug
 - [x] Expanded archive cards use the same hover preview as pools; season list does not add `imageUris`
+- [x] Signed-in viewers can Export a visible archive row (copy/download Moxfield or Archidekt text); guests cannot
+
+### Decklist export to Moxfield / Archidekt
+
+Players copy a pasteable decklist (optional `.txt` download) for Moxfield Import and Archidekt Import list. Export does not mint a share URL and does not call a third-party API. Printings come from `CachedCard.setCode` / `collectorNumber` already on the page payload.
+
+#### User Stories
+
+- As a player, I want to copy my builder deck into Moxfield or Archidekt with the same cards, printings, and sideboard.
+- As a signed-in viewer, I want the same Export on an archive row I can already see.
+- As anyone with a share link, I want to dump that snapshot into Moxfield without a Chaperone account.
+
+#### Acceptance Criteria
+
+- [x] Builder header order is Import, Export, Share, Register; Export is disabled with “Nothing to export.” when the active deck has no cards
+- [x] Modal copies Moxfield/Arena text by default and can switch to Archidekt `Nx` lines; download `.txt` is secondary
+- [x] Archive Export lives in the expanded row (not `<summary>`), signed-in only
+- [x] Share page Export is available to guests
+- [x] `GET /api/decklists/:id/export/:format` stays unimplemented (501)
 
 ### Unlisted decklist sharing
 
@@ -393,6 +412,7 @@ Players can share the **active deck’s contents** as a frozen, unlisted documen
 - [x] Share POSTs only after click (`POST /api/decklists/:id/share`); hidden current-round drafts stay `403` for non-owners
 - [x] Guest and signed-in recipient load `GET /api/share/decklists/:token` and render List by default with List/Details toggle
 - [x] Recipient cannot edit, register, or open the deckbuilder from the share page
+- [x] Share page offers Export of the snapshot (copy/download text)
 - [x] Recipient cannot see other hidden decks; live `GET /api/decklists/:id` still uses `isDecklistVisibleToViewer`
 - [x] Sharing does not add the origin deck to season/event list APIs or `/decks`
 - [x] Season/league `decklistVisibility` is not flipped

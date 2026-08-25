@@ -27,6 +27,8 @@ describe('seasonDecklistToBuilderDeck', () => {
             typeLine: 'Instant',
             cmc: 1,
             colorIdentity: ['R'],
+            setCode: 'M10',
+            collectorNumber: '146',
           },
         },
         {
@@ -66,6 +68,8 @@ describe('seasonDecklistToBuilderDeck', () => {
         quantity: 2,
         zone: 'main',
         colorIdentity: ['R'],
+        setCode: 'M10',
+        collectorNumber: '146',
       },
       {
         cachedCardId: 'negate-1',
@@ -77,6 +81,8 @@ describe('seasonDecklistToBuilderDeck', () => {
         quantity: 1,
         zone: 'sideboard',
         colorIdentity: [],
+        setCode: null,
+        collectorNumber: null,
       },
     ]);
   });
@@ -102,6 +108,8 @@ describe('snapshotToBuilderDeck', () => {
           typeLine: 'Instant',
           cmc: 1,
           colorIdentity: ['R'],
+          setCode: 'M10',
+          collectorNumber: '146',
         },
         {
           scryfallId: 'negate-1',
@@ -137,6 +145,8 @@ describe('snapshotToBuilderDeck', () => {
         quantity: 2,
         zone: 'main',
         colorIdentity: ['R'],
+        setCode: 'M10',
+        collectorNumber: '146',
       },
       {
         cachedCardId: 'negate-1',
@@ -148,6 +158,8 @@ describe('snapshotToBuilderDeck', () => {
         quantity: 1,
         zone: 'sideboard',
         colorIdentity: [],
+        setCode: null,
+        collectorNumber: null,
       },
     ]);
   });

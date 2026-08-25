@@ -108,6 +108,31 @@ describe('parseStoredSharePayload', () => {
     expect(parsed.entries).toHaveLength(2);
   });
 
+  it('keeps optional setCode and collectorNumber from new shares and omits them when absent', () => {
+    const withPrintings = parseStoredSharePayload(
+      payload({
+        entries: [
+          entry({
+            scryfallId: 'shock-1',
+            zone: 'main',
+            quantity: 2,
+            setCode: 'M10',
+            collectorNumber: '146',
+          }),
+        ],
+      }),
+    );
+    expect(withPrintings.entries[0]).toMatchObject({
+      scryfallId: 'shock-1',
+      setCode: 'M10',
+      collectorNumber: '146',
+    });
+
+    const legacy = parseStoredSharePayload(payload());
+    expect(legacy.entries[0]).not.toHaveProperty('setCode');
+    expect(legacy.entries[0]).not.toHaveProperty('collectorNumber');
+  });
+
   it('throws INVALID_SHARE for garbage JSON', () => {
     try {
       parseStoredSharePayload({ v: 2 });

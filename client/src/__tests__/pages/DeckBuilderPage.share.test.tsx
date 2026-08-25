@@ -46,6 +46,8 @@ const shockEntry = {
     typeLine: 'Instant',
     cmc: 1,
     colorIdentity: ['R'],
+    setCode: 'M10',
+    collectorNumber: '146',
   },
 };
 
@@ -198,7 +200,7 @@ describe('DeckBuilderPage share', () => {
         method: 'POST',
         body: expect.objectContaining({
           ownerDisplayName: 'Alice',
-          entries: [expect.objectContaining({ scryfallId: 'shock-1' })],
+          entries: [expect.objectContaining({ scryfallId: 'shock-1', setCode: 'M10', collectorNumber: '146' })],
         }),
       }),
     );
@@ -232,5 +234,45 @@ describe('DeckBuilderPage share', () => {
     fireEvent.click(screen.getByTestId('deck-share-button'));
     const secondUrl = (await screen.findByText(/\/share\/decks\/tok-deck-1/)).textContent ?? '';
     expect(secondUrl).toBe(firstUrl);
+  });
+});
+
+describe('DeckBuilderPage export', () => {
+  beforeEach(() => {
+    mocks.authApiRequest.mockReset();
+    mocks.apiRequest.mockReset();
+    configureApi({ deckEntries: [shockEntry] });
+  });
+
+  it('places Export left of Share and copies printings from the loaded deck', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-export-button')).toBeEnabled();
+    });
+    const controls = screen.getByTestId('deckbuilder-header-controls');
+    const exportButton = screen.getByTestId('deck-export-button');
+    const shareButton = screen.getByTestId('deck-share-button');
+    expect(controls).toContainElement(exportButton);
+    expect(
+      exportButton.compareDocumentPosition(shareButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(exportButton);
+    expect(await screen.findByRole('dialog', { name: 'Export deck' })).toBeInTheDocument();
+    expect(screen.getByTestId('deck-export-text')).toHaveTextContent('2 Shock (M10) 146');
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    expect(writeText).toHaveBeenCalledWith(['Deck', '2 Shock (M10) 146'].join('\n'));
+  });
+
+  it('disables Export when the active deck has no cards', async () => {
+    configureApi({ deckEntries: [] });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-export-button')).toBeDisabled();
+    });
+    expect(screen.getByTestId('deck-export-button')).toHaveAttribute('title', 'Nothing to export.');
   });
 });

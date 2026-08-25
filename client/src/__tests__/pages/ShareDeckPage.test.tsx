@@ -128,6 +128,10 @@ describe('ShareDeckPage', () => {
     expect(screen.queryByRole('button', { name: 'Curve' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Share' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Register' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('dialog', { name: 'Export deck' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('link', { name: /login/i })).not.toBeInTheDocument();
     expect(decklistApiCalls()).toEqual([]);
   });

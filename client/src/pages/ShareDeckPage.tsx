@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { DeckAnalyticsView } from '@/components/deckbuilder/DeckAnalyticsView';
 import { DeckCardList } from '@/components/deckbuilder/DeckCardList';
+import { ExportDeckDialog } from '@/components/deckbuilder/ExportDeckDialog';
 import { snapshotToBuilderDeck, hydrateDeckSharePayload } from '@/lib/archiveDeck';
 import { apiRequest } from '@/lib/api';
 import { decodeDeckSharePayload, type DeckSharePayload } from '@mtg-league/shared';
@@ -75,6 +76,7 @@ export function ShareDeckPage() {
   const { token } = useParams<{ token?: string }>();
   const location = useLocation();
   const [view, setView] = useState<'list' | 'details'>('list');
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const [remote, setRemote] = useState<DeckSharePayload | null | 'loading'>(token ? 'loading' : null);
   const [hydrated, setHydrated] = useState<DeckSharePayload | null>(null);
 
@@ -201,6 +203,15 @@ export function ShareDeckPage() {
             Details
           </button>
         </div>
+        {builderDeck.cards.length > 0 ? (
+          <button
+            type="button"
+            className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted"
+            onClick={() => setShowExportDialog(true)}
+          >
+            Export
+          </button>
+        ) : null}
       </div>
       {view === 'details' ? (
         <DeckAnalyticsView deck={builderDeck} editable={false} showBuilderChrome={false} />
@@ -210,6 +221,13 @@ export function ShareDeckPage() {
           <DeckCardList title="Sideboard" emptyText="No cards" cards={sideboardCards} />
         </div>
       )}
+      {showExportDialog ? (
+        <ExportDeckDialog
+          deckName={snapshot.deckName}
+          cards={builderDeck.cards}
+          onClose={() => setShowExportDialog(false)}
+        />
+      ) : null}
     </div>
   );
 }

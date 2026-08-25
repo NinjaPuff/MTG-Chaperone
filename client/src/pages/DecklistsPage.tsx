@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DeckAnalyticsView } from '@/components/deckbuilder/DeckAnalyticsView';
 import { DeckCardList } from '@/components/deckbuilder/DeckCardList';
 import { ShareDeckDialog } from '@/components/deckbuilder/ShareDeckDialog';
+import { ExportDeckDialog } from '@/components/deckbuilder/ExportDeckDialog';
 import { ApiError, apiRequest } from '@/lib/api';
 import { seasonDecklistToBuilderDeck, toDeckSharePayload, type SeasonArchiveCachedCard } from '@/lib/archiveDeck';
 import { mintDeckShareUrl } from '@/lib/shareLink';
@@ -154,6 +155,7 @@ function ArchiveDeckRow({
   const [view, setView] = useState<'list' | 'details'>('list');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const registered = isRegisteredStatus(decklist.status);
   const builderDeck = seasonDecklistToBuilderDeck(decklist);
   const mainCards = builderDeck.cards.filter((card) => card.zone === 'main');
@@ -234,14 +236,25 @@ function ArchiveDeckRow({
               </button>
             </div>
             {canShare ? (
-              <button
-                type="button"
-                className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={shareBusy}
-                onClick={() => void openShare()}
-              >
-                Share
-              </button>
+              <div className="ml-auto flex items-center gap-1">
+                <button
+                  type="button"
+                  className="rounded border border-border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={builderDeck.cards.length === 0}
+                  title={builderDeck.cards.length === 0 ? 'Nothing to export.' : undefined}
+                  onClick={() => setShowExportDialog(true)}
+                >
+                  Export
+                </button>
+                <button
+                  type="button"
+                  className="rounded border border-border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={shareBusy}
+                  onClick={() => void openShare()}
+                >
+                  Share
+                </button>
+              </div>
             ) : null}
           </div>
           {view === 'details' ? (
@@ -256,6 +269,13 @@ function ArchiveDeckRow({
       ) : null}
     </details>
     {shareUrl ? <ShareDeckDialog url={shareUrl} onClose={() => setShareUrl(null)} /> : null}
+    {showExportDialog ? (
+      <ExportDeckDialog
+        deckName={decklist.name ?? `Deck ${decklist.orderIndex + 1}`}
+        cards={builderDeck.cards}
+        onClose={() => setShowExportDialog(false)}
+      />
+    ) : null}
     </>
   );
 }

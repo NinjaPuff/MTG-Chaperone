@@ -10,6 +10,8 @@ export type SeasonArchiveCachedCard = {
   typeLine?: string | null;
   cmc?: number | null;
   colorIdentity?: string[] | null;
+  setCode?: string | null;
+  collectorNumber?: string | null;
 };
 
 export type SeasonArchiveDecklist = {
@@ -42,6 +44,8 @@ export function seasonDecklistToBuilderDeck(decklist: SeasonArchiveDecklist): Bu
       quantity: entry.quantity,
       zone: entry.zone,
       colorIdentity: entry.cachedCard.colorIdentity ?? [],
+      setCode: entry.cachedCard.setCode ?? null,
+      collectorNumber: entry.cachedCard.collectorNumber ?? null,
     })),
   };
 }
@@ -63,6 +67,8 @@ export function snapshotToBuilderDeck(snapshot: DeckSharePayload): BuilderDeck {
       quantity: entry.quantity,
       zone: entry.zone,
       colorIdentity: entry.colorIdentity ?? [],
+      setCode: entry.setCode ?? null,
+      collectorNumber: entry.collectorNumber ?? null,
     })),
   };
 }
@@ -142,6 +148,8 @@ export function toDeckSharePayload(input: {
       typeLine: card.typeLine,
       cmc: card.cmc,
       colorIdentity: card.colorIdentity,
+      setCode: card.setCode ?? null,
+      collectorNumber: card.collectorNumber ?? null,
     })),
   };
 }
