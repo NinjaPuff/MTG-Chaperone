@@ -375,6 +375,37 @@ Players and spectators can browse other players’ decks from completed previous
 - [x] `/decks?player=:slug` heading is `{primaryName}'s decklists` (fallback `This player's decklists`) and hides Open Current Deckbuilder, including the signed-in user's own slug
 - [x] Expanded archive cards use the same hover preview as pools; season list does not add `imageUris`
 
+### Unlisted decklist sharing
+
+Players can share the **active deck’s contents** as a frozen, unlisted document. Recipients (signed-in or guest) open `/share/decks/:token` and see archive List/Details chrome. Sharing does not flip `season.decklistVisibility`, does not list the deck on `/decks`, and does not grant `GET /api/decklists/:id`. New copies mint a `DecklistShare` row; older packed hash URLs (`/share/decks#v2.…`, `v1.`) still decode.
+
+#### User Stories
+
+- As a player, I want to share my current-round deck (including a hidden draft) with one person via a short URL, without making season decklists public.
+- As a recipient (member or guest), I want to open that URL and see the list in the site’s read-only archive chrome without signing in.
+- As a player, I do not want that share to list my deck on `/decks` or open `GET /api/decklists/:id` to others.
+- As a player, I want Share on an unchanged list to produce the same URL, and Share after edits to produce a new URL that does not change old pastes.
+
+#### Acceptance Criteria
+
+- [x] Owner can Share the active builder deck (`draft` / `submitted` / `locked`) and copy a short `/share/decks/:token` URL from a modal
+- [x] Signed-in viewers can Share any `/decks` archive row they can see, including other players’ lists; guests have no Share
+- [x] Share POSTs only after click (`POST /api/decklists/:id/share`); hidden current-round drafts stay `403` for non-owners
+- [x] Guest and signed-in recipient load `GET /api/share/decklists/:token` and render List by default with List/Details toggle
+- [x] Recipient cannot edit, register, or open the deckbuilder from the share page
+- [x] Recipient cannot see other hidden decks; live `GET /api/decklists/:id` still uses `isDecklistVisibleToViewer`
+- [x] Sharing does not add the origin deck to season/event list APIs or `/decks`
+- [x] Season/league `decklistVisibility` is not flipped
+- [x] Share of an unchanged list produces the same token (contents hash, no clock); Share after card/name edits produces a different URL; an old paste still shows the old list
+- [x] Empty lists can be shared
+- [x] After unregister/delete of the origin deck, a previously copied token still loads (`ON DELETE SET NULL`)
+- [x] Malformed, missing, unknown-token, or query-string-only share → invalid-link UI; no login wall
+- [x] Packed hash URLs (`#v1.…` / `#v2.…`) still decode locally
+- [x] Modal still warns if a URL exceeds 2000 characters (Discord)
+- [x] Share page is `noindex, nofollow` with `no-referrer`
+- [x] Deckbuilder Share button is `shrink-0` and the sidebar height chain stays intact
+- [x] No revoke/expiry UI
+
 ### Planned for Later
 
 - Deck-level description/primer notes

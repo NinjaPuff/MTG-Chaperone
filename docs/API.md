@@ -1459,6 +1459,36 @@ Season `decklistVisibility` (boolean, default `true`) gates public decklist acce
 
 `GET /api/decklists/:id` uses the same predicate as the list endpoints. A row returned by a list is openable. Other players’ current-round `draft` decks return `403 FORBIDDEN`.
 
+Unlisted deck shares are a separate `DecklistShare` snapshot, not a live ACL. Authenticated viewers who can see a list mint `POST /api/decklists/:id/share` (names included) and get a token. Recipients load `GET /api/share/decklists/:token`. That does not flip `decklistVisibility`, list the deck on `/decks`, or grant `GET /api/decklists/:id`. Older packed hash URLs (`/share/decks#v2.…`, `v1.`) still decode locally.
+
+#### `POST /api/decklists/:decklistId/share`
+
+Mint or reuse an unlisted snapshot token for a decklist the caller can view. Hidden current-round drafts stay owner/admin only.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Authenticated (same visibility as `GET /api/decklists/:id`) |
+| Params   | `decklistId` (UUID) |
+
+**Request Body:** `DeckSharePayload` (`v`, `ownerDisplayName`, `deckName`, `eventName`, `roundNumber`, `status`, `entries`). The server overwrites `ownerDisplayName` from the deck owner.
+
+**Response `200`:** `{ "data": { "token": "…" } }` — unchanged contents from the same owner reuse the same token (`contentsHash`, no clock).
+
+**Errors:** `UNAUTHORIZED`, `VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND`
+
+#### `GET /api/share/decklists/:token`
+
+Public snapshot by token. Guests allowed. Does not call `getDecklistById`.
+
+| Property | Value |
+|----------|-------|
+| Auth     | None |
+| Params   | `token` (unguessable InviteLink-class string) |
+
+**Response `200`:** `{ "data": { …DeckSharePayload } }`
+
+**Errors:** `INVALID_SHARE` (`404`)
+
 #### `GET /api/seasons/:seasonId/decklists`
 
 List season decklists the viewer may see (registered decks plus leftover previous-round drafts).

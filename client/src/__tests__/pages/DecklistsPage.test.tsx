@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/api', () => ({
   apiRequest: mocks.apiRequest,
+  authApiRequest: mocks.apiRequest,
   ApiError: class ApiError extends Error {},
 }));
 
@@ -111,6 +112,10 @@ function mockSeasonLoad(decks: ReturnType<typeof deck>[], visibility = true) {
     if (path.startsWith('/api/cards/')) {
       return { data: { imageUris: null } };
     }
+    if (typeof path === 'string' && path.startsWith('/api/decklists/') && path.endsWith('/share')) {
+      const decklistId = path.slice('/api/decklists/'.length, -'/share'.length);
+      return { data: { token: `tok-${decklistId}` } };
+    }
     throw new Error(`Unexpected path: ${path}`);
   });
 }
@@ -136,6 +141,16 @@ function archiveDetails(deckName: string): HTMLDetailsElement {
   const details = summary.closest('details');
   expect(details).not.toBeNull();
   return details as HTMLDetailsElement;
+}
+
+function expandArchive(deckName: string) {
+  const details = archiveDetails(deckName);
+  const summary = details.querySelector('summary');
+  expect(summary).not.toBeNull();
+  fireEvent.click(summary as HTMLElement);
+  details.setAttribute('open', '');
+  fireEvent(details, new Event('toggle'));
+  return details;
 }
 
 describe('DecklistsPage league archive', () => {
@@ -529,5 +544,106 @@ describe('DecklistsPage league archive', () => {
     });
     expect(within(details).queryByRole('button', { name: 'Curve' })).not.toBeInTheDocument();
     expect(within(details).getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps Share in the expanded row and lets Alice share Bob’s list', async () => {
+    mocks.useAuth.mockReturnValue({ user: aliceUser });
+    mockSeasonLoad(fixtureSet);
+    renderPage();
+
+    await waitFor(() => {
+      expect(archiveDetails('Alice Aggro')).toBeTruthy();
+    });
+
+    const bobCollapsed = archiveDetails('Bob Locked');
+    expect(within(bobCollapsed).queryByRole('button', { name: 'Share' })).not.toBeInTheDocument();
+
+    const aliceRow = expandArchive('Alice Aggro');
+    const bobRow = expandArchive('Bob Locked');
+    await waitFor(() => {
+      expect(within(aliceRow).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+      expect(within(bobRow).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    });
+    expect(aliceRow.querySelector('summary')).not.toContainElement(
+      within(aliceRow).getByRole('button', { name: 'Share' }),
+    );
+
+    fireEvent.click(within(bobRow).getByRole('button', { name: 'Share' }));
+    const url = (await screen.findByText(/\/share\/decks\/tok-bob-w1-locked/)).textContent ?? '';
+    expect(url).toContain('/share/decks/tok-bob-w1-locked');
+    expect(mocks.apiRequest).toHaveBeenCalledWith(
+      '/api/decklists/bob-w1-locked/share',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.objectContaining({
+          ownerDisplayName: 'Bob',
+          deckName: 'Bob Locked',
+          eventName: 'Week 1',
+        }),
+      }),
+    );
+  });
+});
+
+describe('DecklistsPage share visibility', () => {
+  beforeEach(() => {
+    mocks.apiRequest.mockReset();
+  });
+
+  afterEach(() => {
+    clearCardImageCachesForTests();
+  });
+
+  it('hides Share for guests even after expanding a row', async () => {
+    mocks.useAuth.mockReturnValue({ user: null });
+    mockSeasonLoad(fixtureSet);
+    renderPage();
+    await waitFor(() => {
+      expect(archiveDetails('Bob Locked')).toBeTruthy();
+    });
+    expandArchive('Bob Locked');
+    await waitFor(() => {
+      expect(within(archiveDetails('Bob Locked')).getByText('Shock')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('button', { name: 'Share' })).not.toBeInTheDocument();
+  });
+
+  it('keeps Share on Alice rows at /decks?player=alice', async () => {
+    mocks.useAuth.mockReturnValue({ user: aliceUser });
+    mockSeasonLoad(fixtureSet);
+    renderPage('/decks?player=alice');
+    await waitFor(() => {
+      expect(archiveDetails('Alice Aggro')).toBeTruthy();
+    });
+    expandArchive('Alice Aggro');
+    await waitFor(() => {
+      expect(within(archiveDetails('Alice Aggro')).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    });
+  });
+
+  it('lets Alice share Bob’s player-scoped archive row', async () => {
+    mocks.useAuth.mockReturnValue({ user: aliceUser });
+    mockSeasonLoad(fixtureSet);
+    renderPage('/decks?player=bob');
+    await waitFor(() => {
+      expect(archiveDetails('Bob Locked')).toBeTruthy();
+    });
+    expandArchive('Bob Locked');
+    await waitFor(() => {
+      expect(within(archiveDetails('Bob Locked')).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    });
+  });
+
+  it('lets an admin share Bob’s archive row', async () => {
+    mocks.useAuth.mockReturnValue({ user: adminUser });
+    mockSeasonLoad(fixtureSet);
+    renderPage();
+    await waitFor(() => {
+      expect(archiveDetails('Bob Locked')).toBeTruthy();
+    });
+    expandArchive('Bob Locked');
+    await waitFor(() => {
+      expect(within(archiveDetails('Bob Locked')).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    });
   });
 });

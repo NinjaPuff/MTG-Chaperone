@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { DeckAnalyticsView } from '@/components/deckbuilder/DeckAnalyticsView';
 import { DeckCardList } from '@/components/deckbuilder/DeckCardList';
+import { ShareDeckDialog } from '@/components/deckbuilder/ShareDeckDialog';
 import { ApiError, apiRequest } from '@/lib/api';
-import { seasonDecklistToBuilderDeck, type SeasonArchiveCachedCard } from '@/lib/archiveDeck';
+import { seasonDecklistToBuilderDeck, toDeckSharePayload, type SeasonArchiveCachedCard } from '@/lib/archiveDeck';
+import { mintDeckShareUrl } from '@/lib/shareLink';
 import { useAuth } from '@/context/AuthContext';
 import { useCurrentLeague } from '@/hooks/useCurrentLeague';
 import { primaryName } from '@/lib/userDisplay';
@@ -137,15 +139,54 @@ function buildEventGroups(decks: SeasonDecklist[]): EventGroup[] {
     .sort((a, b) => b.orderIndex - a.orderIndex);
 }
 
-function ArchiveDeckRow({ decklist, playerName }: { decklist: SeasonDecklist; playerName: string }) {
+function ArchiveDeckRow({
+  decklist,
+  playerName,
+  canShare,
+  ownerDisplayName,
+}: {
+  decklist: SeasonDecklist;
+  playerName: string;
+  canShare: boolean;
+  ownerDisplayName: string;
+}) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<'list' | 'details'>('list');
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
   const registered = isRegisteredStatus(decklist.status);
   const builderDeck = seasonDecklistToBuilderDeck(decklist);
   const mainCards = builderDeck.cards.filter((card) => card.zone === 'main');
   const sideboardCards = builderDeck.cards.filter((card) => card.zone === 'sideboard');
 
+  const openShare = async () => {
+    if (shareBusy) {
+      return;
+    }
+    setShareBusy(true);
+    try {
+      setShareUrl(
+        await mintDeckShareUrl(
+          decklist.id,
+          toDeckSharePayload({
+            ownerDisplayName,
+            deckName: decklist.name ?? `Deck ${decklist.orderIndex + 1}`,
+            eventName: decklist.event.name,
+            roundNumber: decklist.round.roundNumber,
+            status: decklist.status,
+            cards: builderDeck.cards,
+          }),
+        ),
+      );
+    } catch {
+      setShareUrl(null);
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
   return (
+    <>
     <details
       className="rounded-md border border-border/70 bg-card p-3"
       onToggle={(event) => {
@@ -192,6 +233,16 @@ function ArchiveDeckRow({ decklist, playerName }: { decklist: SeasonDecklist; pl
                 Details
               </button>
             </div>
+            {canShare ? (
+              <button
+                type="button"
+                className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={shareBusy}
+                onClick={() => void openShare()}
+              >
+                Share
+              </button>
+            ) : null}
           </div>
           {view === 'details' ? (
             <DeckAnalyticsView deck={builderDeck} editable={false} showBuilderChrome={false} />
@@ -204,10 +255,18 @@ function ArchiveDeckRow({ decklist, playerName }: { decklist: SeasonDecklist; pl
         </div>
       ) : null}
     </details>
+    {shareUrl ? <ShareDeckDialog url={shareUrl} onClose={() => setShareUrl(null)} /> : null}
+    </>
   );
 }
 
-function DeckArchiveList({ groups }: { groups: EventGroup[] }) {
+function DeckArchiveList({
+  groups,
+  viewerUserId,
+}: {
+  groups: EventGroup[];
+  viewerUserId?: string;
+}) {
   return (
     <div className="mt-3 space-y-3">
       {groups.map((group) => (
@@ -222,7 +281,13 @@ function DeckArchiveList({ groups }: { groups: EventGroup[] }) {
                 {round.players.map((player) => (
                   <div key={player.playerKey} className="space-y-2">
                     {player.decks.map((decklist) => (
-                      <ArchiveDeckRow key={decklist.id} decklist={decklist} playerName={player.playerName} />
+                      <ArchiveDeckRow
+                        key={decklist.id}
+                        decklist={decklist}
+                        playerName={player.playerName}
+                        canShare={Boolean(viewerUserId)}
+                        ownerDisplayName={decklist.user ? primaryName(decklist.user) : player.playerName}
+                      />
                     ))}
                   </div>
                 ))}
@@ -389,7 +454,7 @@ export function DecklistsPage() {
           {myGroups.length === 0 ? (
             <p className="mt-2 text-sm text-muted-foreground">No previous decklists yet.</p>
           ) : (
-            <DeckArchiveList groups={myGroups} />
+            <DeckArchiveList groups={myGroups} viewerUserId={user.id} />
           )}
         </div>
       ) : null}
@@ -397,7 +462,7 @@ export function DecklistsPage() {
       <div className="rounded-lg border border-border bg-card p-6">
         <h2 className="text-lg font-semibold">{archiveHeading}</h2>
         {leagueEmptyCopy ? <p className="mt-2 text-sm text-muted-foreground">{leagueEmptyCopy}</p> : null}
-        {!leagueEmptyCopy ? <DeckArchiveList groups={leagueGroups} /> : null}
+        {!leagueEmptyCopy ? <DeckArchiveList groups={leagueGroups} viewerUserId={user?.id} /> : null}
 
         <Link to="/schedule" className="mt-4 inline-block text-sm underline">
           Go to schedule

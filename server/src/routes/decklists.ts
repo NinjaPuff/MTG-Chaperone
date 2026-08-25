@@ -12,6 +12,7 @@ import {
   updateDecklist,
   validateDecklist,
 } from '../services/decklistService.js';
+import { createDecklistShare } from '../services/decklistShareService.js';
 import { validateBody } from '../lib/validate.js';
 
 const router = Router();
@@ -39,6 +40,28 @@ const updateDecklistSchema = z
     message: 'At least one field must be provided',
     path: ['name'],
   });
+
+const shareEntrySchema = z.object({
+  scryfallId: z.string().min(1),
+  quantity: z.number().int().min(1),
+  zone: z.enum(['main', 'sideboard']),
+  name: z.string(),
+  layout: z.string().nullable(),
+  manaCost: z.string().nullable(),
+  typeLine: z.string(),
+  cmc: z.number(),
+  colorIdentity: z.array(z.string()),
+});
+
+const sharePayloadSchema = z.object({
+  v: z.literal(1),
+  ownerDisplayName: z.string(),
+  deckName: z.string(),
+  eventName: z.string(),
+  roundNumber: z.number().int(),
+  status: z.enum(['draft', 'submitted', 'locked']),
+  entries: z.array(shareEntrySchema),
+});
 
 router.get('/my-season/:seasonId', requireAuth, async (req, res, next) => {
   try {
@@ -85,6 +108,25 @@ router.patch('/:decklistId', requireAuth, validateBody(updateDecklistSchema), as
       entries: req.body.entries,
     });
     res.json({ data: updated });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:decklistId/share', requireAuth, validateBody(sharePayloadSchema), async (req, res, next) => {
+  try {
+    const user = getAuthUser(req);
+    const result = await createDecklistShare({
+      user: {
+        id: user.id,
+        displayName: user.displayName,
+        publicName: user.publicName,
+        role: user.role,
+      },
+      decklistId: req.params.decklistId,
+      payload: req.body,
+    });
+    res.json({ data: result });
   } catch (error) {
     next(error);
   }

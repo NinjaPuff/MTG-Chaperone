@@ -132,6 +132,10 @@ export const prismaMock = {
     findFirst: vi.fn(),
     update: vi.fn(),
   },
+  decklistShare: {
+    create: vi.fn(),
+    findUnique: vi.fn(),
+  },
   cardPool: {
     findUnique: vi.fn(),
     deleteMany: vi.fn(),

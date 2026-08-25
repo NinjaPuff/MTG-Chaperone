@@ -22,8 +22,13 @@ import { DeckTabList } from '@/components/deckbuilder/DeckTabList';
 import { DragGhost } from '@/components/deckbuilder/DragGhost';
 import { DragProvider } from '@/components/deckbuilder/DragContext';
 import { ImportDeckDialog, type ImportEntry } from '@/components/deckbuilder/ImportDeckDialog';
+import { ShareDeckDialog } from '@/components/deckbuilder/ShareDeckDialog';
 import { PoolCardBadge } from '@/components/deckbuilder/PoolCardBadge';
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
+import { toDeckSharePayload } from '@/lib/archiveDeck';
+import { mintDeckShareUrl } from '@/lib/shareLink';
+import { primaryName } from '@/lib/userDisplay';
+import { useAuth } from '@/context/AuthContext';
 import { DECKBUILDER_WORK_AREA_HEIGHT_CLASS } from '@/lib/deckBuilderLayout';
 import {
   applyMainBasicLandsChange,
@@ -155,6 +160,7 @@ function toDeckCards(entries: DecklistEntryResponse[]): DeckBuilderCard[] {
 
 export function DeckBuilderPage() {
   const { confirm } = useConfirm();
+  const { user } = useAuth();
   const { activeSeasonId } = useCurrentLeague();
   const { eventId } = useParams<{ eventId: string }>();
   const [loading, setLoading] = useState(true);
@@ -188,6 +194,8 @@ export function DeckBuilderPage() {
   const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null);
   const [contextMenu, setContextMenu] = useState<DeckBuilderContextMenuState | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
   const saveTimeoutRef = useRef<number | null>(null);
 
   const restrictedMap = useRef(
@@ -474,6 +482,31 @@ export function DeckBuilderPage() {
   const canDeleteActiveDeck =
     !!activeDeck && activeDeck.status === 'draft' && activeDeck.orderIndex >= requiredDeckCount;
   const canImportActiveDeck = !!activeDeckEditable && !!activeSeasonId;
+  const canShareActiveDeck = Boolean(activeDeck);
+
+  const openShare = async () => {
+    if (!activeDeck || shareBusy) {
+      return;
+    }
+    setShareBusy(true);
+    try {
+      const payload = toDeckSharePayload({
+        ownerDisplayName: user
+          ? primaryName({ displayName: user.displayName ?? '', publicName: user.publicName })
+          : '',
+        deckName: activeDeck.name,
+        eventName: '',
+        roundNumber: activeRoundNumber ?? 0,
+        status: activeDeck.status,
+        cards: activeDeck.cards,
+      });
+      setShareUrl(await mintDeckShareUrl(activeDeck.id, payload));
+    } catch {
+      setError('Failed to create share link');
+    } finally {
+      setShareBusy(false);
+    }
+  };
   const importDisabledReason = !activeSeasonId
     ? 'No active season found to import from.'
     : !activeDeckEditable
@@ -1024,6 +1057,15 @@ export function DeckBuilderPage() {
                 </button>
                 <button
                   type="button"
+                  data-testid="deck-share-button"
+                  className="shrink-0 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canShareActiveDeck || shareBusy}
+                  onClick={openShare}
+                >
+                  Share
+                </button>
+                <button
+                  type="button"
                   data-testid="deck-register-button"
                   className="rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!canRegisterActiveDeck}
@@ -1311,6 +1353,7 @@ export function DeckBuilderPage() {
           void importIntoActiveDeck(entries);
         }}
       />
+      {shareUrl ? <ShareDeckDialog url={shareUrl} onClose={() => setShareUrl(null)} /> : null}
       {contextMenu ? (
         <DeckBuilderContextMenu
           cardName={contextMenuCardName}

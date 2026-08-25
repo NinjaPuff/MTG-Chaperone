@@ -14,7 +14,7 @@
     "dev:shared": "npm run dev --workspace=shared",
     "build": "npm run build --workspace=shared && npm run build --workspace=client && npm run build --workspace=server",
     "lint": "npm run lint --workspace=client && npm run lint --workspace=server",
-    "test": "npm run test --workspace=server && npm run test --workspace=client",
+    "test": "npm run test --workspace=shared && npm run test --workspace=server && npm run test --workspace=client",
     "db:migrate": "npm run db:migrate --workspace=server",
     "db:studio": "npm run db:studio --workspace=server",
     "db:generate": "npm run db:generate --workspace=server",

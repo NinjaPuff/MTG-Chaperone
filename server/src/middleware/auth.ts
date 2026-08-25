@@ -10,6 +10,7 @@ declare global {
     interface User {
       id: string;
       displayName: string;
+      publicName?: string | null;
       slug: string;
       avatarUrl: string | null;
       role: 'admin' | 'user';

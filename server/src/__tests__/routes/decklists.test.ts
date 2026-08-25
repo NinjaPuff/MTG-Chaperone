@@ -7,6 +7,7 @@ process.env.NODE_ENV = 'test';
 
 const mocks = vi.hoisted(() => ({
   createDecklist: vi.fn(),
+  createDecklistShare: vi.fn(),
   deleteDecklist: vi.fn(),
   getDecklistById: vi.fn(),
   listDecklistsForSeason: vi.fn(),
@@ -43,6 +44,11 @@ vi.mock('../../middleware/auth.js', async () => {
   };
 });
 
+vi.mock('../../services/decklistShareService.js', () => ({
+  createDecklistShare: mocks.createDecklistShare,
+  getDecklistShare: vi.fn(),
+}));
+
 vi.mock('../../services/decklistService.js', () => ({
   createDecklist: mocks.createDecklist,
   deleteDecklist: mocks.deleteDecklist,
@@ -60,6 +66,7 @@ describe('decklists routes', () => {
   beforeEach(() => {
     resetPrismaMock();
     mocks.createDecklist.mockReset();
+    mocks.createDecklistShare.mockReset();
     mocks.deleteDecklist.mockReset();
     mocks.getDecklistById.mockReset();
     mocks.listDecklistsForSeason.mockReset();
@@ -184,5 +191,56 @@ describe('decklists routes', () => {
     expect(response.status).toBe(200);
     expect(response.body.data.id).toBe('deck-1');
     expect(mocks.deleteDecklist).toHaveBeenCalledWith('deck-1', 'user-1', false);
+  });
+
+  it('mints a share token for the owner without opening GET decklist-by-id', async () => {
+    mocks.createDecklistShare.mockResolvedValue({ token: 'tok_test' });
+    const body = {
+      v: 1,
+      ownerDisplayName: 'Eve',
+      deckName: 'Deck 1',
+      eventName: 'Week 1',
+      roundNumber: 1,
+      status: 'draft',
+      entries: [],
+    };
+
+    const response = await request(app)
+      .post('/api/decklists/deck-1/share')
+      .set('x-test-user', 'user-1')
+      .send(body);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.token).toBe('tok_test');
+    expect(mocks.createDecklistShare).toHaveBeenCalledWith({
+      user: { id: 'user-1', displayName: 'Test User', publicName: undefined, role: 'user' },
+      decklistId: 'deck-1',
+      payload: body,
+    });
+    expect(mocks.getDecklistById).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when minting a hidden deck is forbidden', async () => {
+    mocks.createDecklistShare.mockRejectedValue(
+      new AppError(403, 'FORBIDDEN', 'You do not have permission to share this decklist'),
+    );
+
+    const response = await request(app)
+      .post('/api/decklists/alice-draft/share')
+      .set('x-test-user', 'user-charlie')
+      .set('x-test-role', 'admin')
+      .send({
+        v: 1,
+        ownerDisplayName: 'Admin',
+        deckName: 'Deck 1',
+        eventName: 'Week 1',
+        roundNumber: 1,
+        status: 'draft',
+        entries: [],
+      });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+    expect(mocks.getDecklistById).not.toHaveBeenCalled();
   });
 });

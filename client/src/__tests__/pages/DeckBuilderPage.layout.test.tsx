@@ -241,6 +241,9 @@ describe('DeckBuilderPage layout', () => {
     expect(within(header).getByTestId('deck-tab-list')).toBeInTheDocument();
     expect(within(header).getByRole('button', { name: 'Build' })).toBeInTheDocument();
     expect(within(header).getByRole('button', { name: 'Details' })).toBeInTheDocument();
+    const shareButton = within(header).getByTestId('deck-share-button');
+    expect(shareButton).toHaveClass('shrink-0');
+    expect(screen.getByTestId('deckbuilder-page-header')).toHaveClass('shrink-0');
   });
 
   it('should_not_render_build_toggle_inside_sidebar', async () => {

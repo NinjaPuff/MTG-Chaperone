@@ -13,6 +13,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
 import { SeasonHistoryPage } from './pages/SeasonHistoryPage';
 import { JoinPage } from './pages/JoinPage';
+import { ShareDeckPage } from './pages/ShareDeckPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { LoginPage } from './pages/LoginPage';
 import { AuthCallbackPage } from './pages/AuthCallbackPage';
@@ -33,6 +34,8 @@ export function App() {
         <Route path="/pools" element={<CardPoolsPage />} />
         <Route path="/pools/:poolId" element={<CardPoolDetailPage />} />
         <Route path="/decks" element={<DecklistsPage />} />
+        <Route path="/share/decks/:token" element={<ShareDeckPage />} />
+        <Route path="/share/decks" element={<ShareDeckPage />} />
         <Route path="/history" element={<SeasonHistoryPage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/:slug" element={<ProfilePage />} />
