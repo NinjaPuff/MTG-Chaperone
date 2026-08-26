@@ -228,9 +228,7 @@ export async function completeRound(roundId: string) {
       await tx.decklist.updateMany({
         where: {
           roundId,
-          status: {
-            in: ['draft', 'submitted'],
-          },
+          status: 'submitted',
         },
         data: {
           status: 'locked',

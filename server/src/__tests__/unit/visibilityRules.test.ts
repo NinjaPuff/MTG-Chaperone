@@ -191,7 +191,6 @@ describe('visibilityRules', () => {
           { userId: alice.id, status: 'submitted' },
           visibleSeason,
           charlie,
-          { eventStatus: 'active', roundStatus: 'in_progress' },
         ),
       ).toBe(true);
       expect(
@@ -199,20 +198,18 @@ describe('visibilityRules', () => {
           { userId: alice.id, status: 'locked' },
           visibleSeason,
           charlie,
-          { eventStatus: 'active', roundStatus: 'in_progress' },
         ),
       ).toBe(true);
     });
 
-    it('allows Charlie to see leftover drafts on an archive round of a visible season', () => {
+    it('hides leftover drafts from Charlie even on an archive round of a visible season', () => {
       expect(
         isDecklistVisibleToViewer(
           { userId: leftoverDraft.userId, status: leftoverDraft.status },
           visibleSeason,
           charlie,
-          { eventStatus: leftoverDraft.eventStatus, roundStatus: leftoverDraft.roundStatus },
         ),
-      ).toBe(true);
+      ).toBe(false);
     });
 
     it('hides Bob current-round draft from Charlie on a visible season', () => {
@@ -221,7 +218,6 @@ describe('visibilityRules', () => {
           { userId: currentForeignDraft.userId, status: currentForeignDraft.status },
           visibleSeason,
           charlie,
-          { eventStatus: currentForeignDraft.eventStatus, roundStatus: currentForeignDraft.roundStatus },
         ),
       ).toBe(false);
     });
@@ -232,7 +228,6 @@ describe('visibilityRules', () => {
           { userId: alice.id, status: 'submitted' },
           hiddenSeason,
           charlie,
-          { eventStatus: 'completed', roundStatus: 'completed' },
         ),
       ).toBe(false);
       expect(
@@ -240,7 +235,6 @@ describe('visibilityRules', () => {
           { userId: leftoverDraft.userId, status: leftoverDraft.status },
           hiddenSeason,
           charlie,
-          { eventStatus: leftoverDraft.eventStatus, roundStatus: leftoverDraft.roundStatus },
         ),
       ).toBe(false);
       expect(
@@ -248,7 +242,6 @@ describe('visibilityRules', () => {
           { userId: currentForeignDraft.userId, status: currentForeignDraft.status },
           hiddenSeason,
           charlie,
-          { eventStatus: currentForeignDraft.eventStatus, roundStatus: currentForeignDraft.roundStatus },
         ),
       ).toBe(false);
     });
@@ -259,7 +252,6 @@ describe('visibilityRules', () => {
           { userId: aliceCurrentDraft.userId, status: aliceCurrentDraft.status },
           hiddenSeason,
           alice,
-          { eventStatus: aliceCurrentDraft.eventStatus, roundStatus: aliceCurrentDraft.roundStatus },
         ),
       ).toBe(true);
     });
@@ -270,26 +262,23 @@ describe('visibilityRules', () => {
           { userId: currentForeignDraft.userId, status: currentForeignDraft.status },
           hiddenSeason,
           admin,
-          { eventStatus: currentForeignDraft.eventStatus, roundStatus: currentForeignDraft.roundStatus },
         ),
       ).toBe(true);
     });
 
-    it('allows anonymous viewers leftover archive drafts but not current-round foreign drafts', () => {
+    it('hides leftover archive drafts and current-round foreign drafts from anonymous viewers', () => {
       expect(
         isDecklistVisibleToViewer(
           { userId: leftoverDraft.userId, status: leftoverDraft.status },
           visibleSeason,
           null,
-          { eventStatus: leftoverDraft.eventStatus, roundStatus: leftoverDraft.roundStatus },
         ),
-      ).toBe(true);
+      ).toBe(false);
       expect(
         isDecklistVisibleToViewer(
           { userId: currentForeignDraft.userId, status: currentForeignDraft.status },
           visibleSeason,
           null,
-          { eventStatus: currentForeignDraft.eventStatus, roundStatus: currentForeignDraft.roundStatus },
         ),
       ).toBe(false);
     });

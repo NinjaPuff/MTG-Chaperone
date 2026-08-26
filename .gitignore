@@ -9,5 +9,6 @@ build/
 .DS_Store
 Thumbs.db
 .cursor/
+.lavish/
 uploads/
 agent-transcripts/

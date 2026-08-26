@@ -22,8 +22,14 @@ import { DeckTabList } from '@/components/deckbuilder/DeckTabList';
 import { DragGhost } from '@/components/deckbuilder/DragGhost';
 import { DragProvider } from '@/components/deckbuilder/DragContext';
 import { ImportDeckDialog, type ImportEntry } from '@/components/deckbuilder/ImportDeckDialog';
+import { ShareDeckDialog } from '@/components/deckbuilder/ShareDeckDialog';
+import { ExportDeckDialog } from '@/components/deckbuilder/ExportDeckDialog';
 import { PoolCardBadge } from '@/components/deckbuilder/PoolCardBadge';
 import type { BuilderDeck, DeckBuilderCard } from '@/components/deckbuilder/types';
+import { toDeckSharePayload } from '@/lib/archiveDeck';
+import { mintDeckShareUrl } from '@/lib/shareLink';
+import { primaryName } from '@/lib/userDisplay';
+import { useAuth } from '@/context/AuthContext';
 import { DECKBUILDER_WORK_AREA_HEIGHT_CLASS } from '@/lib/deckBuilderLayout';
 import {
   applyMainBasicLandsChange,
@@ -41,7 +47,7 @@ import {
   writeStoredPrepSize,
   type PrepDeckSize,
 } from '@/lib/prepDeckSize';
-import { buildPoolAllocationMaps } from '@mtg-league/shared';
+import { buildPoolAllocationMaps, shouldIgnoreRegisteredAllocation } from '@mtg-league/shared';
 
 type DecklistEntryResponse = {
   cachedCardId: string;
@@ -54,6 +60,8 @@ type DecklistEntryResponse = {
     typeLine: string;
     cmc: number;
     colorIdentity: string[];
+    setCode?: string | null;
+    collectorNumber?: string | null;
   };
 };
 
@@ -91,6 +99,7 @@ type RoundDeckBuilderResponse = {
       typeLine: string;
       colorIdentity: string[];
     }>;
+    matchesComplete?: boolean;
   };
 };
 
@@ -150,11 +159,14 @@ function toDeckCards(entries: DecklistEntryResponse[]): DeckBuilderCard[] {
     quantity: entry.quantity,
     zone: entry.zone,
     colorIdentity: entry.cachedCard.colorIdentity ?? [],
+    setCode: entry.cachedCard.setCode ?? null,
+    collectorNumber: entry.cachedCard.collectorNumber ?? null,
   }));
 }
 
 export function DeckBuilderPage() {
   const { confirm } = useConfirm();
+  const { user } = useAuth();
   const { activeSeasonId } = useCurrentLeague();
   const { eventId } = useParams<{ eventId: string }>();
   const [loading, setLoading] = useState(true);
@@ -186,8 +198,12 @@ export function DeckBuilderPage() {
     'required_before_round' | 'free_modification' | 'admin_locked'
   >('free_modification');
   const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null);
+  const [matchesComplete, setMatchesComplete] = useState(false);
   const [contextMenu, setContextMenu] = useState<DeckBuilderContextMenuState | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const saveTimeoutRef = useRef<number | null>(null);
 
   const restrictedMap = useRef(
@@ -312,6 +328,7 @@ export function DeckBuilderPage() {
       setEventFormat(deckResponse.data.eventConfig?.format ?? null);
       setDeckLockingMode(deckResponse.data.eventConfig?.deckLockingMode ?? 'free_modification');
       setActiveRoundNumber(deckResponse.data.roundNumber);
+      setMatchesComplete(deckResponse.data.matchesComplete === true);
 
       restrictedMap.current = new Map(
         deckResponse.data.restrictedCards.map((entry) => [
@@ -333,7 +350,24 @@ export function DeckBuilderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  const allocationByDeckStatus = useMemo(() => buildPoolAllocationMaps(decks, activeDeckId), [decks, activeDeckId]);
+  const allocationByDeckStatus = useMemo(() => {
+    const activeDeckForAllocation = decks.find((deck) => deck.id === activeDeckId) ?? null;
+    const ignoreRegistered = activeDeckForAllocation
+      ? shouldIgnoreRegisteredAllocation({
+          matchesComplete,
+          status: activeDeckForAllocation.status,
+          orderIndex: activeDeckForAllocation.orderIndex,
+          deckCount: requiredDeckCount,
+        })
+      : false;
+    return buildPoolAllocationMaps(
+      decks,
+      activeDeckId,
+      ignoreRegistered
+        ? { ignoreRegisteredSiblings: true, extraSlotMinOrderIndex: requiredDeckCount }
+        : undefined,
+    );
+  }, [activeDeckId, decks, matchesComplete, requiredDeckCount]);
   const combinedAllocationByCardId = allocationByDeckStatus.combinedForAvailability;
   const activeDeckAllocationByCardId = allocationByDeckStatus.activeDeckByCardId;
   const registeredOtherDecksByCardId = allocationByDeckStatus.registeredOtherDecksByCardId;
@@ -464,6 +498,14 @@ export function DeckBuilderPage() {
       })
     : minDeckSize;
   const showPrepSizeToggle = !!activeDeck && isExtraDeckSlot(activeDeck.orderIndex, requiredDeckCount);
+  const showMatchCompleteExtraHint =
+    !!activeDeck &&
+    shouldIgnoreRegisteredAllocation({
+      matchesComplete,
+      status: activeDeck.status,
+      orderIndex: activeDeck.orderIndex,
+      deckCount: requiredDeckCount,
+    });
   const activeDeckEditable =
     activeDeck?.status === 'draft' || (activeDeck?.status === 'submitted' && eventFormat === 'round_robin');
   const isDeckEditable = (deck: BuilderDeck) => deck.status === 'draft' || (deck.status === 'submitted' && eventFormat === 'round_robin');
@@ -474,6 +516,32 @@ export function DeckBuilderPage() {
   const canDeleteActiveDeck =
     !!activeDeck && activeDeck.status === 'draft' && activeDeck.orderIndex >= requiredDeckCount;
   const canImportActiveDeck = !!activeDeckEditable && !!activeSeasonId;
+  const canShareActiveDeck = Boolean(activeDeck);
+  const canExportActiveDeck = Boolean(activeDeck && activeDeck.cards.length > 0);
+
+  const openShare = async () => {
+    if (!activeDeck || shareBusy) {
+      return;
+    }
+    setShareBusy(true);
+    try {
+      const payload = toDeckSharePayload({
+        ownerDisplayName: user
+          ? primaryName({ displayName: user.displayName ?? '', publicName: user.publicName })
+          : '',
+        deckName: activeDeck.name,
+        eventName: '',
+        roundNumber: activeRoundNumber ?? 0,
+        status: activeDeck.status,
+        cards: activeDeck.cards,
+      });
+      setShareUrl(await mintDeckShareUrl(activeDeck.id, payload));
+    } catch {
+      setError('Failed to create share link');
+    } finally {
+      setShareBusy(false);
+    }
+  };
   const importDisabledReason = !activeSeasonId
     ? 'No active season found to import from.'
     : !activeDeckEditable
@@ -1024,6 +1092,25 @@ export function DeckBuilderPage() {
                 </button>
                 <button
                   type="button"
+                  data-testid="deck-export-button"
+                  className="shrink-0 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canExportActiveDeck}
+                  title={canExportActiveDeck ? undefined : 'Nothing to export.'}
+                  onClick={() => setShowExportDialog(true)}
+                >
+                  Export
+                </button>
+                <button
+                  type="button"
+                  data-testid="deck-share-button"
+                  className="shrink-0 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canShareActiveDeck || shareBusy}
+                  onClick={openShare}
+                >
+                  Share
+                </button>
+                <button
+                  type="button"
                   data-testid="deck-register-button"
                   className="rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!canRegisterActiveDeck}
@@ -1261,6 +1348,7 @@ export function DeckBuilderPage() {
                       }
                     : undefined
                 }
+                matchCompleteExtraHint={showMatchCompleteExtraHint}
                 onDeckNameChange={(deckId, name) =>
                   setDecks((prev) =>
                     prev.map((deck) => (deck.id === deckId && isDeckRenamable() ? { ...deck, name } : deck))
@@ -1311,6 +1399,14 @@ export function DeckBuilderPage() {
           void importIntoActiveDeck(entries);
         }}
       />
+      {shareUrl ? <ShareDeckDialog url={shareUrl} onClose={() => setShareUrl(null)} /> : null}
+      {showExportDialog && activeDeck ? (
+        <ExportDeckDialog
+          deckName={activeDeck.name}
+          cards={activeDeck.cards}
+          onClose={() => setShowExportDialog(false)}
+        />
+      ) : null}
       {contextMenu ? (
         <DeckBuilderContextMenu
           cardName={contextMenuCardName}

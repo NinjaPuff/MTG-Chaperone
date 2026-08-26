@@ -82,10 +82,6 @@ export function isDecklistVisibleToViewer(
   decklist: { userId: string; status: 'draft' | 'submitted' | 'locked' },
   season: SeasonVisibility,
   viewer: VisibilityViewer | null | undefined,
-  context: {
-    eventStatus: 'setup' | 'active' | 'completed';
-    roundStatus: 'not_started' | 'in_progress' | 'completed';
-  },
 ) {
   const isOwnerOrAdmin = viewer?.role === 'admin' || viewer?.id === decklist.userId;
   if (isOwnerOrAdmin) {
@@ -94,11 +90,5 @@ export function isDecklistVisibleToViewer(
   if (!canViewDecklist(decklist, season, viewer ?? null)) {
     return false;
   }
-  if (isPublicDecklistStatus(decklist.status)) {
-    return true;
-  }
-  return (
-    decklist.status === 'draft' &&
-    isArchiveRound({ status: context.eventStatus }, { status: context.roundStatus })
-  );
+  return isPublicDecklistStatus(decklist.status);
 }

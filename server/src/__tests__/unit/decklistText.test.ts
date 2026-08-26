@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPoolDecklistExport,
   expandCardNameLookupVariants,
+  formatArchidektDecklistText,
   formatDecklistLine,
+  formatMoxfieldDecklistText,
   isDecklistNonCardLine,
   parseBulkDecklistText,
   parseDecklistLine,
   slashAliasKeysForIndexedName,
+  type DeckExportEntry,
 } from '@mtg-league/shared';
 
 const trystanCanonical = 'Trystan, Callous Cultivator // Trystan, Penitent Culler';
@@ -488,5 +491,96 @@ describe('buildPoolDecklistExport', () => {
     ]);
 
     expect(lines).toEqual(['2 Adeline, Resplendent Cathar (FCA) 1']);
+  });
+});
+
+const exportEntries: DeckExportEntry[] = [
+  {
+    quantity: 1,
+    name: 'Brainstorm',
+    setCode: 'ICE',
+    collectorNumber: '61',
+    zone: 'main',
+  },
+  {
+    quantity: 4,
+    name: 'Island',
+    setCode: 'USG',
+    collectorNumber: '335',
+    zone: 'main',
+  },
+  {
+    quantity: 2,
+    name: 'Hydroblast',
+    setCode: 'ICE',
+    collectorNumber: '72',
+    zone: 'sideboard',
+  },
+];
+
+describe('formatMoxfieldDecklistText', () => {
+  it('emits Deck then Sideboard with Arena-style lines sorted by name within zone', () => {
+    expect(formatMoxfieldDecklistText(exportEntries)).toBe(
+      ['Deck', '1 Brainstorm (ICE) 61', '4 Island (USG) 335', '', 'Sideboard', '2 Hydroblast (ICE) 72'].join('\n'),
+    );
+  });
+
+  it('omits the Sideboard block when empty', () => {
+    expect(formatMoxfieldDecklistText(exportEntries.filter((entry) => entry.zone === 'main'))).toBe(
+      ['Deck', '1 Brainstorm (ICE) 61', '4 Island (USG) 335'].join('\n'),
+    );
+  });
+
+  it('omits collector number then set when missing, and keeps DFC names as stored', () => {
+    expect(
+      formatMoxfieldDecklistText([
+        { quantity: 1, name: 'Front // Back', setCode: 'MH2', collectorNumber: null, zone: 'main' },
+        { quantity: 2, name: 'Shock', setCode: null, collectorNumber: '1', zone: 'main' },
+      ]),
+    ).toBe(['Deck', '1 Front // Back (MH2)', '2 Shock'].join('\n'));
+  });
+
+  it('round-trips through parseBulkDecklistText', () => {
+    const text = formatMoxfieldDecklistText(exportEntries);
+    expect(parseBulkDecklistText(text)).toEqual([
+      {
+        inputLabel: '1 Brainstorm (ICE) 61',
+        name: 'Brainstorm (ICE) 61',
+        quantity: 1,
+        setCode: 'ICE',
+        collectorNumber: '61',
+      },
+      {
+        inputLabel: '4 Island (USG) 335',
+        name: 'Island (USG) 335',
+        quantity: 4,
+        setCode: 'USG',
+        collectorNumber: '335',
+      },
+      {
+        inputLabel: '2 Hydroblast (ICE) 72',
+        name: 'Hydroblast (ICE) 72',
+        quantity: 2,
+        setCode: 'ICE',
+        collectorNumber: '72',
+      },
+    ]);
+  });
+});
+
+describe('formatArchidektDecklistText', () => {
+  it('uses Nx quantity prefixes with the same sections and sort', () => {
+    expect(formatArchidektDecklistText(exportEntries)).toBe(
+      ['Deck', '1x Brainstorm (ICE) 61', '4x Island (USG) 335', '', 'Sideboard', '2x Hydroblast (ICE) 72'].join('\n'),
+    );
+  });
+
+  it('round-trips Nx lines through parseBulkDecklistText', () => {
+    const items = parseBulkDecklistText(formatArchidektDecklistText(exportEntries));
+    expect(items.map((item) => item.quantity)).toEqual([1, 4, 2]);
+    expect(items.map((item) => item.setCode)).toEqual(['ICE', 'USG', 'ICE']);
+    expect(items[0]?.name).toContain('Brainstorm');
+    expect(items[1]?.name).toContain('Island');
+    expect(items[2]?.name).toContain('Hydroblast');
   });
 });

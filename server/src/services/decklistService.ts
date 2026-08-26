@@ -1,7 +1,9 @@
 import type { DeckZone, Prisma } from '@prisma/client';
+import { selectExtraDraftsToCarryForward, shouldIgnoreRegisteredAllocation } from '@mtg-league/shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { isDecklistVisibleToViewer } from '../lib/visibilityRules.js';
+import { playerHasFinishedEventMatches } from '../lib/matchCompletion.js';
 
 export const BASIC_LAND_CATALOG_NAMES = ['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'] as const;
 
@@ -274,6 +276,108 @@ async function getEventRoundContext(eventId: string, roundId: string) {
     event,
     round,
   };
+}
+
+async function loadPlayerEventMatches(userId: string, eventId: string) {
+  const matches = await prisma.match.findMany({
+    where: {
+      round: { eventId },
+      OR: [{ player1Id: userId }, { player2Id: userId }],
+    },
+    select: { status: true },
+  });
+  return matches ?? [];
+}
+
+const allocationSiblingEntrySelect = {
+  entries: {
+    select: {
+      cachedCardId: true,
+      quantity: true,
+    },
+  },
+} as const;
+
+async function extraDraftIgnoresRegisteredAllocation(decklist: {
+  userId: string;
+  eventId: string;
+  status: 'draft' | 'submitted' | 'locked';
+  orderIndex: number | null;
+  event: { config: { deckCount?: number | null } | null };
+}) {
+  const eventMatches = await loadPlayerEventMatches(decklist.userId, decklist.eventId);
+  return shouldIgnoreRegisteredAllocation({
+    matchesComplete: playerHasFinishedEventMatches(eventMatches),
+    status: decklist.status,
+    orderIndex: decklist.orderIndex ?? 0,
+    deckCount: Math.max(1, decklist.event.config?.deckCount ?? 1),
+  });
+}
+
+async function loadAllocationSiblingDecklists(args: {
+  userId: string;
+  eventId: string;
+  roundId: string;
+  decklistId: string;
+  deckCount: number;
+  ignoreRegistered: boolean;
+  includeSelf: boolean;
+}) {
+
+  if (args.ignoreRegistered) {
+    return prisma.decklist.findMany({
+      where: args.includeSelf
+        ? {
+            userId: args.userId,
+            eventId: args.eventId,
+            OR: [
+              { id: args.decklistId },
+              {
+                status: 'draft',
+                orderIndex: { gte: args.deckCount },
+                id: { not: args.decklistId },
+              },
+            ],
+          }
+        : {
+            userId: args.userId,
+            eventId: args.eventId,
+            status: 'draft',
+            orderIndex: { gte: args.deckCount },
+            id: { not: args.decklistId },
+          },
+      select: allocationSiblingEntrySelect,
+    });
+  }
+
+  return prisma.decklist.findMany({
+    where: args.includeSelf
+      ? {
+          userId: args.userId,
+          eventId: args.eventId,
+          roundId: args.roundId,
+          OR: [
+            { id: args.decklistId },
+            {
+              status: {
+                in: ['submitted', 'locked'],
+              },
+            },
+          ],
+        }
+      : {
+          userId: args.userId,
+          eventId: args.eventId,
+          roundId: args.roundId,
+          status: {
+            in: ['submitted', 'locked'],
+          },
+          id: {
+            not: args.decklistId,
+          },
+        },
+    select: allocationSiblingEntrySelect,
+  });
 }
 
 async function getPoolCardsForUserSeason(userId: string, seasonId: string) {
@@ -573,10 +677,7 @@ export async function getDecklistById(
 
   const season = decklist.event.season;
   if (
-    !isDecklistVisibleToViewer(decklist, season, viewer ?? null, {
-      eventStatus: decklist.event.status,
-      roundStatus: decklist.round.status,
-    })
+    !isDecklistVisibleToViewer(decklist, season, viewer ?? null)
   ) {
     throw new AppError(403, 'FORBIDDEN', 'You do not have permission to access this decklist');
   }
@@ -625,6 +726,8 @@ const seasonDecklistInclude = {
           typeLine: true,
           cmc: true,
           colorIdentity: true,
+          setCode: true,
+          collectorNumber: true,
         },
       },
     },
@@ -657,10 +760,7 @@ export async function listVisibleDecklistsForSeason(
   });
 
   return decklists.filter((decklist) =>
-    isDecklistVisibleToViewer(decklist, season, viewer ?? null, {
-      eventStatus: decklist.event.status,
-      roundStatus: decklist.round.status,
-    }),
+    isDecklistVisibleToViewer(decklist, season, viewer ?? null),
   );
 }
 
@@ -693,10 +793,7 @@ export async function listVisibleDecklistsForEvent(
   });
 
   return decklists.filter((decklist) =>
-    isDecklistVisibleToViewer(decklist, event.season, viewer ?? null, {
-      eventStatus: decklist.event.status,
-      roundStatus: decklist.round.status,
-    }),
+    isDecklistVisibleToViewer(decklist, event.season, viewer ?? null),
   );
 }
 
@@ -815,12 +912,130 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
     }
   }
 
+  const decklistWithCardsInclude = {
+    entries: {
+      include: {
+        cachedCard: true,
+      },
+    },
+  } as const;
+
+  if (typeof event.orderIndex === 'number') {
+    const previousEvent = await prisma.event.findFirst({
+      where: {
+        seasonId: event.season.id,
+        status: 'completed',
+        orderIndex: {
+          lt: event.orderIndex,
+        },
+      },
+      orderBy: {
+        orderIndex: 'desc',
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (previousEvent) {
+      const previousEventDrafts = await prisma.decklist.findMany({
+        where: {
+          userId,
+          eventId: previousEvent.id,
+        },
+        select: {
+          id: true,
+          orderIndex: true,
+          status: true,
+          round: {
+            select: {
+              roundNumber: true,
+            },
+          },
+        },
+      });
+      const extraIdsToCarry = selectExtraDraftsToCarryForward({
+        requiredDeckCount: deckCount,
+        currentRoundOrderIndexes: decklists.map((decklist) => decklist.orderIndex),
+        previousDrafts: previousEventDrafts.map((decklist) => ({
+          id: decklist.id,
+          orderIndex: decklist.orderIndex,
+          roundNumber: decklist.round.roundNumber,
+          status: decklist.status,
+        })),
+      });
+      if (extraIdsToCarry.length > 0) {
+        await prisma.decklist.updateMany({
+          where: {
+            id: {
+              in: extraIdsToCarry,
+            },
+          },
+          data: {
+            eventId,
+            roundId,
+          },
+        });
+        decklists = await prisma.decklist.findMany({
+          where: {
+            userId,
+            eventId,
+            roundId,
+          },
+          include: decklistWithCardsInclude,
+          orderBy: {
+            orderIndex: 'asc',
+          },
+        });
+      }
+    }
+  }
+
+  const otherRoundExtras = await prisma.decklist.findMany({
+    where: {
+      userId,
+      eventId,
+      roundId: {
+        not: roundId,
+      },
+      status: 'draft',
+      orderIndex: {
+        gte: deckCount,
+      },
+    },
+    include: {
+      ...decklistWithCardsInclude,
+      round: {
+        select: {
+          roundNumber: true,
+        },
+      },
+    },
+  });
+  const extraIdsToShow = selectExtraDraftsToCarryForward({
+    requiredDeckCount: deckCount,
+    currentRoundOrderIndexes: decklists.map((decklist) => decklist.orderIndex),
+    previousDrafts: otherRoundExtras.map((decklist) => ({
+      id: decklist.id,
+      orderIndex: decklist.orderIndex,
+      roundNumber: decklist.round.roundNumber,
+      status: decklist.status,
+    })),
+  });
+  if (extraIdsToShow.length > 0) {
+    const extrasById = new Map(otherRoundExtras.map((decklist) => [decklist.id, decklist]));
+    const attached = extraIdsToShow
+      .map((id) => extrasById.get(id))
+      .filter((decklist): decklist is (typeof otherRoundExtras)[number] => Boolean(decklist));
+    decklists = [...decklists, ...attached].sort((left, right) => left.orderIndex - right.orderIndex);
+  }
+
   const restrictionContext = await buildRestrictionContext(userId, eventId, round.roundNumber, poolQuantityByCardId);
   const restrictedCards = [...restrictionContext.restrictedCards.entries()].map(([cachedCardId, value]) => ({
     cachedCardId,
     restrictedQty: value.restrictedQty,
     reason: value.reason,
   }));
+  const eventMatches = await loadPlayerEventMatches(userId, eventId);
 
   return {
     poolId,
@@ -832,6 +1047,7 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
     basicLandCardIds: [...basicLandCardIds],
     basicLands: [...basicLandCatalog.values()],
     restrictedCards,
+    matchesComplete: playerHasFinishedEventMatches(eventMatches),
   };
 }
 
@@ -857,7 +1073,6 @@ export async function createDecklist(input: {
       where: {
         userId: input.userId,
         eventId: input.eventId,
-        roundId: input.roundId,
       },
       orderBy: {
         orderIndex: 'desc',
@@ -1025,28 +1240,19 @@ export async function updateDecklist(
     decklist.round.roundNumber,
     poolQuantityByCardId,
   );
-  const restrictedQtyMap = extractRestrictedQtyMap(restrictions.restrictedCards);
+  const ignoreRegistered = await extraDraftIgnoresRegisteredAllocation(decklist);
+  const restrictedQtyMap = ignoreRegistered
+    ? new Map<string, number>()
+    : extractRestrictedQtyMap(restrictions.restrictedCards);
 
-  const siblingDecklists = await prisma.decklist.findMany({
-    where: {
-      userId: decklist.userId,
-      eventId: decklist.eventId,
-      roundId: decklist.roundId,
-      status: {
-        in: ['submitted', 'locked'],
-      },
-      id: {
-        not: decklist.id,
-      },
-    },
-    select: {
-      entries: {
-        select: {
-          cachedCardId: true,
-          quantity: true,
-        },
-      },
-    },
+  const siblingDecklists = await loadAllocationSiblingDecklists({
+    userId: decklist.userId,
+    eventId: decklist.eventId,
+    roundId: decklist.roundId,
+    decklistId: decklist.id,
+    deckCount: Math.max(1, decklist.event.config?.deckCount ?? 1),
+    ignoreRegistered,
+    includeSelf: false,
   });
 
   const combined = aggregateEntries(
@@ -1172,30 +1378,14 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
     poolQuantityByCardId,
   );
 
-  const siblingDecklists = await prisma.decklist.findMany({
-    where: {
-      userId: decklist.userId,
-      eventId: decklist.eventId,
-      roundId: decklist.roundId,
-      OR: [
-        {
-          id: decklist.id,
-        },
-        {
-          status: {
-            in: ['submitted', 'locked'],
-          },
-        },
-      ],
-    },
-    select: {
-      entries: {
-        select: {
-          cachedCardId: true,
-          quantity: true,
-        },
-      },
-    },
+  const siblingDecklists = await loadAllocationSiblingDecklists({
+    userId: decklist.userId,
+    eventId: decklist.eventId,
+    roundId: decklist.roundId,
+    decklistId: decklist.id,
+    deckCount: Math.max(1, decklist.event.config?.deckCount ?? 1),
+    ignoreRegistered: await extraDraftIgnoresRegisteredAllocation(decklist),
+    includeSelf: true,
   });
 
   const combinedAllocation = aggregateEntries(siblingDecklists.flatMap((item) => item.entries));

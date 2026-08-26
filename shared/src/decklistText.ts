@@ -373,6 +373,66 @@ export function formatDecklistLine({ quantity, name, setCode, collectorNumber }:
   return `${quantity} ${trimmedName} (${setCode})`;
 }
 
+export type DeckExportZone = 'main' | 'sideboard';
+
+export type DeckExportEntry = {
+  quantity: number;
+  name: string;
+  setCode?: string | null;
+  collectorNumber?: string | null;
+  zone: DeckExportZone;
+};
+
+function compareExportEntries(left: DeckExportEntry, right: DeckExportEntry) {
+  const nameCompare = left.name.localeCompare(right.name, undefined, { sensitivity: 'base' });
+  if (nameCompare !== 0) {
+    return nameCompare;
+  }
+  const setCompare = (left.setCode ?? '').localeCompare(right.setCode ?? '');
+  if (setCompare !== 0) {
+    return setCompare;
+  }
+  return (left.collectorNumber ?? '').localeCompare(right.collectorNumber ?? '');
+}
+
+function entriesForZone(entries: DeckExportEntry[], zone: DeckExportZone) {
+  return entries
+    .filter((entry) => entry.zone === zone && entry.quantity >= 1 && entry.name.trim())
+    .slice()
+    .sort(compareExportEntries);
+}
+
+function formatExportLine(entry: DeckExportEntry, flavor: 'moxfield' | 'archidekt') {
+  const line = formatDecklistLine({
+    quantity: entry.quantity,
+    name: entry.name,
+    setCode: entry.setCode ?? null,
+    collectorNumber: entry.collectorNumber ?? null,
+  });
+  if (flavor === 'archidekt') {
+    return line.replace(new RegExp(`^${entry.quantity} `), `${entry.quantity}x `);
+  }
+  return line;
+}
+
+export function formatDeckExportText(entries: DeckExportEntry[], flavor: 'moxfield' | 'archidekt'): string {
+  const main = entriesForZone(entries, 'main');
+  const sideboard = entriesForZone(entries, 'sideboard');
+  const lines = ['Deck', ...main.map((entry) => formatExportLine(entry, flavor))];
+  if (sideboard.length > 0) {
+    lines.push('', 'Sideboard', ...sideboard.map((entry) => formatExportLine(entry, flavor)));
+  }
+  return lines.join('\n');
+}
+
+export function formatMoxfieldDecklistText(entries: DeckExportEntry[]): string {
+  return formatDeckExportText(entries, 'moxfield');
+}
+
+export function formatArchidektDecklistText(entries: DeckExportEntry[]): string {
+  return formatDeckExportText(entries, 'archidekt');
+}
+
 export function buildPoolDecklistExport(entries: PoolExportEntry[]): string[] {
   const byScryfallId = new Map<
     string,

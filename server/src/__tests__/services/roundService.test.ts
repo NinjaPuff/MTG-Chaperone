@@ -92,7 +92,7 @@ describe('roundService', () => {
     expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
       where: {
         roundId: 'r1',
-        status: { in: ['draft', 'submitted'] },
+        status: 'submitted',
       },
       data: { status: 'locked' },
     });

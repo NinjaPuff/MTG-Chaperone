@@ -5,3 +5,4 @@ export * from './boosterProductRules.js';
 export * from './decklistText.js';
 export * from './bracketDefinitions.js';
 export * from './decklistAllocation.js';
+export * from './deckShareCodec.js';

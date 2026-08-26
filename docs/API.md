@@ -1454,14 +1454,44 @@ Season `decklistVisibility` (boolean, default `true`) gates public decklist acce
 - Owner or site admin: any status.
 - Everyone else, when `decklistVisibility` is on:
   - `submitted` and `locked` (official registered lists), including the current round.
-  - leftover `draft` decks only when the event is `completed` or the round is `completed`.
+  - `draft` is never listed or openable.
 - Everyone else, when `decklistVisibility` is off: nothing (`403` / omitted from lists).
 
-`GET /api/decklists/:id` uses the same predicate as the list endpoints. A row returned by a list is openable. Other players’ current-round `draft` decks return `403 FORBIDDEN`.
+`GET /api/decklists/:id` uses the same predicate as the list endpoints. A row returned by a list is openable. Other players’ `draft` decks return `403 FORBIDDEN`, including leftover extra decks after the round or event completes.
+
+Unlisted deck shares are a separate `DecklistShare` snapshot, not a live ACL. Authenticated viewers who can see a list mint `POST /api/decklists/:id/share` (names included) and get a token. Recipients load `GET /api/share/decklists/:token`. That does not flip `decklistVisibility`, list the deck on `/decks`, or grant `GET /api/decklists/:id`. Older packed hash URLs (`/share/decks#v2.…`, `v1.`) still decode locally.
+
+#### `POST /api/decklists/:decklistId/share`
+
+Mint or reuse an unlisted snapshot token for a decklist the caller can view. Hidden current-round drafts stay owner/admin only.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Authenticated (same visibility as `GET /api/decklists/:id`) |
+| Params   | `decklistId` (UUID) |
+
+**Request Body:** `DeckSharePayload` (`v`, `ownerDisplayName`, `deckName`, `eventName`, `roundNumber`, `status`, `entries`). The server overwrites `ownerDisplayName` from the deck owner.
+
+**Response `200`:** `{ "data": { "token": "…" } }` — unchanged contents from the same owner reuse the same token (`contentsHash`, no clock).
+
+**Errors:** `UNAUTHORIZED`, `VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND`
+
+#### `GET /api/share/decklists/:token`
+
+Public snapshot by token. Guests allowed. Does not call `getDecklistById`.
+
+| Property | Value |
+|----------|-------|
+| Auth     | None |
+| Params   | `token` (unguessable InviteLink-class string) |
+
+**Response `200`:** `{ "data": { …DeckSharePayload } }`
+
+**Errors:** `INVALID_SHARE` (`404`)
 
 #### `GET /api/seasons/:seasonId/decklists`
 
-List season decklists the viewer may see (registered decks plus leftover previous-round drafts).
+List season decklists the viewer may see (registered `submitted`/`locked` lists only for non-owners).
 
 | Property | Value |
 |----------|-------|
@@ -1480,6 +1510,19 @@ List the authenticated user’s own decks for a season, all statuses. Used by th
 |----------|-------|
 | Auth     | Authenticated |
 | Params   | `seasonId` (UUID) |
+
+**Errors:** `UNAUTHORIZED`, `NOT_FOUND`
+
+#### `GET /api/events/:eventId/my-decklists` and `GET /api/events/:eventId/rounds/:roundId/my-decklists`
+
+Authenticated owner builder payload for the current (or specified) round. Returns that user’s decks of every status plus `matchesComplete`: `true` when the owner has at least one match in this event and every such match is `confirmed` or `resolved`. The client uses only this flag for extra-deck allocation UI. Not a public archive.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Authenticated |
+| Params   | `eventId` (UUID); optional `roundId` (UUID) |
+
+**Response `200`:** `{ "data": { "roundId", "roundNumber", "poolId", "decklists", "registeredCount", "eventConfig", "restrictedCards", "basicLands", "matchesComplete" } }`
 
 **Errors:** `UNAUTHORIZED`, `NOT_FOUND`
 

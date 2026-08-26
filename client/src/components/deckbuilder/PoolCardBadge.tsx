@@ -28,7 +28,7 @@ export function PoolCardBadge({
       {inOtherDecks > 0 ? (
         <span
           className="rounded-full border border-amber-400/80 bg-amber-950/70 px-1.5 py-0.5 font-semibold text-amber-100"
-          title="Allocated in other registered decks, not the active deck"
+          title="Allocated in other decks sharing this pool, not the active deck"
         >
           other decks {inOtherDecks}
         </span>

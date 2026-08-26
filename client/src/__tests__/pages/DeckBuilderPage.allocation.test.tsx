@@ -64,6 +64,8 @@ function makeDeckEntry(quantity: number) {
 function configureApi(options: {
   poolQuantity: number;
   decks: Array<{ id: string; status: DeckStatus; entries: ReturnType<typeof makeDeckEntry>[]; orderIndex: number }>;
+  matchesComplete?: boolean;
+  deckCount?: number;
 }) {
   mocks.authApiRequest.mockImplementation(async (path: string) => {
     if (path === '/api/events/e1/my-decklists') {
@@ -72,6 +74,7 @@ function configureApi(options: {
           roundId: 'r1',
           roundNumber: 1,
           poolId: 'pool-1',
+          matchesComplete: options.matchesComplete ?? false,
           decklists: options.decks.map((deck) => ({
             id: deck.id,
             orderIndex: deck.orderIndex,
@@ -82,7 +85,7 @@ function configureApi(options: {
           registeredCount: options.decks.filter((deck) => deck.status !== 'draft').length,
           eventConfig: {
             format: 'swiss',
-            deckCount: 2,
+            deckCount: options.deckCount ?? 2,
             minDeckSize: 40,
             sideboardRule: 'entire_pool',
             deckLockingMode: 'free_modification',
@@ -207,4 +210,112 @@ describe('DeckBuilderPage registered-only allocation', () => {
     await waitFor(() => expect(screen.getByText('other decks 2')).toBeInTheDocument());
     expect(screen.queryByText('other decks 5')).not.toBeInTheDocument();
   });
+
+  it('lets extra drafts reuse registered copies after matches complete', async () => {
+    configureApi({
+      poolQuantity: 2,
+      matchesComplete: true,
+      deckCount: 1,
+      decks: [
+        { id: 'deck-active', status: 'draft', entries: [], orderIndex: 1 },
+        { id: 'deck-registered', status: 'submitted', entries: [makeDeckEntry(2)], orderIndex: 0 },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getAllByText('Lightning Bolt').length).toBeGreaterThan(0));
+    openPoolContextMenu();
+
+    expect(screen.getByRole('button', { name: 'Add to main deck' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to sideboard' })).toBeEnabled();
+    expect(screen.queryByText('other decks 2')).not.toBeInTheDocument();
+  });
+
+  it('still consumes registered copies for a required slot after matches complete', async () => {
+    configureApi({
+      poolQuantity: 2,
+      matchesComplete: true,
+      deckCount: 1,
+      decks: [
+        { id: 'deck-active', status: 'draft', entries: [], orderIndex: 0 },
+        { id: 'deck-registered', status: 'submitted', entries: [makeDeckEntry(2)], orderIndex: 1 },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getAllByText('Lightning Bolt').length).toBeGreaterThan(0));
+    openPoolContextMenu();
+
+    expect(screen.getByRole('button', { name: 'Add to main deck' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to sideboard' })).toBeDisabled();
+    expect(screen.getByText('other decks 2')).toBeInTheDocument();
+  });
+
+  it('counts other extra drafts when matches are complete', async () => {
+    configureApi({
+      poolQuantity: 2,
+      matchesComplete: true,
+      deckCount: 1,
+      decks: [
+        { id: 'deck-active', status: 'draft', entries: [], orderIndex: 1 },
+        { id: 'deck-extra-sibling', status: 'draft', entries: [makeDeckEntry(2)], orderIndex: 2 },
+        { id: 'deck-registered', status: 'submitted', entries: [makeDeckEntry(2)], orderIndex: 0 },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('other decks 2')).toBeInTheDocument());
+    openPoolContextMenu();
+
+    expect(screen.getByRole('button', { name: 'Add to main deck' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to sideboard' })).toBeDisabled();
+  });
+
+  it('shows reuse helper copy only for extra drafts after matches complete', async () => {
+    const helperCopy = 'Matches are done. This extra deck may reuse cards from registered lists.';
+
+    configureApi({
+      poolQuantity: 2,
+      matchesComplete: true,
+      deckCount: 1,
+      decks: [
+        { id: 'deck-active', status: 'draft', entries: [], orderIndex: 1 },
+        { id: 'deck-registered', status: 'submitted', entries: [makeDeckEntry(2)], orderIndex: 0 },
+      ],
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText(helperCopy)).toBeInTheDocument());
+  });
+
+  it('hides reuse helper copy when extra-deck matches are not complete', async () => {
+    configureApi({
+      poolQuantity: 2,
+      matchesComplete: false,
+      deckCount: 1,
+      decks: [
+        { id: 'deck-active', status: 'draft', entries: [], orderIndex: 1 },
+        { id: 'deck-registered', status: 'submitted', entries: [makeDeckEntry(2)], orderIndex: 0 },
+      ],
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getAllByText('Lightning Bolt').length).toBeGreaterThan(0));
+    expect(
+      screen.queryByText('Matches are done. This extra deck may reuse cards from registered lists.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('hides reuse helper copy on a required slot after matches complete', async () => {
+    configureApi({
+      poolQuantity: 2,
+      matchesComplete: true,
+      deckCount: 1,
+      decks: [{ id: 'deck-active', status: 'draft', entries: [], orderIndex: 0 }],
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getAllByText('Lightning Bolt').length).toBeGreaterThan(0));
+    expect(
+      screen.queryByText('Matches are done. This extra deck may reuse cards from registered lists.'),
+    ).not.toBeInTheDocument();
+  });
 });
+

@@ -340,7 +340,7 @@ Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for seal
 - [ ] Deck size validation against event minimum (default 40)
 - [ ] Deck uniqueness validation when event has DeckUniquenessRule
 - [ ] Sideboard validation per event config (entire_pool, fixed_15, none)
-- [ ] Export: MTGO, Arena, Moxfield text formats
+- [x] Export: copy/download Moxfield/Arena and Archidekt text from the builder, archive, and share page
 - [ ] Decklist privacy follows league settings
 - [ ] Decklist states: draft → submitted → locked
 - [ ] "Import from previous round" copies a prior decklist as starting point
@@ -348,22 +348,22 @@ Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for seal
 
 ### Previous-round league deck archive
 
-Players and spectators can browse other players’ decks from completed previous rounds on `/decks`. Registered (`submitted`/`locked`) lists are the official source of truth. Leftover created (`draft`) decks for a completed round are still listed so the league can see what someone built even if they never hit Register. Other players’ in-progress current-round drafts stay private.
+Players and spectators can browse other players’ decks from completed previous rounds on `/decks`. Registered (`submitted`/`locked`) lists are the official source of truth. Leftover `draft` decks stay owner- and site-admin-only forever, including after the round or event completes. Players who never registered do not appear in the public archive.
 
 #### User Stories
 
-- As a player, I want to browse other players’ previous-round decks on `/decks` so I can see what the league played.
+- As a player, I want to browse other players’ previous-round **registered** decks on `/decks` so I can see what the league played.
 - As a spectator, I want the same archive when season decklist visibility is on.
-- As a player who never hit Register, I still want my leftover created deck visible after the round completes so the league can see what I built.
+- As a player, I do not want leftover unregistered drafts listed for others after a round completes.
 - As a player, I do not want others to see my in-progress current-round draft.
 
 #### Acceptance Criteria
 
 - [x] Logged-in `/decks` loads the season visible-decklist list, not only `my-season`
-- [x] Archive grouping is event → round → player; registered decks appear before unregistered created decks
+- [x] Archive grouping is event → round → player
 - [x] Registered (`submitted`/`locked`) decks are badged Registered and treated as the official list
-- [x] After a round is `completed`, other players’ leftover `draft` decks for that round are listed and labeled Unregistered
-- [x] Players who never registered still appear if they have a created deck for that previous round
+- [x] Leftover `draft` decks are omitted from League/spectator lists and `GET /api/decklists/:id` returns 403 for non-owners/non-admins
+- [x] Players who never registered do not appear in the public archive
 - [x] Other players’ drafts for the current in-progress / not-started round are omitted from the list and `GET /api/decklists/:id` returns 403
 - [x] Completed earlier rounds of an active event appear in the archive
 - [x] Opening an archive row succeeds (`GET /api/decklists/:id` uses the same visibility predicate as the list)
@@ -374,6 +374,70 @@ Players and spectators can browse other players’ decks from completed previous
 - [x] Expanded archive row defaults to a hoverable Main/Sideboard list (`DeckCardList` / `HoverTarget`); List/Details toggle opens read-only curve/stacks; no Register, Unregister, or Enable editing
 - [x] `/decks?player=:slug` heading is `{primaryName}'s decklists` (fallback `This player's decklists`) and hides Open Current Deckbuilder, including the signed-in user's own slug
 - [x] Expanded archive cards use the same hover preview as pools; season list does not add `imageUris`
+- [x] Signed-in viewers can Export a visible archive row (copy/download Moxfield or Archidekt text); guests cannot
+- [x] Owners may still see their leftover drafts under Your previous decks with an Unregistered badge
+
+### Extra decks after matches complete
+
+After every match for a player in the current event is `confirmed` or `resolved`, extra draft tabs (`orderIndex >= deckCount`) may reuse cards from that player’s registered lists. Extra decks stay `draft`, private, and cannot register past `deckCount`. Pool copy limits still apply, and extra drafts share allocation with each other. Required slots always share allocation with registered siblings. Completing a round locks `submitted` lists only; leftover drafts stay drafts.
+
+#### Acceptance Criteria
+
+- [x] Extra draft saves ignore registered-sibling allocation when `matchesComplete` is true
+- [x] Extra drafts still cannot exceed pool copies or double-spend against other extra drafts
+- [x] Required-slot drafts still share allocation with registered siblings
+- [x] Extra submit still 409s when registered count already equals `deckCount`
+- [x] Extra decks stay private (`draft`) and do not appear in the public archive
+
+### Decklist export to Moxfield / Archidekt
+
+Players copy a pasteable decklist (optional `.txt` download) for Moxfield Import and Archidekt Import list. Export does not mint a share URL and does not call a third-party API. Printings come from `CachedCard.setCode` / `collectorNumber` already on the page payload.
+
+#### User Stories
+
+- As a player, I want to copy my builder deck into Moxfield or Archidekt with the same cards, printings, and sideboard.
+- As a signed-in viewer, I want the same Export on an archive row I can already see.
+- As anyone with a share link, I want to dump that snapshot into Moxfield without a Chaperone account.
+
+#### Acceptance Criteria
+
+- [x] Builder header order is Import, Export, Share, Register; Export is disabled with “Nothing to export.” when the active deck has no cards
+- [x] Modal copies Moxfield/Arena text by default and can switch to Archidekt `Nx` lines; download `.txt` is secondary
+- [x] Archive Export lives in the expanded row (not `<summary>`), signed-in only
+- [x] Share page Export is available to guests
+- [x] `GET /api/decklists/:id/export/:format` stays unimplemented (501)
+
+### Unlisted decklist sharing
+
+Players can share the **active deck’s contents** as a frozen, unlisted document. Recipients (signed-in or guest) open `/share/decks/:token` and see archive List/Details chrome. Sharing does not flip `season.decklistVisibility`, does not list the deck on `/decks`, and does not grant `GET /api/decklists/:id`. New copies mint a `DecklistShare` row; older packed hash URLs (`/share/decks#v2.…`, `v1.`) still decode.
+
+#### User Stories
+
+- As a player, I want to share my current-round deck (including a hidden draft) with one person via a short URL, without making season decklists public.
+- As a recipient (member or guest), I want to open that URL and see the list in the site’s read-only archive chrome without signing in.
+- As a player, I do not want that share to list my deck on `/decks` or open `GET /api/decklists/:id` to others.
+- As a player, I want Share on an unchanged list to produce the same URL, and Share after edits to produce a new URL that does not change old pastes.
+
+#### Acceptance Criteria
+
+- [x] Owner can Share the active builder deck (`draft` / `submitted` / `locked`) and copy a short `/share/decks/:token` URL from a modal
+- [x] Signed-in viewers can Share any `/decks` archive row they can see, including other players’ lists; guests have no Share
+- [x] Share POSTs only after click (`POST /api/decklists/:id/share`); hidden current-round drafts stay `403` for non-owners
+- [x] Guest and signed-in recipient load `GET /api/share/decklists/:token` and render List by default with List/Details toggle
+- [x] Recipient cannot edit, register, or open the deckbuilder from the share page
+- [x] Share page offers Export of the snapshot (copy/download text)
+- [x] Recipient cannot see other hidden decks; live `GET /api/decklists/:id` still uses `isDecklistVisibleToViewer`
+- [x] Sharing does not add the origin deck to season/event list APIs or `/decks`
+- [x] Season/league `decklistVisibility` is not flipped
+- [x] Share of an unchanged list produces the same token (contents hash, no clock); Share after card/name edits produces a different URL; an old paste still shows the old list
+- [x] Empty lists can be shared
+- [x] After unregister/delete of the origin deck, a previously copied token still loads (`ON DELETE SET NULL`)
+- [x] Malformed, missing, unknown-token, or query-string-only share → invalid-link UI; no login wall
+- [x] Packed hash URLs (`#v1.…` / `#v2.…`) still decode locally
+- [x] Modal still warns if a URL exceeds 2000 characters (Discord)
+- [x] Share page is `noindex, nofollow` with `no-referrer`
+- [x] Deckbuilder Share button is `shrink-0` and the sidebar height chain stays intact
+- [x] No revoke/expiry UI
 
 ### Planned for Later
 

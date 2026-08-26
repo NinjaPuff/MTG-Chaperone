@@ -140,6 +140,7 @@ model User {
   bracketSlotsAsLoser   BracketSlot[] @relation("BracketSlotLoser")
   playerDrops      PlayerDrop[] @relation("PlayerDropUser")
   administeredDrops PlayerDrop[] @relation("PlayerDropAdmin")
+  decklistShares   DecklistShare[]
 }
 
 model League {
@@ -506,8 +507,24 @@ model Decklist {
   event   Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   round   Round          @relation(fields: [roundId], references: [id], onDelete: Cascade)
   entries DecklistEntry[]
+  shares  DecklistShare[]
 
   @@unique([userId, eventId, roundId, orderIndex])
+}
+
+model DecklistShare {
+  id           String   @id @default(uuid())
+  token        String   @unique
+  contentsHash String
+  payload      Json
+  createdById  String?
+  decklistId   String?
+  createdAt    DateTime @default(now())
+
+  createdBy User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  decklist  Decklist? @relation(fields: [decklistId], references: [id], onDelete: SetNull)
+
+  @@unique([createdById, contentsHash])
 }
 
 model DecklistEntry {

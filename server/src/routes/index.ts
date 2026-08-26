@@ -13,6 +13,7 @@ import { adminRouter } from './admin.js';
 import { invitesRouter } from './invites.js';
 import { boosterProductsRouter } from './boosterProducts.js';
 import { cardsRouter } from './cards.js';
+import { shareRouter } from './share.js';
 import { createSetsRouter } from './sets.js';
 import { createMtgjsonRouter } from './mtgjson.js';
 import type { AppDeps } from '../di/types.js';
@@ -35,6 +36,7 @@ export function createApiRouter(_deps?: AppDeps) {
   router.use('/admin', adminRouter);
   router.use('/booster-products', boosterProductsRouter);
   router.use('/cards', cardsRouter);
+  router.use('/share', shareRouter);
   router.use('/sets', createSetsRouter(deps));
   router.use('/mtgjson', createMtgjsonRouter(deps));
 

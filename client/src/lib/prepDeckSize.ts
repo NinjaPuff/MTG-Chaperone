@@ -1,5 +1,8 @@
+import { isExtraDeckSlot } from '@mtg-league/shared';
+
 export const PREP_DECK_SIZES = [40, 60] as const;
 export type PrepDeckSize = (typeof PREP_DECK_SIZES)[number];
+export { isExtraDeckSlot };
 
 function storageKey(deckId: string): string {
   return `deckbuilder-prep-size:${deckId}`;
@@ -7,10 +10,6 @@ function storageKey(deckId: string): string {
 
 function normalizePrepDeckSize(value: unknown): PrepDeckSize | null {
   return value === 40 || value === 60 ? value : null;
-}
-
-export function isExtraDeckSlot(orderIndex: number, requiredDeckCount: number): boolean {
-  return orderIndex >= Math.max(1, requiredDeckCount);
 }
 
 export function readStoredPrepSize(deckId: string): PrepDeckSize | null {

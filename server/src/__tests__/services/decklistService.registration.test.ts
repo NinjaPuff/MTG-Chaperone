@@ -64,6 +64,15 @@ describe('decklistService registration behaviors', () => {
         }),
       }),
     );
+    expect(prismaMock.decklist.findFirst).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: {
+          userId: 'user-1',
+          eventId: 'event-1',
+        },
+      }),
+    );
   });
 
   it('enforces registration cap when submitting', async () => {
@@ -140,12 +149,58 @@ describe('decklistService registration behaviors', () => {
         { id: 'd2', orderIndex: 1, status: 'locked', entries: [] },
         { id: 'd3', orderIndex: 2, status: 'draft', entries: [] },
       ])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
     prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
 
     const response = await listMyDecklistsForRound('event-1', 'round-1', 'user-1');
 
     expect(response.registeredCount).toBe(2);
+    expect(response.matchesComplete).toBe(false);
+    expect(prismaMock.match.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          round: { eventId: 'event-1' },
+          OR: [{ player1Id: 'user-1' }, { player2Id: 'user-1' }],
+        }),
+      }),
+    );
+  });
+
+  it('sets matchesComplete true when every event match is terminal', async () => {
+    mockEventRoundContext();
+    mockUserPool();
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([
+        { id: 'd1', orderIndex: 0, status: 'draft', entries: [] },
+        { id: 'd2', orderIndex: 1, status: 'draft', entries: [] },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.match.findMany.mockResolvedValue([{ status: 'confirmed' }, { status: 'resolved' }]);
+
+    const response = await listMyDecklistsForRound('event-1', 'round-1', 'user-1');
+
+    expect(response.matchesComplete).toBe(true);
+  });
+
+  it('sets matchesComplete false when a not_started round still has a pending match', async () => {
+    mockEventRoundContext();
+    mockUserPool();
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([
+        { id: 'd1', orderIndex: 0, status: 'draft', entries: [] },
+        { id: 'd2', orderIndex: 1, status: 'draft', entries: [] },
+      ])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.match.findMany.mockResolvedValue([{ status: 'confirmed' }, { status: 'pending' }]);
+
+    const response = await listMyDecklistsForRound('event-1', 'round-1', 'user-1');
+
+    expect(response.matchesComplete).toBe(false);
   });
 
   it('allows name-only updates for submitted swiss decks but blocks content edits', async () => {
@@ -570,5 +625,123 @@ describe('decklistService registration behaviors', () => {
         }),
       }),
     );
+  });
+
+  it('includes extra drafts from other rounds of the same event without moving them', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'event-1',
+      orderIndex: 2,
+      config: { deckCount: 1, format: 'swiss', deckLockingMode: 'free_modification' },
+      deckUniquenessRule: null,
+      season: { id: 'season-1' },
+      rounds: [{ id: 'round-2', roundNumber: 2 }],
+    });
+    mockUserPool();
+    const requiredOnRound2 = { id: 'd-required', orderIndex: 0, status: 'draft', entries: [] };
+    const extraFromRound1 = {
+      id: 'd-extra',
+      orderIndex: 1,
+      status: 'draft',
+      round: { roundNumber: 1 },
+      entries: [{ cachedCardId: 'card-1', quantity: 2 }],
+    };
+    prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([requiredOnRound2])
+      .mockResolvedValueOnce([extraFromRound1])
+      .mockResolvedValueOnce([]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    const response = await listMyDecklistsForRound('event-1', 'round-2', 'user-1');
+
+    expect(prismaMock.decklist.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.decklist.findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 'user-1',
+          eventId: 'event-1',
+          roundId: { not: 'round-2' },
+          status: 'draft',
+          orderIndex: { gte: 1 },
+        }),
+      }),
+    );
+    expect(response.decklists.map((decklist) => decklist.id)).toEqual(['d-required', 'd-extra']);
+  });
+
+  it('moves extra drafts from the previous completed event onto the current event', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'event-2',
+      orderIndex: 2,
+      config: { deckCount: 1, format: 'swiss', deckLockingMode: 'free_modification' },
+      deckUniquenessRule: null,
+      season: { id: 'season-1' },
+      rounds: [{ id: 'round-1', roundNumber: 1 }],
+    });
+    mockUserPool();
+    const requiredOnNewEvent = { id: 'd-required', orderIndex: 0, status: 'draft', entries: [] };
+    const extraFromPreviousEvent = {
+      id: 'd-extra',
+      orderIndex: 1,
+      status: 'draft',
+      round: { roundNumber: 1 },
+      entries: [{ cachedCardId: 'card-1', quantity: 2 }],
+    };
+    prismaMock.event.findFirst.mockResolvedValue({ id: 'event-1' });
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([requiredOnNewEvent])
+      .mockResolvedValueOnce([extraFromPreviousEvent])
+      .mockResolvedValueOnce([requiredOnNewEvent, extraFromPreviousEvent])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.decklist.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    const response = await listMyDecklistsForRound('event-2', 'round-1', 'user-1');
+
+    expect(prismaMock.event.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          seasonId: 'season-1',
+          status: 'completed',
+          orderIndex: { lt: 2 },
+        }),
+      }),
+    );
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['d-extra'] } },
+      data: { eventId: 'event-2', roundId: 'round-1' },
+    });
+    expect(response.decklists.map((decklist) => decklist.id)).toEqual(['d-required', 'd-extra']);
+  });
+
+  it('does not move extras from a previous event that is still open', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'event-2',
+      orderIndex: 2,
+      config: { deckCount: 1, format: 'swiss', deckLockingMode: 'free_modification' },
+      deckUniquenessRule: null,
+      season: { id: 'season-1' },
+      rounds: [{ id: 'round-1', roundNumber: 1 }],
+    });
+    mockUserPool();
+    prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([{ id: 'd-required', orderIndex: 0, status: 'draft', entries: [] }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    await listMyDecklistsForRound('event-2', 'round-1', 'user-1');
+
+    expect(prismaMock.event.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: 'completed',
+        }),
+      }),
+    );
+    expect(prismaMock.decklist.updateMany).not.toHaveBeenCalled();
   });
 });

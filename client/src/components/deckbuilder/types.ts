@@ -10,6 +10,8 @@ export type DeckBuilderCard = {
   quantity: number;
   zone: 'main' | 'sideboard';
   colorIdentity: string[];
+  setCode?: string | null;
+  collectorNumber?: string | null;
 };
 
 export type BuilderDeck = {
