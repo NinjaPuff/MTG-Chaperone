@@ -210,6 +210,7 @@ describe('events routes', () => {
       restrictedCards: [{ cachedCardId: 'card-a', restrictedQty: 1, reason: '1 copy played in Round 1' }],
       eventConfig: { deckCount: 2, minDeckSize: 40, sideboardRule: 'entire_pool', deckLockingMode: 'free_modification' },
       basicLandCardIds: ['basic-forest'],
+      matchesComplete: true,
     });
 
     const response = await request(app).get(
@@ -218,6 +219,7 @@ describe('events routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.decklists).toHaveLength(1);
+    expect(response.body.data.matchesComplete).toBe(true);
     expect(mocks.listMyDecklistsForRound).toHaveBeenCalledWith(
       '11111111-1111-4111-8111-111111111111',
       '22222222-2222-4222-8222-222222222222',

@@ -47,7 +47,7 @@ import {
   writeStoredPrepSize,
   type PrepDeckSize,
 } from '@/lib/prepDeckSize';
-import { buildPoolAllocationMaps } from '@mtg-league/shared';
+import { buildPoolAllocationMaps, shouldIgnoreRegisteredAllocation } from '@mtg-league/shared';
 
 type DecklistEntryResponse = {
   cachedCardId: string;
@@ -99,6 +99,7 @@ type RoundDeckBuilderResponse = {
       typeLine: string;
       colorIdentity: string[];
     }>;
+    matchesComplete?: boolean;
   };
 };
 
@@ -197,6 +198,7 @@ export function DeckBuilderPage() {
     'required_before_round' | 'free_modification' | 'admin_locked'
   >('free_modification');
   const [activeRoundNumber, setActiveRoundNumber] = useState<number | null>(null);
+  const [matchesComplete, setMatchesComplete] = useState(false);
   const [contextMenu, setContextMenu] = useState<DeckBuilderContextMenuState | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
@@ -326,6 +328,7 @@ export function DeckBuilderPage() {
       setEventFormat(deckResponse.data.eventConfig?.format ?? null);
       setDeckLockingMode(deckResponse.data.eventConfig?.deckLockingMode ?? 'free_modification');
       setActiveRoundNumber(deckResponse.data.roundNumber);
+      setMatchesComplete(deckResponse.data.matchesComplete === true);
 
       restrictedMap.current = new Map(
         deckResponse.data.restrictedCards.map((entry) => [
@@ -347,7 +350,24 @@ export function DeckBuilderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
-  const allocationByDeckStatus = useMemo(() => buildPoolAllocationMaps(decks, activeDeckId), [decks, activeDeckId]);
+  const allocationByDeckStatus = useMemo(() => {
+    const activeDeckForAllocation = decks.find((deck) => deck.id === activeDeckId) ?? null;
+    const ignoreRegistered = activeDeckForAllocation
+      ? shouldIgnoreRegisteredAllocation({
+          matchesComplete,
+          status: activeDeckForAllocation.status,
+          orderIndex: activeDeckForAllocation.orderIndex,
+          deckCount: requiredDeckCount,
+        })
+      : false;
+    return buildPoolAllocationMaps(
+      decks,
+      activeDeckId,
+      ignoreRegistered
+        ? { ignoreRegisteredSiblings: true, extraSlotMinOrderIndex: requiredDeckCount }
+        : undefined,
+    );
+  }, [activeDeckId, decks, matchesComplete, requiredDeckCount]);
   const combinedAllocationByCardId = allocationByDeckStatus.combinedForAvailability;
   const activeDeckAllocationByCardId = allocationByDeckStatus.activeDeckByCardId;
   const registeredOtherDecksByCardId = allocationByDeckStatus.registeredOtherDecksByCardId;
@@ -478,6 +498,14 @@ export function DeckBuilderPage() {
       })
     : minDeckSize;
   const showPrepSizeToggle = !!activeDeck && isExtraDeckSlot(activeDeck.orderIndex, requiredDeckCount);
+  const showMatchCompleteExtraHint =
+    !!activeDeck &&
+    shouldIgnoreRegisteredAllocation({
+      matchesComplete,
+      status: activeDeck.status,
+      orderIndex: activeDeck.orderIndex,
+      deckCount: requiredDeckCount,
+    });
   const activeDeckEditable =
     activeDeck?.status === 'draft' || (activeDeck?.status === 'submitted' && eventFormat === 'round_robin');
   const isDeckEditable = (deck: BuilderDeck) => deck.status === 'draft' || (deck.status === 'submitted' && eventFormat === 'round_robin');
@@ -1320,6 +1348,7 @@ export function DeckBuilderPage() {
                       }
                     : undefined
                 }
+                matchCompleteExtraHint={showMatchCompleteExtraHint}
                 onDeckNameChange={(deckId, name) =>
                   setDecks((prev) =>
                     prev.map((deck) => (deck.id === deckId && isDeckRenamable() ? { ...deck, name } : deck))

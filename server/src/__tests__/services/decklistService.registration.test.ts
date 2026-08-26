@@ -146,6 +146,49 @@ describe('decklistService registration behaviors', () => {
     const response = await listMyDecklistsForRound('event-1', 'round-1', 'user-1');
 
     expect(response.registeredCount).toBe(2);
+    expect(response.matchesComplete).toBe(false);
+    expect(prismaMock.match.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          round: { eventId: 'event-1' },
+          OR: [{ player1Id: 'user-1' }, { player2Id: 'user-1' }],
+        }),
+      }),
+    );
+  });
+
+  it('sets matchesComplete true when every event match is terminal', async () => {
+    mockEventRoundContext();
+    mockUserPool();
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([
+        { id: 'd1', orderIndex: 0, status: 'draft', entries: [] },
+        { id: 'd2', orderIndex: 1, status: 'draft', entries: [] },
+      ])
+      .mockResolvedValueOnce([]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.match.findMany.mockResolvedValue([{ status: 'confirmed' }, { status: 'resolved' }]);
+
+    const response = await listMyDecklistsForRound('event-1', 'round-1', 'user-1');
+
+    expect(response.matchesComplete).toBe(true);
+  });
+
+  it('sets matchesComplete false when a not_started round still has a pending match', async () => {
+    mockEventRoundContext();
+    mockUserPool();
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([
+        { id: 'd1', orderIndex: 0, status: 'draft', entries: [] },
+        { id: 'd2', orderIndex: 1, status: 'draft', entries: [] },
+      ])
+      .mockResolvedValueOnce([]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+    prismaMock.match.findMany.mockResolvedValue([{ status: 'confirmed' }, { status: 'pending' }]);
+
+    const response = await listMyDecklistsForRound('event-1', 'round-1', 'user-1');
+
+    expect(response.matchesComplete).toBe(false);
   });
 
   it('allows name-only updates for submitted swiss decks but blocks content edits', async () => {

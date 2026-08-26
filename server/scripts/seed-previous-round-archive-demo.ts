@@ -2,6 +2,9 @@
  * Dev helper: fills every league member's empty pool and seeds previous-round
  * decklists on completed events so /decks has a real archive to browse.
  *
+ * Leftover `draft` decks are still seeded for owners to see in the builder /
+ * “Your previous decks”, but they are owner-visible only (not the public archive).
+ *
  * Usage (from repo root):
  *   npx tsx server/scripts/seed-previous-round-archive-demo.ts
  */

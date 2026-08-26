@@ -15,8 +15,9 @@ describe('PoolCardBadge', () => {
     expect(screen.getByText('other decks 2')).toBeInTheDocument();
     expect(screen.getByText('other decks 2')).toHaveAttribute(
       'title',
-      'Allocated in other registered decks, not the active deck',
+      'Allocated in other decks sharing this pool, not the active deck',
     );
+    expect(screen.getByText('other decks 2').getAttribute('title') ?? '').not.toMatch(/registered/i);
   });
 
   it('shows both badges when copies are split across active and other decks', () => {

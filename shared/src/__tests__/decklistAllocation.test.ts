@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { buildPoolAllocationMaps, isRegisteredDecklistStatus, type DeckAllocationDeck } from '../decklistAllocation.js';
+import {
+  buildPoolAllocationMaps,
+  isExtraDeckSlot,
+  isRegisteredDecklistStatus,
+  shouldIgnoreRegisteredAllocation,
+  type DeckAllocationDeck,
+} from '../decklistAllocation.js';
 
 function makeDeck(overrides: Partial<DeckAllocationDeck>): DeckAllocationDeck {
   return {
     id: overrides.id ?? 'deck-1',
     status: overrides.status ?? 'draft',
     cards: overrides.cards ?? [],
+    orderIndex: overrides.orderIndex,
   };
 }
 
@@ -96,6 +103,79 @@ describe('decklistAllocation', () => {
 
     expect(result.combinedForAvailability.get('card-a')).toBe(1);
     expect(result.activeDeckByCardId.get('card-a')).toBeUndefined();
+    expect(result.registeredOtherDecksByCardId.get('card-a')).toBe(1);
+  });
+
+  it('identifies extra slots at or above required deck count', () => {
+    expect(isExtraDeckSlot(0, 1)).toBe(false);
+    expect(isExtraDeckSlot(1, 1)).toBe(true);
+    expect(isExtraDeckSlot(1, 2)).toBe(false);
+    expect(isExtraDeckSlot(2, 2)).toBe(true);
+  });
+
+  it('ignores registered siblings only for extra drafts when matches are complete', () => {
+    expect(
+      shouldIgnoreRegisteredAllocation({
+        matchesComplete: true,
+        status: 'draft',
+        orderIndex: 1,
+        deckCount: 1,
+      }),
+    ).toBe(true);
+    expect(
+      shouldIgnoreRegisteredAllocation({
+        matchesComplete: true,
+        status: 'draft',
+        orderIndex: 0,
+        deckCount: 1,
+      }),
+    ).toBe(false);
+    expect(
+      shouldIgnoreRegisteredAllocation({
+        matchesComplete: false,
+        status: 'draft',
+        orderIndex: 1,
+        deckCount: 1,
+      }),
+    ).toBe(false);
+    expect(
+      shouldIgnoreRegisteredAllocation({
+        matchesComplete: true,
+        status: 'submitted',
+        orderIndex: 1,
+        deckCount: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it('skips registered siblings and counts extra drafts when ignoreRegisteredSiblings is on', () => {
+    const result = buildPoolAllocationMaps(
+      [
+        makeDeck({
+          id: 'registered',
+          status: 'submitted',
+          orderIndex: 0,
+          cards: [{ cachedCardId: 'card-a', quantity: 2 }],
+        }),
+        makeDeck({
+          id: 'extra-other',
+          status: 'draft',
+          orderIndex: 2,
+          cards: [{ cachedCardId: 'card-a', quantity: 1 }],
+        }),
+        makeDeck({
+          id: 'extra-active',
+          status: 'draft',
+          orderIndex: 1,
+          cards: [{ cachedCardId: 'card-a', quantity: 1 }],
+        }),
+      ],
+      'extra-active',
+      { ignoreRegisteredSiblings: true, extraSlotMinOrderIndex: 1 },
+    );
+
+    expect(result.combinedForAvailability.get('card-a')).toBe(2);
+    expect(result.activeDeckByCardId.get('card-a')).toBe(1);
     expect(result.registeredOtherDecksByCardId.get('card-a')).toBe(1);
   });
 });

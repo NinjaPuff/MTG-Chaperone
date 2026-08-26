@@ -87,15 +87,25 @@ function deck(
   };
 }
 
-const fixtureSet = [
+const publicFixtures = [
   deck('alice-w1-reg', alice, week1, w1r1, 'submitted', 0, 'Alice Aggro'),
   deck('bob-w1-locked', bob, week1, w1r1, 'locked', 0, 'Bob Locked'),
-  deck('bob-w1-draft', bob, week1, w1r1, 'draft', 1, 'Bob Draft'),
-  deck('carol-w1-draft', carol, week1, w1r1, 'draft', 0, 'Carol Midrange'),
   deck('alice-w2-r1', alice, week2, w2r1, 'submitted', 0, 'Alice Week2 R1'),
   deck('bob-w2-r2-draft', bob, week2, w2r2, 'draft', 0, 'Bob Current Draft'),
   deck('bob-w2-r2-sub', bob, week2, w2r2, 'submitted', 0, 'Bob Current Sub'),
   deck('alice-current-draft', alice, week2, w2r2, 'draft', 0, 'Alice Current'),
+];
+
+const leftoverDrafts = [
+  deck('bob-w1-draft', bob, week1, w1r1, 'draft', 1, 'Bob Draft'),
+  deck('carol-w1-draft', carol, week1, w1r1, 'draft', 0, 'Carol Midrange'),
+];
+
+const adminFixtures = [...publicFixtures, ...leftoverDrafts];
+
+const aliceOwnerFixtures = [
+  ...publicFixtures,
+  deck('alice-w1-draft', alice, week1, w1r1, 'draft', 1, 'Alice Scratchpad'),
 ];
 
 const seasonEvents = [
@@ -166,7 +176,7 @@ describe('DecklistsPage league archive', () => {
   });
 
   it('groups completed decks by event and orders groups by most recent event first', async () => {
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage();
 
     await waitFor(() => {
@@ -192,11 +202,11 @@ describe('DecklistsPage league archive', () => {
   });
 
   it('loads the season list for logged-in Charlie and never calls my-season', async () => {
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText(/Carol Midrange/)).toBeInTheDocument();
+      expect(screen.getByText(/Alice Aggro/)).toBeInTheDocument();
     });
 
     expect(requestedPaths()).toEqual(
@@ -204,12 +214,11 @@ describe('DecklistsPage league archive', () => {
     );
     expect(requestedPaths().some((path) => path.includes('/api/decklists/my-season/'))).toBe(false);
     expect(screen.getByRole('heading', { name: 'League decks' })).toBeInTheDocument();
-    expect(screen.getByText(/Alice Aggro/)).toBeInTheDocument();
     expect(screen.getByText(/Bob Locked/)).toBeInTheDocument();
     expect(screen.getByText(/Alice Week2 R1/)).toBeInTheDocument();
-    expect(screen.getByText(/Carol Midrange/)).toBeInTheDocument();
-    expect(screen.getAllByText('Unregistered').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Bob Draft/)).toBeInTheDocument();
+    expect(screen.queryByText(/Carol Midrange/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bob Draft/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Unregistered')).not.toBeInTheDocument();
     expect(screen.queryByText(/Bob Current Draft/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Bob Current Sub/)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Register' })).not.toBeInTheDocument();
@@ -217,8 +226,8 @@ describe('DecklistsPage league archive', () => {
     expect(screen.getByRole('button', { name: 'Open Current Deckbuilder' })).toBeInTheDocument();
   });
 
-  it('lists Bob registered leftover above his unregistered leftover in Week 1', async () => {
-    mockSeasonLoad(fixtureSet);
+  it('lists only Bob’s registered archive deck in Week 1', async () => {
+    mockSeasonLoad(publicFixtures);
     renderPage();
 
     await waitFor(() => {
@@ -232,15 +241,15 @@ describe('DecklistsPage league archive', () => {
       (node) => node.textContent ?? '',
     );
     const bobSummaries = summaries.filter((text) => text.includes('Bob'));
+    expect(bobSummaries).toHaveLength(1);
     expect(bobSummaries[0]).toMatch(/Bob Locked/);
     expect(bobSummaries[0]).toMatch(/Registered/);
-    expect(bobSummaries[1]).toMatch(/Bob Draft/);
-    expect(bobSummaries[1]).toMatch(/Unregistered/);
+    expect(bobSummaries[0]).not.toMatch(/Unregistered/);
   });
 
   it('puts Alice archive decks in Your previous decks and not in League decks', async () => {
     mocks.useAuth.mockReturnValue({ user: aliceUser });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(aliceOwnerFixtures);
     renderPage();
 
     await waitFor(() => {
@@ -253,14 +262,17 @@ describe('DecklistsPage league archive', () => {
     expect(league).toBeTruthy();
     expect(within(yours as HTMLElement).getByText(/Alice Aggro/)).toBeInTheDocument();
     expect(within(yours as HTMLElement).getByText(/Alice Week2 R1/)).toBeInTheDocument();
+    expect(within(yours as HTMLElement).getByText(/Alice Scratchpad/)).toBeInTheDocument();
+    expect(within(yours as HTMLElement).getByText('Unregistered')).toBeInTheDocument();
     expect(within(league as HTMLElement).queryByText(/Alice Aggro/)).not.toBeInTheDocument();
+    expect(within(league as HTMLElement).queryByText(/Alice Scratchpad/)).not.toBeInTheDocument();
     expect(within(league as HTMLElement).getByText(/Bob Locked/)).toBeInTheDocument();
-    expect(within(league as HTMLElement).getByText(/Carol Midrange/)).toBeInTheDocument();
+    expect(within(league as HTMLElement).queryByText(/Carol Midrange/)).not.toBeInTheDocument();
   });
 
   it('hides current-round foreign drafts from the archive for admins', async () => {
     mocks.useAuth.mockReturnValue({ user: adminUser });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(adminFixtures);
     renderPage();
 
     await waitFor(() => {
@@ -272,16 +284,18 @@ describe('DecklistsPage league archive', () => {
 
   it('loads the season list for anonymous viewers without the builder CTA', async () => {
     mocks.useAuth.mockReturnValue({ user: null });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage();
 
     await waitFor(() => {
-      expect(screen.getByText(/Carol Midrange/)).toBeInTheDocument();
+      expect(screen.getByText(/Alice Aggro/)).toBeInTheDocument();
     });
 
     expect(requestedPaths().some((path) => path.includes('/api/decklists/my-season/'))).toBe(false);
     expect(screen.queryByRole('button', { name: 'Open Current Deckbuilder' })).not.toBeInTheDocument();
-    expect(screen.getAllByText('Unregistered').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Carol Midrange/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bob Draft/)).not.toBeInTheDocument();
+    expect(screen.queryByText('Unregistered')).not.toBeInTheDocument();
   });
 
   it('shows hidden copy for signed-in Alice when season visibility is off', async () => {
@@ -314,19 +328,20 @@ describe('DecklistsPage league archive', () => {
   });
 
   it('filters the league archive to the player query param', async () => {
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage('/decks?player=bob');
 
     await waitFor(() => {
-      expect(screen.getByText(/Bob Draft/)).toBeInTheDocument();
+      expect(screen.getByText(/Bob Locked/)).toBeInTheDocument();
     });
 
     expect(screen.queryByText(/Alice Aggro/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bob Draft/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Carol Midrange/)).not.toBeInTheDocument();
   });
 
   it('shows an empty player copy when the query slug has no archive decks', async () => {
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage('/decks?player=nobody');
 
     await waitFor(() => {
@@ -335,7 +350,7 @@ describe('DecklistsPage league archive', () => {
   });
 
   it('titles the player-scoped archive for Bob and hides builder chrome', async () => {
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage('/decks?player=bob');
 
     await waitFor(() => {
@@ -348,13 +363,14 @@ describe('DecklistsPage league archive', () => {
     expect(screen.queryByRole('heading', { name: 'Current Event Deck' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open Current Deckbuilder' })).not.toBeInTheDocument();
     expect(screen.getByText('Browse previous-round decklists for this player.')).toBeInTheDocument();
-    expect(screen.getByText(/Bob Draft/)).toBeInTheDocument();
+    expect(screen.getByText(/Bob Locked/)).toBeInTheDocument();
+    expect(screen.queryByText(/Bob Draft/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Alice Aggro/)).not.toBeInTheDocument();
   });
 
   it('hides builder chrome when Alice views her own player-scoped archive', async () => {
     mocks.useAuth.mockReturnValue({ user: aliceUser });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage('/decks?player=alice');
 
     await waitFor(() => {
@@ -378,7 +394,7 @@ describe('DecklistsPage league archive', () => {
   });
 
   it('uses the unknown-player heading when the slug matches no returned decklist', async () => {
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage('/decks?player=nobody');
 
     await waitFor(() => {
@@ -411,7 +427,7 @@ describe('DecklistsPage league archive', () => {
 
   it('titles the player-scoped archive for guests without the builder CTA', async () => {
     mocks.useAuth.mockReturnValue({ user: null });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage('/decks?player=bob');
 
     await waitFor(() => {
@@ -550,7 +566,7 @@ describe('DecklistsPage league archive', () => {
 
   it('keeps Share in the expanded row and lets Alice share Bob’s list', async () => {
     mocks.useAuth.mockReturnValue({ user: aliceUser });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage();
 
     await waitFor(() => {
@@ -607,7 +623,7 @@ describe('DecklistsPage share visibility', () => {
 
   it('hides Share for guests even after expanding a row', async () => {
     mocks.useAuth.mockReturnValue({ user: null });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage();
     await waitFor(() => {
       expect(archiveDetails('Bob Locked')).toBeTruthy();
@@ -622,7 +638,7 @@ describe('DecklistsPage share visibility', () => {
 
   it('keeps Share on Alice rows at /decks?player=alice', async () => {
     mocks.useAuth.mockReturnValue({ user: aliceUser });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage('/decks?player=alice');
     await waitFor(() => {
       expect(archiveDetails('Alice Aggro')).toBeTruthy();
@@ -635,7 +651,7 @@ describe('DecklistsPage share visibility', () => {
 
   it('lets Alice share Bob’s player-scoped archive row', async () => {
     mocks.useAuth.mockReturnValue({ user: aliceUser });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage('/decks?player=bob');
     await waitFor(() => {
       expect(archiveDetails('Bob Locked')).toBeTruthy();
@@ -648,7 +664,7 @@ describe('DecklistsPage share visibility', () => {
 
   it('lets an admin share Bob’s archive row', async () => {
     mocks.useAuth.mockReturnValue({ user: adminUser });
-    mockSeasonLoad(fixtureSet);
+    mockSeasonLoad(publicFixtures);
     renderPage();
     await waitFor(() => {
       expect(archiveDetails('Bob Locked')).toBeTruthy();

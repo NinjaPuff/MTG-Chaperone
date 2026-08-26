@@ -107,21 +107,25 @@ describe('decklistService visibility', () => {
   });
 
   describe('listVisibleDecklistsForSeason', () => {
-    it('returns registered decks, leftover archive drafts, and current registered decks for Charlie', async () => {
+    it('returns registered decks only for Charlie and omits leftover archive drafts', async () => {
       prismaMock.season.findUnique.mockResolvedValue(visibleSeason);
       prismaMock.decklist.findMany.mockResolvedValue(allFixtures);
 
       const result = await listVisibleDecklistsForSeason('season-1', charlie);
 
       expect(idsOf(result)).toEqual(
-        [
-          'alice-w1-reg',
-          'alice-w2-r1',
-          'bob-w1-draft',
-          'bob-w1-locked',
-          'bob-w2-r2-sub',
-          'carol-w1-draft',
-        ].sort(),
+        ['alice-w1-reg', 'alice-w2-r1', 'bob-w1-locked', 'bob-w2-r2-sub'].sort(),
+      );
+    });
+
+    it('returns the same registered-only list for anonymous viewers', async () => {
+      prismaMock.season.findUnique.mockResolvedValue(visibleSeason);
+      prismaMock.decklist.findMany.mockResolvedValue(allFixtures);
+
+      const result = await listVisibleDecklistsForSeason('season-1', null);
+
+      expect(idsOf(result)).toEqual(
+        ['alice-w1-reg', 'alice-w2-r1', 'bob-w1-locked', 'bob-w2-r2-sub'].sort(),
       );
     });
 
@@ -136,10 +140,8 @@ describe('decklistService visibility', () => {
           'alice-w1-reg',
           'alice-w2-r1',
           'alice-current-draft',
-          'bob-w1-draft',
           'bob-w1-locked',
           'bob-w2-r2-sub',
-          'carol-w1-draft',
         ].sort(),
       );
     });
@@ -187,29 +189,24 @@ describe('decklistService visibility', () => {
       mockUserPool();
     });
 
-    it('allows Charlie to open leftover archive drafts', async () => {
+    it('forbids Charlie from opening leftover archive drafts', async () => {
       prismaMock.decklist.findUnique.mockResolvedValue(asGetPayload(fixtures['bob-w1-draft'], visibleSeason));
 
-      const result = await getDecklistById('bob-w1-draft', charlie);
-
-      expect(result.id).toBe('bob-w1-draft');
-      expect(prismaMock.decklist.findUnique).toHaveBeenCalledWith(
-        expect.objectContaining({
-          include: expect.objectContaining({
-            round: expect.objectContaining({
-              select: expect.objectContaining({ status: true }),
-            }),
-          }),
-        }),
-      );
+      await expect(getDecklistById('bob-w1-draft', charlie)).rejects.toMatchObject({
+        statusCode: 403,
+        code: 'FORBIDDEN',
+      });
+      expect(prismaMock.decklist.update).not.toHaveBeenCalled();
     });
 
-    it('allows Charlie to open Carol leftover archive draft', async () => {
+    it('forbids Charlie from opening Carol leftover archive draft', async () => {
       prismaMock.decklist.findUnique.mockResolvedValue(asGetPayload(fixtures['carol-w1-draft'], visibleSeason));
 
-      const result = await getDecklistById('carol-w1-draft', charlie);
-
-      expect(result.id).toBe('carol-w1-draft');
+      await expect(getDecklistById('carol-w1-draft', charlie)).rejects.toMatchObject({
+        statusCode: 403,
+        code: 'FORBIDDEN',
+      });
+      expect(prismaMock.decklist.update).not.toHaveBeenCalled();
     });
 
     it('forbids Charlie from opening Alice current-round draft', async () => {
@@ -255,6 +252,39 @@ describe('decklistService visibility', () => {
       expect(result.id).toBe('alice-current-draft');
     });
 
+    it('allows Alice to open her leftover archive draft after the round completes', async () => {
+      const completedDraft = {
+        ...asGetPayload(fixtures['alice-current-draft'], visibleSeason),
+        event: {
+          ...asGetPayload(fixtures['alice-current-draft'], visibleSeason).event,
+          status: 'completed' as const,
+        },
+        round: { ...fixtures['alice-current-draft'].round, status: 'completed' as const },
+      };
+      prismaMock.decklist.findUnique.mockResolvedValue(completedDraft);
+
+      const result = await getDecklistById('alice-current-draft', alice);
+
+      expect(result.id).toBe('alice-current-draft');
+    });
+
+    it('forbids Charlie from opening Bob leftover draft after the round completes', async () => {
+      const completedDraft = {
+        ...asGetPayload(fixtures['bob-w2-r2-draft'], visibleSeason),
+        event: {
+          ...asGetPayload(fixtures['bob-w2-r2-draft'], visibleSeason).event,
+          status: 'completed' as const,
+        },
+        round: { ...fixtures['bob-w2-r2-draft'].round, status: 'completed' as const },
+      };
+      prismaMock.decklist.findUnique.mockResolvedValue(completedDraft);
+
+      await expect(getDecklistById('bob-w2-r2-draft', charlie)).rejects.toMatchObject({
+        statusCode: 403,
+        code: 'FORBIDDEN',
+      });
+    });
+
     it('throws NOT_FOUND for a missing decklist', async () => {
       prismaMock.decklist.findUnique.mockResolvedValue(null);
 
@@ -278,6 +308,20 @@ describe('decklistService visibility', () => {
       const result = await listVisibleDecklistsForEvent('week-2', charlie);
 
       expect(idsOf(result)).toEqual(['alice-w2-r1', 'bob-w2-r2-sub'].sort());
+    });
+
+    it('returns week-1 registered decks for Charlie and omits leftover drafts', async () => {
+      prismaMock.event.findUnique.mockResolvedValue({
+        id: 'week-1',
+        season: visibleSeason,
+      });
+      prismaMock.decklist.findMany.mockResolvedValue(
+        allFixtures.filter((deck) => deck.event.id === 'week-1'),
+      );
+
+      const result = await listVisibleDecklistsForEvent('week-1', charlie);
+
+      expect(idsOf(result)).toEqual(['alice-w1-reg', 'bob-w1-locked'].sort());
     });
 
     it('throws NOT_FOUND for a missing event', async () => {

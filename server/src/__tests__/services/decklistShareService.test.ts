@@ -44,6 +44,11 @@ const visibleAliceDeck = {
   round: { status: 'completed' as const },
 };
 
+const leftoverArchiveDraft = {
+  ...visibleAliceDeck,
+  status: 'draft' as const,
+};
+
 const hiddenAliceDraft = {
   ...visibleAliceDeck,
   status: 'draft' as const,
@@ -164,6 +169,35 @@ describe('decklistShareService', () => {
         decklistId: 'deck-1',
       },
     });
+  });
+
+  it('returns 403 FORBIDDEN when a non-owner tries to mint a leftover archive draft', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue(leftoverArchiveDraft);
+
+    const error = await getAppError(() =>
+      service.createDecklistShare({
+        user: charlie,
+        decklistId: 'deck-1',
+        payload,
+      }),
+    );
+
+    expect(error.statusCode).toBe(403);
+    expect(error.code).toBe('FORBIDDEN');
+    expect(prismaMock.decklistShare.create).not.toHaveBeenCalled();
+  });
+
+  it('lets the owner mint a leftover archive draft', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue(leftoverArchiveDraft);
+
+    const result = await service.createDecklistShare({
+      user: owner,
+      decklistId: 'deck-1',
+      payload,
+    });
+
+    expect(result).toEqual({ token: 'tok_test' });
+    expect(prismaMock.decklistShare.create).toHaveBeenCalled();
   });
 
   it('returns 403 FORBIDDEN when a non-owner tries to mint a hidden current-round draft', async () => {

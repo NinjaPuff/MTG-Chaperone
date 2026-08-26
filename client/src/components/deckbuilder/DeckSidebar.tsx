@@ -27,6 +27,7 @@ type DeckSidebarProps = {
     value: PrepDeckSize;
     onChange: (size: PrepDeckSize) => void;
   };
+  matchCompleteExtraHint?: boolean;
 };
 
 function toListItems(
@@ -77,6 +78,7 @@ export function DeckSidebar({
   poolImageByCardId,
   saveBlockedCardIdsByDeckId = {},
   prepSizeToggle,
+  matchCompleteExtraHint = false,
 }: DeckSidebarProps) {
   const activeDeck = decks.find((deck) => deck.id === activeDeckId) ?? decks[0];
   const [isEditingName, setIsEditingName] = useState(false);
@@ -205,6 +207,11 @@ export function DeckSidebar({
             ) : null}
           </div>
         </div>
+        {matchCompleteExtraHint ? (
+          <p className="mt-1 shrink-0 text-[10px] leading-tight text-muted-foreground">
+            Matches are done. This extra deck may reuse cards from registered lists.
+          </p>
+        ) : null}
       </div>
 
       <div className="mt-1.5 shrink-0" data-testid="deck-sidebar-mana-curve">

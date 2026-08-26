@@ -348,22 +348,22 @@ Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for seal
 
 ### Previous-round league deck archive
 
-Players and spectators can browse other players’ decks from completed previous rounds on `/decks`. Registered (`submitted`/`locked`) lists are the official source of truth. Leftover created (`draft`) decks for a completed round are still listed so the league can see what someone built even if they never hit Register. Other players’ in-progress current-round drafts stay private.
+Players and spectators can browse other players’ decks from completed previous rounds on `/decks`. Registered (`submitted`/`locked`) lists are the official source of truth. Leftover `draft` decks stay owner- and site-admin-only forever, including after the round or event completes. Players who never registered do not appear in the public archive.
 
 #### User Stories
 
-- As a player, I want to browse other players’ previous-round decks on `/decks` so I can see what the league played.
+- As a player, I want to browse other players’ previous-round **registered** decks on `/decks` so I can see what the league played.
 - As a spectator, I want the same archive when season decklist visibility is on.
-- As a player who never hit Register, I still want my leftover created deck visible after the round completes so the league can see what I built.
+- As a player, I do not want leftover unregistered drafts listed for others after a round completes.
 - As a player, I do not want others to see my in-progress current-round draft.
 
 #### Acceptance Criteria
 
 - [x] Logged-in `/decks` loads the season visible-decklist list, not only `my-season`
-- [x] Archive grouping is event → round → player; registered decks appear before unregistered created decks
+- [x] Archive grouping is event → round → player
 - [x] Registered (`submitted`/`locked`) decks are badged Registered and treated as the official list
-- [x] After a round is `completed`, other players’ leftover `draft` decks for that round are listed and labeled Unregistered
-- [x] Players who never registered still appear if they have a created deck for that previous round
+- [x] Leftover `draft` decks are omitted from League/spectator lists and `GET /api/decklists/:id` returns 403 for non-owners/non-admins
+- [x] Players who never registered do not appear in the public archive
 - [x] Other players’ drafts for the current in-progress / not-started round are omitted from the list and `GET /api/decklists/:id` returns 403
 - [x] Completed earlier rounds of an active event appear in the archive
 - [x] Opening an archive row succeeds (`GET /api/decklists/:id` uses the same visibility predicate as the list)
@@ -375,6 +375,19 @@ Players and spectators can browse other players’ decks from completed previous
 - [x] `/decks?player=:slug` heading is `{primaryName}'s decklists` (fallback `This player's decklists`) and hides Open Current Deckbuilder, including the signed-in user's own slug
 - [x] Expanded archive cards use the same hover preview as pools; season list does not add `imageUris`
 - [x] Signed-in viewers can Export a visible archive row (copy/download Moxfield or Archidekt text); guests cannot
+- [x] Owners may still see their leftover drafts under Your previous decks with an Unregistered badge
+
+### Extra decks after matches complete
+
+After every match for a player in the current event is `confirmed` or `resolved`, extra draft tabs (`orderIndex >= deckCount`) may reuse cards from that player’s registered lists. Extra decks stay `draft`, private, and cannot register past `deckCount`. Pool copy limits still apply, and extra drafts share allocation with each other. Required slots always share allocation with registered siblings. Completing a round locks `submitted` lists only; leftover drafts stay drafts.
+
+#### Acceptance Criteria
+
+- [x] Extra draft saves ignore registered-sibling allocation when `matchesComplete` is true
+- [x] Extra drafts still cannot exceed pool copies or double-spend against other extra drafts
+- [x] Required-slot drafts still share allocation with registered siblings
+- [x] Extra submit still 409s when registered count already equals `deckCount`
+- [x] Extra decks stay private (`draft`) and do not appear in the public archive
 
 ### Decklist export to Moxfield / Archidekt
 

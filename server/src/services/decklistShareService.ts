@@ -93,10 +93,7 @@ export function createDecklistShareService(partialDeps?: Partial<DecklistShareSe
     }
 
     if (
-      !isDecklistVisibleToViewer(decklist, decklist.event.season, input.user, {
-        eventStatus: decklist.event.status,
-        roundStatus: decklist.round.status,
-      })
+      !isDecklistVisibleToViewer(decklist, decklist.event.season, input.user)
     ) {
       throw new AppError(403, 'FORBIDDEN', 'You do not have permission to share this decklist');
     }

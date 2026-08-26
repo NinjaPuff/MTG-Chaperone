@@ -472,9 +472,9 @@ draft ──→ submitted ──→ locked
 
 | State | Description |
 |---|---|
-| `draft` | Player is building or editing the deck. Owner and site admins can always see it. Other viewers see a leftover draft only after the deck’s round is `completed` or the event is `completed`, and only when `season.decklistVisibility` is on. Current-round in-progress drafts stay private. |
+| `draft` | Player is building or editing the deck. Owner and site admins can always see it. Non-owners never see `draft` lists, including leftover extra decks after the round or event completes. |
 | `submitted` | Player has submitted the deck for the round. This is an official registered list. May still be retracted depending on event config. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
-| `locked` | The deck is immutable. This is an official registered list. Locked by admin action, match reporting, or round completion (per format / `deckLockingMode`). Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
+| `locked` | The deck is immutable. This is an official registered list. Locked by admin action, match reporting, or round completion of a `submitted` list (per format / `deckLockingMode`). Completing a non–round-robin round does not lock leftover `draft`s. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
 
 | Transition | Trigger |
 |---|---|
@@ -514,7 +514,9 @@ draft ──→ submitted ──→ locked
 
 ## 5. Privacy Model
 
-Runtime checks use the flags on **Season** (`poolVisibility`, `decklistVisibility`, `scheduleVisibility`). Site admins bypass them. Submitted and locked decklists are the official public lists when `decklistVisibility` is on. Leftover `draft` decks become visible to the same audience only after the round (or event) is completed. Current-round foreign drafts stay owner/admin-only.
+Runtime checks use the flags on **Season** (`poolVisibility`, `decklistVisibility`, `scheduleVisibility`). Site admins bypass them. Submitted and locked decklists are the official public lists when `decklistVisibility` is on. `draft` decks are never visible to non-owners/non-admins.
+
+After a player’s event matches are all `confirmed` or `resolved`, extra-slot drafts (`orderIndex >= event.config.deckCount`) ignore registered-sibling pool allocation on save so next-phase brewing can reuse those cards. Extra drafts still share allocation with each other, cannot exceed the pool, stay unregistered, and stay private. Required slots always share allocation with registered siblings. Extra-draft saves also skip uniqueness/restricted-copy checks in that exempt state; `validateDecklist` / `submitDecklist` do not.
 
 Unlisted decklist shares are `DecklistShare` rows: a frozen JSON snapshot plus an unguessable token. `decklistId` and `createdById` are `ON DELETE SET NULL` so old pastes keep working after unregister/delete. Sharing does not change `decklistVisibility` or grant live `GET /api/decklists/:id` access. Packed hash URLs (`/share/decks#v2.…`) remain readable.
 
