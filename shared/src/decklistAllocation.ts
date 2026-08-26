@@ -23,6 +23,38 @@ export function isExtraDeckSlot(orderIndex: number, requiredDeckCount: number): 
   return orderIndex >= Math.max(1, requiredDeckCount);
 }
 
+export type ExtraDraftCarryCandidate = {
+  id: string;
+  orderIndex: number;
+  roundNumber: number;
+  status: DeckAllocationDeck['status'];
+};
+
+export function selectExtraDraftsToCarryForward(args: {
+  requiredDeckCount: number;
+  currentRoundOrderIndexes: number[];
+  previousDrafts: ExtraDraftCarryCandidate[];
+}): string[] {
+  const occupied = new Set(args.currentRoundOrderIndexes);
+  const chosen: string[] = [];
+  const ranked = [...args.previousDrafts].sort(
+    (left, right) => right.roundNumber - left.roundNumber || left.orderIndex - right.orderIndex,
+  );
+
+  for (const draft of ranked) {
+    if (draft.status !== 'draft' || !isExtraDeckSlot(draft.orderIndex, args.requiredDeckCount)) {
+      continue;
+    }
+    if (occupied.has(draft.orderIndex)) {
+      continue;
+    }
+    occupied.add(draft.orderIndex);
+    chosen.push(draft.id);
+  }
+
+  return chosen;
+}
+
 export function shouldIgnoreRegisteredAllocation(args: {
   matchesComplete: boolean;
   status: DeckAllocationDeck['status'];

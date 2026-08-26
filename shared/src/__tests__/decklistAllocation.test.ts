@@ -3,6 +3,7 @@ import {
   buildPoolAllocationMaps,
   isExtraDeckSlot,
   isRegisteredDecklistStatus,
+  selectExtraDraftsToCarryForward,
   shouldIgnoreRegisteredAllocation,
   type DeckAllocationDeck,
 } from '../decklistAllocation.js';
@@ -111,6 +112,49 @@ describe('decklistAllocation', () => {
     expect(isExtraDeckSlot(1, 1)).toBe(true);
     expect(isExtraDeckSlot(1, 2)).toBe(false);
     expect(isExtraDeckSlot(2, 2)).toBe(true);
+  });
+
+  it('selects extra drafts that are not already occupying a slot', () => {
+    expect(
+      selectExtraDraftsToCarryForward({
+        requiredDeckCount: 1,
+        currentRoundOrderIndexes: [0],
+        previousDrafts: [
+          { id: 'required-old', orderIndex: 0, roundNumber: 1, status: 'locked' },
+          { id: 'extra-old', orderIndex: 1, roundNumber: 1, status: 'draft' },
+          { id: 'extra-older', orderIndex: 2, roundNumber: 1, status: 'draft' },
+        ],
+      }),
+    ).toEqual(['extra-old', 'extra-older']);
+  });
+
+  it('does not carry required slots, registered extras, or extras that already exist on the current round', () => {
+    expect(
+      selectExtraDraftsToCarryForward({
+        requiredDeckCount: 1,
+        currentRoundOrderIndexes: [0, 1],
+        previousDrafts: [
+          { id: 'required-old', orderIndex: 0, roundNumber: 1, status: 'draft' },
+          { id: 'extra-conflict', orderIndex: 1, roundNumber: 1, status: 'draft' },
+          { id: 'extra-submitted', orderIndex: 2, roundNumber: 1, status: 'submitted' },
+          { id: 'extra-locked', orderIndex: 3, roundNumber: 1, status: 'locked' },
+          { id: 'extra-free', orderIndex: 4, roundNumber: 1, status: 'draft' },
+        ],
+      }),
+    ).toEqual(['extra-free']);
+  });
+
+  it('prefers the newest previous extra when the same slot exists on multiple earlier rounds', () => {
+    expect(
+      selectExtraDraftsToCarryForward({
+        requiredDeckCount: 1,
+        currentRoundOrderIndexes: [0],
+        previousDrafts: [
+          { id: 'extra-r1', orderIndex: 1, roundNumber: 1, status: 'draft' },
+          { id: 'extra-r2', orderIndex: 1, roundNumber: 2, status: 'draft' },
+        ],
+      }),
+    ).toEqual(['extra-r2']);
   });
 
   it('ignores registered siblings only for extra drafts when matches are complete', () => {

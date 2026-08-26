@@ -1,5 +1,5 @@
 import type { DeckZone, Prisma } from '@prisma/client';
-import { shouldIgnoreRegisteredAllocation } from '@mtg-league/shared';
+import { selectExtraDraftsToCarryForward, shouldIgnoreRegisteredAllocation } from '@mtg-league/shared';
 import { prisma } from '../lib/prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { isDecklistVisibleToViewer } from '../lib/visibilityRules.js';
@@ -330,7 +330,6 @@ async function loadAllocationSiblingDecklists(args: {
         ? {
             userId: args.userId,
             eventId: args.eventId,
-            roundId: args.roundId,
             OR: [
               { id: args.decklistId },
               {
@@ -343,7 +342,6 @@ async function loadAllocationSiblingDecklists(args: {
         : {
             userId: args.userId,
             eventId: args.eventId,
-            roundId: args.roundId,
             status: 'draft',
             orderIndex: { gte: args.deckCount },
             id: { not: args.decklistId },
@@ -914,6 +912,123 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
     }
   }
 
+  const decklistWithCardsInclude = {
+    entries: {
+      include: {
+        cachedCard: true,
+      },
+    },
+  } as const;
+
+  if (typeof event.orderIndex === 'number') {
+    const previousEvent = await prisma.event.findFirst({
+      where: {
+        seasonId: event.season.id,
+        status: 'completed',
+        orderIndex: {
+          lt: event.orderIndex,
+        },
+      },
+      orderBy: {
+        orderIndex: 'desc',
+      },
+      select: {
+        id: true,
+      },
+    });
+    if (previousEvent) {
+      const previousEventDrafts = await prisma.decklist.findMany({
+        where: {
+          userId,
+          eventId: previousEvent.id,
+        },
+        select: {
+          id: true,
+          orderIndex: true,
+          status: true,
+          round: {
+            select: {
+              roundNumber: true,
+            },
+          },
+        },
+      });
+      const extraIdsToCarry = selectExtraDraftsToCarryForward({
+        requiredDeckCount: deckCount,
+        currentRoundOrderIndexes: decklists.map((decklist) => decklist.orderIndex),
+        previousDrafts: previousEventDrafts.map((decklist) => ({
+          id: decklist.id,
+          orderIndex: decklist.orderIndex,
+          roundNumber: decklist.round.roundNumber,
+          status: decklist.status,
+        })),
+      });
+      if (extraIdsToCarry.length > 0) {
+        await prisma.decklist.updateMany({
+          where: {
+            id: {
+              in: extraIdsToCarry,
+            },
+          },
+          data: {
+            eventId,
+            roundId,
+          },
+        });
+        decklists = await prisma.decklist.findMany({
+          where: {
+            userId,
+            eventId,
+            roundId,
+          },
+          include: decklistWithCardsInclude,
+          orderBy: {
+            orderIndex: 'asc',
+          },
+        });
+      }
+    }
+  }
+
+  const otherRoundExtras = await prisma.decklist.findMany({
+    where: {
+      userId,
+      eventId,
+      roundId: {
+        not: roundId,
+      },
+      status: 'draft',
+      orderIndex: {
+        gte: deckCount,
+      },
+    },
+    include: {
+      ...decklistWithCardsInclude,
+      round: {
+        select: {
+          roundNumber: true,
+        },
+      },
+    },
+  });
+  const extraIdsToShow = selectExtraDraftsToCarryForward({
+    requiredDeckCount: deckCount,
+    currentRoundOrderIndexes: decklists.map((decklist) => decklist.orderIndex),
+    previousDrafts: otherRoundExtras.map((decklist) => ({
+      id: decklist.id,
+      orderIndex: decklist.orderIndex,
+      roundNumber: decklist.round.roundNumber,
+      status: decklist.status,
+    })),
+  });
+  if (extraIdsToShow.length > 0) {
+    const extrasById = new Map(otherRoundExtras.map((decklist) => [decklist.id, decklist]));
+    const attached = extraIdsToShow
+      .map((id) => extrasById.get(id))
+      .filter((decklist): decklist is (typeof otherRoundExtras)[number] => Boolean(decklist));
+    decklists = [...decklists, ...attached].sort((left, right) => left.orderIndex - right.orderIndex);
+  }
+
   const restrictionContext = await buildRestrictionContext(userId, eventId, round.roundNumber, poolQuantityByCardId);
   const restrictedCards = [...restrictionContext.restrictedCards.entries()].map(([cachedCardId, value]) => ({
     cachedCardId,
@@ -958,7 +1073,6 @@ export async function createDecklist(input: {
       where: {
         userId: input.userId,
         eventId: input.eventId,
-        roundId: input.roundId,
       },
       orderBy: {
         orderIndex: 'desc',

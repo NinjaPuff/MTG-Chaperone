@@ -225,6 +225,7 @@ describe('decklistService extra-draft allocation after matches complete', () => 
     expect(prismaMock.decklist.findMany.mock.calls[1][0].where.status).not.toEqual({
       in: ['submitted', 'locked'],
     });
+    expect(prismaMock.decklist.findMany.mock.calls[1][0].where.roundId).toBeUndefined();
   });
 
   it('omits registered-sibling allocation errors when validating an extra draft after matches complete', async () => {
