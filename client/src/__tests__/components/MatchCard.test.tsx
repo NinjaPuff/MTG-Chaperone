@@ -109,4 +109,50 @@ describe('MatchCard', () => {
 
     expect(screen.getAllByText('Disputed')).toHaveLength(2);
   });
+
+  it('uses an amber handshake watermark on reported draws instead of the winner trophy', () => {
+    render(
+      <MatchCard
+        match={{
+          ...baseMatch,
+          status: 'reported',
+          gameResults: [
+            { winnerId: 'user-1', isDraw: false },
+            { winnerId: 'user-2', isDraw: false },
+          ],
+        }}
+        eventRecords={new Map()}
+        seasonPoints={new Map()}
+      />,
+    );
+
+    const marks = screen.getAllByTestId('outcome-watermark-draw');
+    expect(marks).toHaveLength(2);
+    expect(marks[0]).toHaveClass('text-amber-500');
+    expect(marks[0]).toHaveClass('h-[40%]');
+    expect(marks[0]).toHaveClass('w-[40%]');
+    expect(screen.queryByTestId('outcome-watermark-winner')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Draw')).toHaveLength(2);
+  });
+
+  it('keeps the trophy watermark on the reported winner panel', () => {
+    render(
+      <MatchCard
+        match={{
+          ...baseMatch,
+          status: 'reported',
+          gameResults: [
+            { winnerId: 'user-1', isDraw: false },
+            { winnerId: 'user-1', isDraw: false },
+          ],
+        }}
+        eventRecords={new Map()}
+        seasonPoints={new Map()}
+      />,
+    );
+
+    expect(screen.getByTestId('outcome-watermark-winner')).toHaveClass('text-emerald-500');
+    expect(screen.queryByTestId('outcome-watermark-draw')).not.toBeInTheDocument();
+    expect(screen.getByText('Winner')).toBeInTheDocument();
+  });
 });

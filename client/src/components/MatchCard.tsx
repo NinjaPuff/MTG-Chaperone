@@ -151,6 +151,7 @@ function OutcomeWatermark({ variant }: { variant: 'winner' | 'disputed' | 'draw'
     <div className={`absolute inset-0 pointer-events-none flex items-center justify-center ${overlay}`}>
       {variant === 'disputed' ? (
         <svg
+          data-testid="outcome-watermark-disputed"
           className="h-[58%] w-[58%] opacity-[0.18] text-red-500"
           viewBox="0 0 24 24"
           fill="none"
@@ -164,8 +165,32 @@ function OutcomeWatermark({ variant }: { variant: 'winner' | 'disputed' | 'draw'
           <line x1="12" y1="9" x2="12" y2="13" />
           <line x1="12" y1="17" x2="12.01" y2="17" />
         </svg>
+      ) : variant === 'draw' ? (
+        <svg
+          data-testid="outcome-watermark-draw"
+          className="h-[40%] w-[40%] opacity-[0.20] text-amber-500"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="m11 17 2 2a1 1 0 1 0 3-3" />
+          <path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4" />
+          <path d="m21 3 1 11h-2" />
+          <path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3" />
+          <path d="M3 4h8" />
+        </svg>
       ) : (
-        <svg className="h-[58%] w-[58%] opacity-[0.16] text-emerald-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <svg
+          data-testid="outcome-watermark-winner"
+          className="h-[58%] w-[58%] opacity-[0.16] text-emerald-500"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          aria-hidden="true"
+        >
           <path d={TROPHY_PATH} />
         </svg>
       )}
