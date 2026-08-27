@@ -350,6 +350,42 @@ export function DeckBuilderPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
+  useEffect(() => {
+    if (!eventId) {
+      return;
+    }
+    let inFlight = false;
+    const refreshMatchesComplete = async () => {
+      if (inFlight) {
+        return;
+      }
+      inFlight = true;
+      try {
+        const deckResponse = await authApiRequest<RoundDeckBuilderResponse>(`/api/events/${eventId}/my-decklists`);
+        setMatchesComplete(deckResponse.data.matchesComplete === true);
+      } catch {
+        // Keep the last known flag; the next focus/visibility can retry.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+      void refreshMatchesComplete();
+    };
+    const onFocus = () => {
+      void refreshMatchesComplete();
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [eventId]);
+
   const allocationByDeckStatus = useMemo(() => {
     const activeDeckForAllocation = decks.find((deck) => deck.id === activeDeckId) ?? null;
     const ignoreRegistered = activeDeckForAllocation
@@ -886,6 +922,7 @@ export function DeckBuilderPage() {
                 quantity: 1,
                 zone,
                 colorIdentity: poolCard.colorIdentity,
+                setCode: poolCard.setCode,
               },
             ],
           };

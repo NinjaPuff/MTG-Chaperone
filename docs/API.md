@@ -1470,9 +1470,9 @@ Mint or reuse an unlisted snapshot token for a decklist the caller can view. Hid
 | Auth     | Authenticated (same visibility as `GET /api/decklists/:id`) |
 | Params   | `decklistId` (UUID) |
 
-**Request Body:** `DeckSharePayload` (`v`, `ownerDisplayName`, `deckName`, `eventName`, `roundNumber`, `status`, `entries`). The server overwrites `ownerDisplayName` from the deck owner.
+**Request Body:** `DeckSharePayload` (`v`, `ownerDisplayName`, `deckName`, `eventName`, `roundNumber`, `status`, `entries`). Body `entries` and `deckName` are used only when the caller is the deck owner; otherwise they are ignored. `ownerDisplayName`, `eventName`, `roundNumber`, and `status` are always stamped from the live row. Entry objects may include `setCode` / `collectorNumber`.
 
-**Response `200`:** `{ "data": { "token": "…" } }` — unchanged contents from the same owner reuse the same token (`contentsHash`, no clock).
+**Response `200`:** `{ "data": { "token": "…" } }` — same minter + same contents hash (includes `decklistId` and printings, no clock) reuses the token. Different decklists never alias. Remint after a hash-formula change may allocate a new token once; old tokens still GET.
 
 **Errors:** `UNAUTHORIZED`, `VALIDATION_ERROR`, `FORBIDDEN`, `NOT_FOUND`
 

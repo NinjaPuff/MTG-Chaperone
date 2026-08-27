@@ -51,6 +51,8 @@ const shareEntrySchema = z.object({
   typeLine: z.string(),
   cmc: z.number(),
   colorIdentity: z.array(z.string()),
+  setCode: z.string().nullable().optional(),
+  collectorNumber: z.string().nullable().optional(),
 });
 
 const sharePayloadSchema = z.object({

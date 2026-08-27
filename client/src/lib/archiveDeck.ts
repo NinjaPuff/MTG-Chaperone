@@ -80,13 +80,15 @@ export type ShareCardRecord = {
   typeLine?: string | null;
   cmc?: number | null;
   colorIdentity?: string[] | null;
+  setCode?: string | null;
+  collectorNumber?: string | null;
 };
 
 export async function hydrateDeckSharePayload(
   snapshot: DeckSharePayload,
   loadCard: (scryfallId: string) => Promise<ShareCardRecord | null>,
 ): Promise<DeckSharePayload> {
-  if (snapshot.entries.every((entry) => entry.name)) {
+  if (snapshot.entries.every((entry) => entry.name && entry.setCode)) {
     return snapshot;
   }
   const ids = [...new Set(snapshot.entries.map((entry) => entry.scryfallId))];
@@ -112,12 +114,22 @@ export async function hydrateDeckSharePayload(
       }
       return {
         ...entry,
-        name: record.name?.trim() || entry.scryfallId,
-        layout: record.layout ?? null,
-        manaCost: record.manaCost ?? null,
-        typeLine: record.typeLine ?? '',
-        cmc: record.cmc ?? 0,
-        colorIdentity: record.colorIdentity ?? [],
+        name: record.name?.trim() || entry.name || entry.scryfallId,
+        layout: record.layout ?? entry.layout ?? null,
+        manaCost: record.manaCost ?? entry.manaCost ?? null,
+        typeLine: record.typeLine ?? entry.typeLine ?? '',
+        cmc: record.cmc ?? entry.cmc ?? 0,
+        colorIdentity: record.colorIdentity ?? entry.colorIdentity ?? [],
+        ...(record.setCode != null && record.setCode !== ''
+          ? { setCode: record.setCode }
+          : entry.setCode
+            ? { setCode: entry.setCode }
+            : {}),
+        ...(record.collectorNumber != null && record.collectorNumber !== ''
+          ? { collectorNumber: record.collectorNumber }
+          : entry.collectorNumber
+            ? { collectorNumber: entry.collectorNumber }
+            : {}),
       };
     }),
   };

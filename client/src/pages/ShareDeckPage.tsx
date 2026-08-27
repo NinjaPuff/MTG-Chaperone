@@ -136,6 +136,8 @@ export function ShareDeckPage() {
         typeLine?: string | null;
         cmc?: number | null;
         colorIdentity?: string[] | null;
+        setCode?: string | null;
+        collectorNumber?: string | null;
       } }>(`/api/cards/${scryfallId}`);
       return response.data;
     }).then((next) => {

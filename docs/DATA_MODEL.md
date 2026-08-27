@@ -345,13 +345,13 @@ Frozen unlisted snapshot of a list at share time. Not a live view of `Decklist`.
 |---|---|---|---|
 | id | UUID | PK | Primary identifier |
 | token | string | unique, not null | Unguessable path token (`crypto.randomBytes(18).toString('base64url')`) |
-| contentsHash | string | not null | SHA-256 of canonical cards/name/event/round/status (no owner, no clock, no display fields) |
+| contentsHash | string | not null | SHA-256 of canonical `decklistId` + cards (including printings) + name/event/round/status (no owner, no clock, no display fields). Existing rows are not rewritten. |
 | payload | JSON | not null | Full `DeckSharePayload` including names |
 | createdById | UUID | FK → User, nullable, `ON DELETE SET NULL` | Owner who minted |
 | decklistId | UUID | FK → Decklist, nullable, `ON DELETE SET NULL` | Origin list; links survive delete/unregister |
 | createdAt | timestamp | not null | Row creation time |
 
-Unique `(createdById, contentsHash)` so the same owner sharing an unchanged list reuses the token. Two players with the same 40 cards get different tokens.
+Unique `(createdById, contentsHash)` so the same minter sharing an unchanged list reuses the token. Hash identity includes `decklistId` and printings, so two players’ lists never alias even with identical cards. Old rows are not rewritten; remint after a hash-formula change may allocate a new token once.
 
 #### DeckUniquenessRule
 
@@ -508,7 +508,7 @@ draft ──→ submitted ──→ locked
 | CardPoolEntry | `acquisitionId` | non-unique | Fetch all entries in an acquisition batch |
 | InviteLink | `token` | unique | Token-based invite redemption |
 | DecklistShare | `token` | unique | Token-based unlisted deck snapshot |
-| DecklistShare | `(createdById, contentsHash)` | unique composite | Same owner + unchanged list reuses the URL |
+| DecklistShare | `(createdById, contentsHash)` | unique composite | Same minter + unchanged hash (includes `decklistId` + printings) reuses the URL |
 
 ---
 
@@ -518,7 +518,7 @@ Runtime checks use the flags on **Season** (`poolVisibility`, `decklistVisibilit
 
 After a player’s event matches are all `confirmed` or `resolved`, extra-slot drafts (`orderIndex >= event.config.deckCount`) ignore registered-sibling pool allocation on save so next-phase brewing can reuse those cards. Extra drafts still share allocation with each other, cannot exceed the pool, stay unregistered, and stay private. Required slots always share allocation with registered siblings. Extra-draft saves also skip uniqueness/restricted-copy checks in that exempt state; `validateDecklist` / `submitDecklist` do not.
 
-Unlisted decklist shares are `DecklistShare` rows: a frozen JSON snapshot plus an unguessable token. `decklistId` and `createdById` are `ON DELETE SET NULL` so old pastes keep working after unregister/delete. Sharing does not change `decklistVisibility` or grant live `GET /api/decklists/:id` access. Packed hash URLs (`/share/decks#v2.…`) remain readable.
+Unlisted decklist shares are `DecklistShare` rows: a frozen JSON snapshot plus an unguessable token. `decklistId` and `createdById` are `ON DELETE SET NULL` so old pastes keep working after unregister/delete. Sharing does not change `decklistVisibility` or grant live `GET /api/decklists/:id` access. Packed hash URLs (`/share/decks#v2.…`) remain readable. `contentsHash` identity includes `decklistId` and printings; existing rows are not rewritten.
 
 Three boolean flags on Season (also duplicated on League in the schema) control data visibility for members and spectators:
 

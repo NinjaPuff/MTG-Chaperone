@@ -93,8 +93,80 @@ export function stampShareOwner(payload: DeckSharePayload, ownerDisplayName: str
   };
 }
 
-export function hashShareContents(payload: DeckSharePayload): string {
+export type LiveShareDecklist = {
+  name: string | null;
+  orderIndex: number;
+  status: DeckShareStatus;
+  eventName: string;
+  roundNumber: number;
+  ownerDisplayName: string;
+  entries: Array<{
+    cachedCardId: string;
+    quantity: number;
+    zone: 'main' | 'sideboard';
+    cachedCard: {
+      scryfallId: string;
+      name: string;
+      layout: string | null;
+      manaCost: string | null;
+      typeLine: string;
+      cmc: number;
+      colorIdentity: string[];
+      setCode: string;
+      collectorNumber: string | null;
+    };
+  }>;
+};
+
+export function liveDecklistToShareEntries(entries: LiveShareDecklist['entries']): DeckShareEntry[] {
+  return canonicalizeDeckShareEntries(
+    entries.map((item) => ({
+      scryfallId: item.cachedCardId,
+      quantity: item.quantity,
+      zone: item.zone,
+      name: item.cachedCard.name,
+      layout: item.cachedCard.layout,
+      manaCost: item.cachedCard.manaCost,
+      typeLine: item.cachedCard.typeLine,
+      cmc: item.cachedCard.cmc,
+      colorIdentity: [...item.cachedCard.colorIdentity],
+      ...(item.cachedCard.setCode ? { setCode: item.cachedCard.setCode } : {}),
+      ...(item.cachedCard.collectorNumber ? { collectorNumber: item.cachedCard.collectorNumber } : {}),
+    })),
+  );
+}
+
+export function resolveMintSharePayload(args: {
+  viewerIsOwner: boolean;
+  clientPayload: DeckSharePayload;
+  live: LiveShareDecklist;
+}): DeckSharePayload {
+  const liveName = args.live.name ?? `Deck ${args.live.orderIndex + 1}`;
+  if (args.viewerIsOwner) {
+    return {
+      v: 1,
+      ownerDisplayName: args.live.ownerDisplayName,
+      deckName: args.clientPayload.deckName,
+      eventName: args.live.eventName,
+      roundNumber: args.live.roundNumber,
+      status: args.live.status,
+      entries: canonicalizeDeckShareEntries(args.clientPayload.entries),
+    };
+  }
+  return {
+    v: 1,
+    ownerDisplayName: args.live.ownerDisplayName,
+    deckName: liveName,
+    eventName: args.live.eventName,
+    roundNumber: args.live.roundNumber,
+    status: args.live.status,
+    entries: liveDecklistToShareEntries(args.live.entries),
+  };
+}
+
+export function hashShareContents(payload: DeckSharePayload, decklistId: string): string {
   const canonical = {
+    d: decklistId,
     n: payload.deckName,
     e: payload.eventName,
     r: payload.roundNumber,
@@ -103,6 +175,8 @@ export function hashShareContents(payload: DeckSharePayload): string {
       item.scryfallId,
       item.quantity,
       item.zone,
+      item.setCode ?? '',
+      item.collectorNumber ?? '',
     ]),
   };
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');

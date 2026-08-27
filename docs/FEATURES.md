@@ -384,6 +384,7 @@ After every match for a player in the current event is `confirmed` or `resolved`
 #### Acceptance Criteria
 
 - [x] Extra draft saves ignore registered-sibling allocation when `matchesComplete` is true
+- [x] Builder left open after last confirm: tab-back refreshes `matchesComplete` only (no remount, no lost local extras)
 - [x] Extra drafts still cannot exceed pool copies or double-spend against other extra drafts
 - [x] Required-slot drafts still share allocation with registered siblings
 - [x] Extra submit still 409s when registered count already equals `deckCount`
@@ -409,7 +410,7 @@ Players copy a pasteable decklist (optional `.txt` download) for Moxfield Import
 
 ### Unlisted decklist sharing
 
-Players can share the **active deck’s contents** as a frozen, unlisted document. Recipients (signed-in or guest) open `/share/decks/:token` and see archive List/Details chrome. Sharing does not flip `season.decklistVisibility`, does not list the deck on `/decks`, and does not grant `GET /api/decklists/:id`. New copies mint a `DecklistShare` row; older packed hash URLs (`/share/decks#v2.…`, `v1.`) still decode.
+Players can share the **active deck’s contents** as a frozen, unlisted document. Recipients (signed-in or guest) open `/share/decks/:token` and see archive List/Details chrome. Sharing does not flip `season.decklistVisibility`, does not list the deck on `/decks`, and does not grant `GET /api/decklists/:id`. New copies mint a `DecklistShare` row; older packed hash URLs (`/share/decks#v2.…`, `v1.`) still decode. Non-owner snapshots (including an admin sharing someone else’s list) come from live entries; only the owner may freeze unsaved builder cards. Entries keep printings. The contents hash includes decklist id and printings, so reminting after this change may mint a new token once; old pastes stay on the old snapshot. `#v2.` hydrates printings from the card cache.
 
 #### User Stories
 
@@ -429,7 +430,11 @@ Players can share the **active deck’s contents** as a frozen, unlisted documen
 - [x] Recipient cannot see other hidden decks; live `GET /api/decklists/:id` still uses `isDecklistVisibleToViewer`
 - [x] Sharing does not add the origin deck to season/event list APIs or `/decks`
 - [x] Season/league `decklistVisibility` is not flipped
-- [x] Share of an unchanged list produces the same token (contents hash, no clock); Share after card/name edits produces a different URL; an old paste still shows the old list
+- [x] Share of an unchanged list produces the same token (contents hash, no clock); Share after card/name/printing edits produces a different URL; an old paste still shows the old list
+- [x] Contents hash includes decklist id and printings; remint after this change may mint a new token once
+- [x] Non-owners freeze the live DB list; only the owner may freeze unsaved builder cards; owner name is always the deck owner’s
+- [x] Entries keep `setCode` / `collectorNumber`; `#v2.` hydrates printings from the card cache
+- [x] Archive Share that fails (403 or network) shows `Failed to create share link`
 - [x] Empty lists can be shared
 - [x] After unregister/delete of the origin deck, a previously copied token still loads (`ON DELETE SET NULL`)
 - [x] Malformed, missing, unknown-token, or query-string-only share → invalid-link UI; no login wall

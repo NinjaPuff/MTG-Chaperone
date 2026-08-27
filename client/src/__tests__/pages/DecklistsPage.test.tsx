@@ -610,6 +610,60 @@ describe('DecklistsPage league archive', () => {
       }),
     );
   });
+
+  function wrapShareFailure(error: Error) {
+    const inner = mocks.apiRequest.getMockImplementation();
+    mocks.apiRequest.mockImplementation(async (path, ...rest) => {
+      if (typeof path === 'string' && path.endsWith('/share')) {
+        throw error;
+      }
+      return inner!(path, ...rest);
+    });
+  }
+
+  it('shows Failed to create share link when archive Share returns 403', async () => {
+    mocks.useAuth.mockReturnValue({ user: aliceUser });
+    mockSeasonLoad(publicFixtures);
+    wrapShareFailure(
+      Object.assign(new Error('You do not have permission to share this decklist'), {
+        status: 403,
+        code: 'FORBIDDEN',
+      }),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(archiveDetails('Bob Locked')).toBeTruthy();
+    });
+    const bobRow = expandArchive('Bob Locked');
+    await waitFor(() => {
+      expect(within(bobRow).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    });
+    fireEvent.click(within(bobRow).getByRole('button', { name: 'Share' }));
+    await waitFor(() => {
+      expect(within(bobRow).getByText('Failed to create share link')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/\/share\/decks\//)).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows Failed to create share link when archive Share throws', async () => {
+    mocks.useAuth.mockReturnValue({ user: aliceUser });
+    mockSeasonLoad(publicFixtures);
+    wrapShareFailure(new Error('network'));
+    renderPage();
+    await waitFor(() => {
+      expect(archiveDetails('Bob Locked')).toBeTruthy();
+    });
+    const bobRow = expandArchive('Bob Locked');
+    await waitFor(() => {
+      expect(within(bobRow).getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    });
+    fireEvent.click(within(bobRow).getByRole('button', { name: 'Share' }));
+    await waitFor(() => {
+      expect(within(bobRow).getByText('Failed to create share link')).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/\/share\/decks\//)).not.toBeInTheDocument();
+  });
 });
 
 describe('DecklistsPage share visibility', () => {

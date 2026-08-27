@@ -5,7 +5,11 @@ import { INVALID_SHARE_CODE } from '@mtg-league/shared';
 import { AppError } from '../middleware/errorHandler.js';
 import { prisma } from '../lib/prisma.js';
 import { isDecklistVisibleToViewer } from '../lib/visibilityRules.js';
-import { hashShareContents, parseStoredSharePayload, stampShareOwner } from '../lib/decklistSharePayload.js';
+import {
+  hashShareContents,
+  parseStoredSharePayload,
+  resolveMintSharePayload,
+} from '../lib/decklistSharePayload.js';
 
 type ShareUser = {
   id: string;
@@ -14,38 +18,83 @@ type ShareUser = {
   role: 'admin' | 'user';
 };
 
+const cachedCardSelect = {
+  scryfallId: true,
+  name: true,
+  layout: true,
+  manaCost: true,
+  typeLine: true,
+  cmc: true,
+  colorIdentity: true,
+  setCode: true,
+  collectorNumber: true,
+} as const;
+
 const decklistShareSelect = {
   id: true,
   userId: true,
+  name: true,
+  orderIndex: true,
   status: true,
   user: { select: { displayName: true, publicName: true } },
   event: {
     select: {
       status: true,
+      name: true,
       season: {
         select: { poolVisibility: true, decklistVisibility: true, scheduleVisibility: true },
       },
     },
   },
-  round: { select: { status: true } },
+  round: { select: { status: true, roundNumber: true } },
+  entries: {
+    include: {
+      cachedCard: {
+        select: cachedCardSelect,
+      },
+    },
+  },
 } as const;
+
+type ShareCachedCard = {
+  scryfallId: string;
+  name: string;
+  layout: string | null;
+  manaCost: string | null;
+  typeLine: string;
+  cmc: number;
+  colorIdentity: string[];
+  setCode: string;
+  collectorNumber: string | null;
+};
+
+type ShareDecklistRow = {
+  id: string;
+  userId: string;
+  name: string | null;
+  orderIndex: number;
+  status: 'draft' | 'submitted' | 'locked';
+  user: { displayName: string; publicName: string | null };
+  event: {
+    status: 'setup' | 'active' | 'completed';
+    name: string;
+    season: { poolVisibility: boolean; decklistVisibility: boolean; scheduleVisibility: boolean };
+  };
+  round: { status: 'not_started' | 'in_progress' | 'completed'; roundNumber: number };
+  entries: Array<{
+    cachedCardId: string;
+    quantity: number;
+    zone: 'main' | 'sideboard';
+    cachedCard: ShareCachedCard;
+  }>;
+};
 
 type ShareDb = {
   decklist: {
     findUnique: (args: {
       where: { id: string };
       select: typeof decklistShareSelect;
-    }) => Promise<{
-      id: string;
-      userId: string;
-      status: 'draft' | 'submitted' | 'locked';
-      user: { displayName: string; publicName: string | null };
-      event: {
-        status: 'setup' | 'active' | 'completed';
-        season: { poolVisibility: boolean; decklistVisibility: boolean; scheduleVisibility: boolean };
-      };
-      round: { status: 'not_started' | 'in_progress' | 'completed' };
-    } | null>;
+    }) => Promise<ShareDecklistRow | null>;
   };
   decklistShare: {
     findUnique: (args: {
@@ -92,15 +141,25 @@ export function createDecklistShareService(partialDeps?: Partial<DecklistShareSe
       throw new AppError(404, 'NOT_FOUND', 'Decklist not found');
     }
 
-    if (
-      !isDecklistVisibleToViewer(decklist, decklist.event.season, input.user)
-    ) {
+    if (!isDecklistVisibleToViewer(decklist, decklist.event.season, input.user)) {
       throw new AppError(403, 'FORBIDDEN', 'You do not have permission to share this decklist');
     }
 
     const ownerDisplayName = decklist.user.publicName || decklist.user.displayName;
-    const stamped = stampShareOwner(input.payload, ownerDisplayName);
-    const contentsHash = hashShareContents(stamped);
+    const stamped = resolveMintSharePayload({
+      viewerIsOwner: input.user.id === decklist.userId,
+      clientPayload: input.payload,
+      live: {
+        name: decklist.name,
+        orderIndex: decklist.orderIndex,
+        status: decklist.status,
+        eventName: decklist.event.name,
+        roundNumber: decklist.round.roundNumber,
+        ownerDisplayName,
+        entries: decklist.entries,
+      },
+    });
+    const contentsHash = hashShareContents(stamped, decklist.id);
 
     const existing = await deps.prisma.decklistShare.findUnique({
       where: {

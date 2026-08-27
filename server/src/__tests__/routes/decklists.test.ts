@@ -220,6 +220,48 @@ describe('decklists routes', () => {
     expect(mocks.getDecklistById).not.toHaveBeenCalled();
   });
 
+  it('forwards setCode and collectorNumber on mint POST', async () => {
+    mocks.createDecklistShare.mockResolvedValue({ token: 'tok_test' });
+    const body = {
+      v: 1,
+      ownerDisplayName: 'Eve',
+      deckName: 'Deck 1',
+      eventName: 'Week 1',
+      roundNumber: 1,
+      status: 'draft',
+      entries: [
+        {
+          scryfallId: 'shock-1',
+          quantity: 2,
+          zone: 'main',
+          name: 'Shock',
+          layout: 'normal',
+          manaCost: '{R}',
+          typeLine: 'Instant',
+          cmc: 1,
+          colorIdentity: ['R'],
+          setCode: 'M10',
+          collectorNumber: '146',
+        },
+      ],
+    };
+
+    const response = await request(app)
+      .post('/api/decklists/deck-1/share')
+      .set('x-test-user', 'user-1')
+      .send(body);
+
+    expect(response.status).toBe(200);
+    expect(mocks.createDecklistShare).toHaveBeenCalledWith({
+      user: { id: 'user-1', displayName: 'Test User', publicName: undefined, role: 'user' },
+      decklistId: 'deck-1',
+      payload: expect.objectContaining({
+        entries: [expect.objectContaining({ setCode: 'M10', collectorNumber: '146' })],
+      }),
+    });
+    expect(mocks.getDecklistById).not.toHaveBeenCalled();
+  });
+
   it('returns 403 when minting a hidden deck is forbidden', async () => {
     mocks.createDecklistShare.mockRejectedValue(
       new AppError(403, 'FORBIDDEN', 'You do not have permission to share this decklist'),

@@ -155,6 +155,7 @@ function ArchiveDeckRow({
   const [view, setView] = useState<'list' | 'details'>('list');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const registered = isRegisteredStatus(decklist.status);
   const builderDeck = seasonDecklistToBuilderDeck(decklist);
@@ -166,6 +167,7 @@ function ArchiveDeckRow({
       return;
     }
     setShareBusy(true);
+    setShareError(null);
     try {
       setShareUrl(
         await mintDeckShareUrl(
@@ -182,6 +184,7 @@ function ArchiveDeckRow({
       );
     } catch {
       setShareUrl(null);
+      setShareError('Failed to create share link');
     } finally {
       setShareBusy(false);
     }
@@ -257,6 +260,7 @@ function ArchiveDeckRow({
               </div>
             ) : null}
           </div>
+          {shareError ? <p className="text-sm text-destructive">{shareError}</p> : null}
           {view === 'details' ? (
             <DeckAnalyticsView deck={builderDeck} editable={false} showBuilderChrome={false} />
           ) : (

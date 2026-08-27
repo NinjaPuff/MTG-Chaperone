@@ -89,6 +89,8 @@ describe('ShareDeckPage', () => {
             typeLine: 'Instant',
             cmc: 1,
             colorIdentity: ['R'],
+            setCode: 'M10',
+            collectorNumber: '146',
           },
         };
       }
@@ -101,6 +103,8 @@ describe('ShareDeckPage', () => {
             typeLine: 'Instant',
             cmc: 2,
             colorIdentity: ['U'],
+            setCode: 'M11',
+            collectorNumber: '68',
           },
         };
       }
@@ -192,10 +196,28 @@ describe('ShareDeckPage', () => {
     expect(document.querySelector('meta[name="referrer"]')).toBeNull();
   });
 
+  it('exports printings from a hydrated hash snapshot', async () => {
+    renderShare({ pathname: '/share/decks', hash: `#${encoded}` });
+
+    await waitFor(() => {
+      expect(screen.getByText('Shock')).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('dialog', { name: 'Export deck' })).toBeInTheDocument();
+    expect(screen.getByTestId('deck-export-text')).toHaveTextContent('2 Shock (M10) 146');
+  });
+
   it('loads a token snapshot from GET /api/share/decklists/:token and never calls GET /api/decklists/:id', async () => {
+    const tokenSnapshot: DeckSharePayload = {
+      ...snapshot,
+      entries: [
+        { ...snapshot.entries[0], setCode: 'M10', collectorNumber: '146' },
+        { ...snapshot.entries[1], setCode: 'M11', collectorNumber: '68' },
+      ],
+    };
     mocks.apiRequest.mockImplementation(async (path: string) => {
       if (path === '/api/share/decklists/tok_test') {
-        return { data: snapshot };
+        return { data: tokenSnapshot };
       }
       throw new Error(`Unexpected path: ${path}`);
     });
@@ -207,6 +229,13 @@ describe('ShareDeckPage', () => {
     });
     expect(screen.getByRole('heading', { name: 'Grixis Mid' })).toBeInTheDocument();
     expect(mocks.apiRequest).toHaveBeenCalledWith('/api/share/decklists/tok_test');
+    expect(mocks.apiRequest.mock.calls.some((call) => String(call[0]).includes('/api/cards/'))).toBe(
+      false,
+    );
     expect(decklistApiCalls()).toEqual([]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('dialog', { name: 'Export deck' })).toBeInTheDocument();
+    expect(screen.getByTestId('deck-export-text')).toHaveTextContent('2 Shock (M10) 146');
   });
 });

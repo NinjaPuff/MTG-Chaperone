@@ -206,6 +206,8 @@ describe('hydrateDeckSharePayload', () => {
       typeLine: 'Instant',
       cmc: 1,
       colorIdentity: ['R'],
+      setCode: 'M10',
+      collectorNumber: '146',
     }));
 
     const hydrated = await hydrateDeckSharePayload(slim, loadCard);
@@ -215,14 +217,30 @@ describe('hydrateDeckSharePayload', () => {
       manaCost: '{R}',
       typeLine: 'Instant',
       zone: 'main',
+      setCode: 'M10',
+      collectorNumber: '146',
     });
     expect(hydrated.entries[1]).toMatchObject({ name: 'Shock', zone: 'sideboard' });
 
-    const named = await hydrateDeckSharePayload(
-      { ...slim, entries: [{ ...slim.entries[0], name: 'Shock' }] },
+    const namedWithPrintings = await hydrateDeckSharePayload(
+      {
+        ...slim,
+        entries: [{ ...slim.entries[0], name: 'Shock', setCode: 'M10', collectorNumber: '146' }],
+      },
       loadCard,
     );
     expect(loadCard).toHaveBeenCalledTimes(1);
-    expect(named.entries[0]?.name).toBe('Shock');
+    expect(namedWithPrintings.entries[0]?.name).toBe('Shock');
+
+    const namedWithoutPrintings = await hydrateDeckSharePayload(
+      { ...slim, entries: [{ ...slim.entries[0], name: 'Shock' }] },
+      loadCard,
+    );
+    expect(loadCard).toHaveBeenCalledTimes(2);
+    expect(namedWithoutPrintings.entries[0]).toMatchObject({
+      name: 'Shock',
+      setCode: 'M10',
+      collectorNumber: '146',
+    });
   });
 });

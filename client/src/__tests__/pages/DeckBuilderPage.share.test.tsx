@@ -235,6 +235,94 @@ describe('DeckBuilderPage share', () => {
     const secondUrl = (await screen.findByText(/\/share\/decks\/tok-deck-1/)).textContent ?? '';
     expect(secondUrl).toBe(firstUrl);
   });
+
+  it('POSTs setCode from a pool add on an empty deck', async () => {
+    mocks.authApiRequest.mockImplementation(async (path: string) => {
+      if (path === '/api/events/e1/my-decklists') {
+        return {
+          data: {
+            roundId: 'r1',
+            roundNumber: 1,
+            poolId: 'pool-1',
+            registeredCount: 0,
+            decklists: [
+              {
+                id: 'deck-1',
+                orderIndex: 0,
+                name: 'Deck 1',
+                status: 'draft',
+                entries: [],
+              },
+            ],
+            eventConfig: {
+              format: 'swiss',
+              deckCount: 1,
+              minDeckSize: 40,
+              sideboardRule: 'entire_pool',
+              deckLockingMode: 'free_modification',
+            },
+            restrictedCards: [],
+            basicLands: [],
+          },
+        };
+      }
+      if (path === '/api/card-pools/pool-1') {
+        return {
+          data: {
+            acquisitions: [
+              {
+                phaseLabel: 'P1',
+                entries: [
+                  {
+                    quantity: 4,
+                    cachedCard: {
+                      scryfallId: 'shock-1',
+                      name: 'Shock',
+                      layout: 'normal',
+                      manaCost: '{R}',
+                      typeLine: 'Instant',
+                      rarity: 'common',
+                      setCode: 'M10',
+                      imageUris: null,
+                      cmc: 1,
+                      colors: ['R'],
+                      colorIdentity: ['R'],
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      }
+      if (path.includes('/validate')) {
+        return { data: { valid: true, errors: [], warnings: [], invalidCardIds: [] } };
+      }
+      if (typeof path === 'string' && path.startsWith('/api/decklists/') && path.endsWith('/share')) {
+        return { data: { token: 'tok-deck-1' } };
+      }
+      throw new Error(`Unexpected path: ${path}`);
+    });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deckbuilder-pool-scroll')).toBeInTheDocument();
+    });
+    fireEvent.contextMenu(screen.getAllByText('Shock')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Add to main deck' }));
+
+    fireEvent.click(screen.getByTestId('deck-share-button'));
+    await screen.findByText(/\/share\/decks\/tok-deck-1/);
+    expect(mocks.authApiRequest).toHaveBeenCalledWith(
+      '/api/decklists/deck-1/share',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.objectContaining({
+          entries: [expect.objectContaining({ setCode: 'M10' })],
+        }),
+      }),
+    );
+  });
 });
 
 describe('DeckBuilderPage export', () => {
