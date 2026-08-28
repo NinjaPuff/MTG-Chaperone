@@ -93,10 +93,10 @@ describe('roundService', () => {
       where: {
         eventId: 'e1',
         status: 'submitted',
-        orderIndex: { lt: 2 },
       },
       data: { status: 'locked' },
     });
+    expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.orderIndex).toBeUndefined();
     expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.roundId).toBeUndefined();
   });
 
@@ -126,7 +126,7 @@ describe('roundService', () => {
     );
   });
 
-  it('completeRound on round 2 still locks origin round-1 submitted required rows', async () => {
+  it('completeRound on round 2 still locks origin-round submitted rows', async () => {
     prismaMock.round.findUnique.mockResolvedValue({
       id: 'round-2',
       eventId: 'week-2',
@@ -144,10 +144,10 @@ describe('roundService', () => {
       where: {
         eventId: 'week-2',
         status: 'submitted',
-        orderIndex: { lt: 2 },
       },
       data: { status: 'locked' },
     });
+    expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.orderIndex).toBeUndefined();
     expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.roundId).toBeUndefined();
     expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.roundId).not.toBe('round-2');
   });
@@ -172,10 +172,10 @@ describe('roundService', () => {
       where: {
         eventId: 'e1',
         status: 'submitted',
-        orderIndex: { lt: 2 },
       },
       data: { status: 'locked' },
     });
+    expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.orderIndex).toBeUndefined();
   });
 
   it('deleteRound returns CONFLICT when event decklists still reference the round', async () => {

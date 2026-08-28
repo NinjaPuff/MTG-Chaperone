@@ -30,7 +30,6 @@ export type ExtraDraftCarryCandidate = {
 };
 
 export function selectExtraDraftsToCarryForward(args: {
-  requiredDeckCount: number;
   currentEventOrderIndexes: number[];
   previousDrafts: ExtraDraftCarryCandidate[];
 }): string[] {
@@ -41,7 +40,7 @@ export function selectExtraDraftsToCarryForward(args: {
   );
 
   for (const draft of ranked) {
-    if (draft.status !== 'draft' || !isExtraDeckSlot(draft.orderIndex, args.requiredDeckCount)) {
+    if (draft.status !== 'draft') {
       continue;
     }
     if (occupied.has(draft.orderIndex)) {
@@ -57,10 +56,8 @@ export function selectExtraDraftsToCarryForward(args: {
 export function shouldIgnoreRegisteredAllocation(args: {
   matchesComplete: boolean;
   status: DeckAllocationDeck['status'];
-  orderIndex: number;
-  deckCount: number;
 }): boolean {
-  return args.matchesComplete && args.status === 'draft' && isExtraDeckSlot(args.orderIndex, args.deckCount);
+  return args.matchesComplete && args.status === 'draft';
 }
 
 function addCardQty(target: Map<string, number>, cardId: string, quantity: number) {

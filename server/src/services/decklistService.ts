@@ -302,15 +302,11 @@ async function extraDraftIgnoresRegisteredAllocation(decklist: {
   userId: string;
   eventId: string;
   status: 'draft' | 'submitted' | 'locked';
-  orderIndex: number | null;
-  event: { config: { deckCount?: number | null } | null };
 }) {
   const eventMatches = await loadPlayerEventMatches(decklist.userId, decklist.eventId);
   return shouldIgnoreRegisteredAllocation({
     matchesComplete: playerHasFinishedEventMatches(eventMatches),
     status: decklist.status,
-    orderIndex: decklist.orderIndex ?? 0,
-    deckCount: Math.max(1, decklist.event.config?.deckCount ?? 1),
   });
 }
 
@@ -847,62 +843,7 @@ export async function listDecklistsForSeason(userId: string, seasonId: string) {
 
 export async function listMyDecklistsForRound(eventId: string, roundId: string, userId: string) {
   const { event, round } = await getEventRoundContext(eventId, roundId);
-  const deckCount = Math.max(1, event.config?.deckCount ?? 1);
   const { poolId, poolQuantityByCardId, basicLandCardIds, basicLandCatalog } = await getPoolCardsForUserSeason(userId, event.season.id);
-
-  let decklists = await prisma.decklist.findMany({
-    where: {
-      userId,
-      eventId,
-    },
-    include: {
-      entries: {
-        include: {
-          cachedCard: true,
-        },
-      },
-    },
-    orderBy: {
-      orderIndex: 'asc',
-    },
-  });
-
-  const existingRequired = new Set(
-    decklists.filter((decklist) => decklist.orderIndex < deckCount).map((decklist) => decklist.orderIndex),
-  );
-  const missing = [];
-  for (let orderIndex = 0; orderIndex < deckCount; orderIndex += 1) {
-    if (!existingRequired.has(orderIndex)) {
-      missing.push({
-        userId,
-        eventId,
-        roundId,
-        orderIndex,
-        name: `Deck ${orderIndex + 1}`,
-      });
-    }
-  }
-  if (missing.length > 0) {
-    await prisma.decklist.createMany({
-      data: missing,
-    });
-    decklists = await prisma.decklist.findMany({
-      where: {
-        userId,
-        eventId,
-      },
-      include: {
-        entries: {
-          include: {
-            cachedCard: true,
-          },
-        },
-      },
-      orderBy: {
-        orderIndex: 'asc',
-      },
-    });
-  }
 
   const decklistWithCardsInclude = {
     entries: {
@@ -911,6 +852,17 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
       },
     },
   } as const;
+
+  let decklists = await prisma.decklist.findMany({
+    where: {
+      userId,
+      eventId,
+    },
+    include: decklistWithCardsInclude,
+    orderBy: {
+      orderIndex: 'asc',
+    },
+  });
 
   if (typeof event.orderIndex === 'number') {
     const previousEvent = await prisma.event.findFirst({
@@ -946,7 +898,6 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
         },
       });
       const extraIdsToCarry = selectExtraDraftsToCarryForward({
-        requiredDeckCount: deckCount,
         currentEventOrderIndexes: decklists.map((decklist) => decklist.orderIndex),
         previousDrafts: previousEventDrafts.map((decklist) => ({
           id: decklist.id,
@@ -979,6 +930,30 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
         });
       }
     }
+  }
+
+  if (decklists.length === 0) {
+    await prisma.decklist.createMany({
+      data: [
+        {
+          userId,
+          eventId,
+          roundId,
+          orderIndex: 0,
+          name: 'Deck 1',
+        },
+      ],
+    });
+    decklists = await prisma.decklist.findMany({
+      where: {
+        userId,
+        eventId,
+      },
+      include: decklistWithCardsInclude,
+      orderBy: {
+        orderIndex: 'asc',
+      },
+    });
   }
 
   const restrictionContext = await buildRestrictionContext(userId, event, poolQuantityByCardId);
@@ -1524,6 +1499,7 @@ export async function deleteDecklist(decklistId: string, userId: string, isAdmin
     select: {
       id: true,
       userId: true,
+      eventId: true,
       orderIndex: true,
       status: true,
       event: {
@@ -1542,9 +1518,14 @@ export async function deleteDecklist(decklistId: string, userId: string, isAdmin
   if (decklist.status !== 'draft') {
     throw new AppError(409, 'INVALID_EVENT_STATE', 'Only draft decklists can be deleted');
   }
-  const requiredDeckCount = Math.max(1, decklist.event.config?.deckCount ?? 1);
-  if (decklist.orderIndex < requiredDeckCount) {
-    throw new AppError(409, 'INVALID_EVENT_STATE', 'Cannot delete required deck slots');
+  const remaining = await prisma.decklist.count({
+    where: {
+      userId: decklist.userId,
+      eventId: decklist.eventId,
+    },
+  });
+  if (remaining === 1) {
+    throw new AppError(409, 'INVALID_EVENT_STATE', 'Cannot delete the last deck for this event');
   }
 
   return prisma.decklist.delete({

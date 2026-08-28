@@ -23,20 +23,12 @@ function statusRank(status: EventScopedDecklistCandidate['status']): number {
   return 1;
 }
 
-function requiredRank(candidate: EventScopedDecklistCandidate): number[] {
+function keeperRank(candidate: EventScopedDecklistCandidate): number[] {
   return [
     -statusRank(candidate.status),
     candidate.status === 'draft' && !candidate.hasEntries ? 1 : 0,
     candidate.roundNumber,
     candidate.createdAt.getTime(),
-  ];
-}
-
-function extraRank(candidate: EventScopedDecklistCandidate): number[] {
-  return [
-    candidate.hasEntries ? 0 : 1,
-    -candidate.roundNumber,
-    -candidate.updatedAt.getTime(),
   ];
 }
 
@@ -52,10 +44,8 @@ function compareRanks(left: number[], right: number[]): number {
 }
 
 export function selectEventScopedDecklistKeeper(args: {
-  requiredDeckCount: number;
   candidates: EventScopedDecklistCandidate[];
 }): EventScopedKeeperGroup[] {
-  const deckCount = Math.max(1, args.requiredDeckCount);
   const groups = new Map<number, EventScopedDecklistCandidate[]>();
   for (const candidate of args.candidates) {
     const list = groups.get(candidate.orderIndex) ?? [];
@@ -65,9 +55,8 @@ export function selectEventScopedDecklistKeeper(args: {
 
   return [...groups.entries()]
     .sort(([left], [right]) => left - right)
-    .map(([orderIndex, members]) => {
-      const rank = orderIndex < deckCount ? requiredRank : extraRank;
-      const sorted = [...members].sort((left, right) => compareRanks(rank(left), rank(right)));
+    .map(([, members]) => {
+      const sorted = [...members].sort((left, right) => compareRanks(keeperRank(left), keeperRank(right)));
       const keeper = sorted[0];
       return {
         keeperId: keeper.id,

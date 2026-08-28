@@ -82,7 +82,6 @@ describe('matchService', () => {
         eventId: 'e1',
         userId: { in: ['u1', 'u2'] },
         status: 'submitted',
-        orderIndex: { lt: 2 },
       },
       data: { status: 'locked' },
     });
@@ -132,7 +131,6 @@ describe('matchService', () => {
         eventId: 'e1',
         userId: { in: ['u1', 'u2'] },
         status: 'submitted',
-        orderIndex: { lt: 2 },
       },
       data: { status: 'locked' },
     });

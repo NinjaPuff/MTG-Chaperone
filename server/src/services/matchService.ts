@@ -66,7 +66,6 @@ async function lockDecklistsForMatchParticipants(
   client: Pick<Prisma.TransactionClient, 'decklist'> | Pick<typeof prisma, 'decklist'>,
   eventId: string,
   playerIds: string[],
-  deckCount: number,
 ) {
   if (playerIds.length === 0) {
     return;
@@ -76,7 +75,6 @@ async function lockDecklistsForMatchParticipants(
       eventId,
       userId: { in: playerIds },
       status: 'submitted',
-      orderIndex: { lt: deckCount },
     },
     data: { status: 'locked' },
   });
@@ -246,7 +244,6 @@ export async function reportMatch(matchId: string, reporterId: string, gameResul
       prisma,
       match.round.eventId,
       [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
-      Math.max(1, match.round.event.config?.deckCount ?? 1),
     );
   }
   if (match.round.event.config && isBracketFormat(match.round.event.config.format)) {
@@ -275,7 +272,6 @@ export async function confirmMatch(matchId: string, confirmerId: string) {
         tx,
         match.round.eventId,
         [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
-        Math.max(1, match.round.event.config?.deckCount ?? 1),
       );
     }
 
@@ -330,7 +326,6 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
         tx,
         match.round.eventId,
         [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
-        Math.max(1, match.round.event.config?.deckCount ?? 1),
       );
     }
 

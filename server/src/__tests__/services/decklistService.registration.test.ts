@@ -192,18 +192,60 @@ describe('decklistService registration behaviors', () => {
     expect(result.status).toBe('draft');
   });
 
-  it('rejects deleting required deck slots', async () => {
+  it('deletes an orderIndex 0 draft when another decklist exists', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      orderIndex: 0,
+      status: 'draft',
+      event: { id: 'event-1', config: { deckCount: 1 } },
+    });
+    prismaMock.decklist.count.mockResolvedValue(2);
+    prismaMock.decklist.delete.mockResolvedValue({ id: 'deck-1' });
+
+    await deleteDecklist('deck-1', 'user-1');
+
+    expect(prismaMock.decklist.count).toHaveBeenCalledWith({
+      where: { userId: 'user-1', eventId: 'event-1' },
+    });
+    expect(prismaMock.decklist.delete).toHaveBeenCalledWith({
+      where: { id: 'deck-1' },
+    });
+  });
+
+  it('rejects deleting the last remaining draft', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue({
+      id: 'deck-1',
+      userId: 'user-1',
+      eventId: 'event-1',
+      orderIndex: 0,
+      status: 'draft',
+      event: { id: 'event-1', config: { deckCount: 1 } },
+    });
+    prismaMock.decklist.count.mockResolvedValue(1);
+
+    await expect(deleteDecklist('deck-1', 'user-1')).rejects.toMatchObject({
+      code: 'INVALID_EVENT_STATE',
+      message: 'Cannot delete the last deck for this event',
+    });
+    expect(prismaMock.decklist.delete).not.toHaveBeenCalled();
+  });
+
+  it('rejects deleting a submitted list even when it is the last remaining', async () => {
     prismaMock.decklist.findUnique.mockResolvedValue({
       id: 'deck-1',
       userId: 'user-1',
       orderIndex: 0,
-      status: 'draft',
-      event: { config: { deckCount: 1 } },
+      status: 'submitted',
+      event: { id: 'event-1', config: { deckCount: 1 } },
     });
 
     await expect(deleteDecklist('deck-1', 'user-1')).rejects.toMatchObject({
       code: 'INVALID_EVENT_STATE',
+      message: 'Only draft decklists can be deleted',
     });
+    expect(prismaMock.decklist.count).not.toHaveBeenCalled();
     expect(prismaMock.decklist.delete).not.toHaveBeenCalled();
   });
 
@@ -753,26 +795,33 @@ describe('decklistService registration behaviors', () => {
     expect(response.decklists.map((decklist) => decklist.id)).toEqual(['alice-req-0', 'alice-req-1']);
   });
 
-  it('mints missing required slots once per event when none exist', async () => {
+  it('mints one starter draft when the event has no rows even if deckCount is 2', async () => {
     mockWeek2ForEventList();
     mockUserPool();
     prismaMock.decklist.findMany
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        { id: 'minted-0', orderIndex: 0, status: 'draft', entries: [] },
-        { id: 'minted-1', orderIndex: 1, status: 'draft', entries: [] },
-      ]);
+      .mockResolvedValueOnce([{ id: 'minted-0', orderIndex: 0, status: 'draft', entries: [] }]);
     prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
 
     const response = await listMyDecklistsForEvent('week-2', 'alice');
 
     expect(prismaMock.decklist.createMany).toHaveBeenCalledWith({
-      data: [
-        { userId: 'alice', eventId: 'week-2', roundId: 'round-2', orderIndex: 0, name: 'Deck 1' },
-        { userId: 'alice', eventId: 'week-2', roundId: 'round-2', orderIndex: 1, name: 'Deck 2' },
-      ],
+      data: [{ userId: 'alice', eventId: 'week-2', roundId: 'round-2', orderIndex: 0, name: 'Deck 1' }],
     });
-    expect(response.decklists.map((decklist) => decklist.orderIndex)).toEqual([0, 1]);
+    expect(response.decklists.map((decklist) => decklist.orderIndex)).toEqual([0]);
+  });
+
+  it('does not remint slot 0 when the player already has an extra and no required seat', async () => {
+    mockWeek2ForEventList({ deckCount: 1 });
+    mockUserPool();
+    prismaMock.decklist.findMany.mockResolvedValue([
+      { id: 'extra-1', orderIndex: 1, status: 'draft', entries: [] },
+    ]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    await listMyDecklistsForEvent('week-2', 'alice');
+
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
   });
 
   it('keeps an unregistered required draft across round 2 without replacing it', async () => {
@@ -895,5 +944,75 @@ describe('decklistService registration behaviors', () => {
       }),
     );
     expect(prismaMock.decklist.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('carries a leftover extra onto an empty event and does not mint slot 0', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'event-2',
+      orderIndex: 2,
+      config: { deckCount: 1, format: 'swiss', deckLockingMode: 'free_modification' },
+      deckUniquenessRule: null,
+      season: { id: 'season-1' },
+      rounds: [{ id: 'round-1', roundNumber: 1 }],
+    });
+    mockUserPool();
+    const extraFromPreviousEvent = {
+      id: 'd-extra',
+      orderIndex: 1,
+      status: 'draft' as const,
+      round: { roundNumber: 1 },
+      entries: [],
+    };
+    prismaMock.event.findFirst.mockResolvedValue({ id: 'event-1' });
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([extraFromPreviousEvent])
+      .mockResolvedValueOnce([{ id: 'd-extra', orderIndex: 1, status: 'draft', entries: [] }]);
+    prismaMock.decklist.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    const response = await listMyDecklistsForRound('event-2', 'round-1', 'user-1');
+
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['d-extra'] } },
+      data: { eventId: 'event-2', roundId: 'round-1' },
+    });
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
+    expect(response.decklists.map((decklist) => decklist.id)).toEqual(['d-extra']);
+  });
+
+  it('carries a leftover slot 0 draft onto an empty event and does not mint', async () => {
+    prismaMock.event.findUnique.mockResolvedValue({
+      id: 'event-2',
+      orderIndex: 2,
+      config: { deckCount: 1, format: 'swiss', deckLockingMode: 'free_modification' },
+      deckUniquenessRule: null,
+      season: { id: 'season-1' },
+      rounds: [{ id: 'round-1', roundNumber: 1 }],
+    });
+    mockUserPool();
+    const leftoverSlot0 = {
+      id: 'd-old-0',
+      orderIndex: 0,
+      status: 'draft' as const,
+      round: { roundNumber: 1 },
+      entries: [],
+    };
+    prismaMock.event.findFirst.mockResolvedValue({ id: 'event-1' });
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([leftoverSlot0])
+      .mockResolvedValueOnce([{ id: 'd-old-0', orderIndex: 0, status: 'draft', entries: [] }]);
+    prismaMock.decklist.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    const response = await listMyDecklistsForRound('event-2', 'round-1', 'user-1');
+
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['d-old-0'] } },
+      data: { eventId: 'event-2', roundId: 'round-1' },
+    });
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
+    expect(response.decklists.map((decklist) => decklist.id)).toEqual(['d-old-0']);
   });
 });

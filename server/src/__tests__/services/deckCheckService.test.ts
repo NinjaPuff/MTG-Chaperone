@@ -360,10 +360,11 @@ describe('getAdminDeckChecks', () => {
     });
     expect(result.deckCount).toBe(2);
     expect(result.decklists.map((deck) => deck.id).sort()).toEqual(
-      ['alice-official', 'bob-locked-0', 'bob-sub-1'].sort(),
+      ['alice-official', 'bob-locked-0', 'bob-sub-1', 'dave-extra-sub'].sort(),
     );
     expect(result.decklists.every((deck) => deck.status === 'submitted' || deck.status === 'locked')).toBe(true);
-    expect(result.decklists.every((deck) => deck.orderIndex < 2)).toBe(true);
+    expect(result.decklists.map((deck) => deck.id)).not.toContain('carol-draft-0');
+    expect(result.decklists.map((deck) => deck.id)).not.toContain('carol-extra');
     expect(result.players.map((player) => player.user.id)).toEqual([
       'user-alice',
       'user-bob',
@@ -371,7 +372,7 @@ describe('getAdminDeckChecks', () => {
       'user-dave',
       'user-eve',
     ]);
-    expect(result.players.map((player) => player.registeredCount)).toEqual([1, 2, 0, 0, 0]);
+    expect(result.players.map((player) => player.registeredCount)).toEqual([1, 2, 0, 1, 0]);
     expect(result.players.every((player) => player.requiredCount === 2)).toBe(true);
     expect(prismaMock.decklist.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -399,7 +400,6 @@ describe('getAdminDeckChecks', () => {
     expect(result.round?.id).toBe('w2-r2');
     expect(result.decklists.map((deck) => deck.id)).toEqual(['alice-req-0']);
     expect(result.decklists.every((deck) => deck.status === 'submitted' || deck.status === 'locked')).toBe(true);
-    expect(result.decklists.every((deck) => deck.orderIndex < 2)).toBe(true);
     expect(prismaMock.decklist.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { eventId: 'week-2' },
@@ -432,7 +432,7 @@ describe('getAdminDeckChecks', () => {
       'user-eve',
     ]);
     expect(result.decklists.map((deck) => deck.id).sort()).toEqual(
-      ['alice-official', 'bob-locked-0', 'bob-sub-1'].sort(),
+      ['alice-official', 'bob-locked-0', 'bob-sub-1', 'dave-extra-sub'].sort(),
     );
   });
 
@@ -476,7 +476,7 @@ describe('getAdminDeckChecks', () => {
     const result = await getAdminDeckChecks('season-1');
 
     expect(result.deckCount).toBe(1);
-    expect(result.decklists.map((deck) => deck.id)).toEqual(['alice-official']);
-    expect(result.players.find((player) => player.user.id === 'user-alice')?.registeredCount).toBe(1);
+    expect(result.decklists.map((deck) => deck.id)).toEqual(['alice-official', 'alice-slot1']);
+    expect(result.players.find((player) => player.user.id === 'user-alice')?.registeredCount).toBe(2);
   });
 });

@@ -174,10 +174,7 @@ export async function getAdminDeckChecks(seasonId?: string) {
   });
 
   const officialDecklists = decklists.filter(
-    (decklist) =>
-      rosterIds.has(decklist.userId) &&
-      isPublicDecklistStatus(decklist.status) &&
-      decklist.orderIndex < deckCount,
+    (decklist) => rosterIds.has(decklist.userId) && isPublicDecklistStatus(decklist.status),
   );
 
   const registeredCountByUser = new Map<string, number>();

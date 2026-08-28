@@ -392,8 +392,6 @@ export function DeckBuilderPage() {
       ? shouldIgnoreRegisteredAllocation({
           matchesComplete,
           status: activeDeckForAllocation.status,
-          orderIndex: activeDeckForAllocation.orderIndex,
-          deckCount: requiredDeckCount,
         })
       : false;
     return buildPoolAllocationMaps(
@@ -401,7 +399,7 @@ export function DeckBuilderPage() {
       activeDeckId,
       ignoreRegistered ? { ignoreRegisteredSiblings: true } : undefined,
     );
-  }, [activeDeckId, decks, matchesComplete, requiredDeckCount]);
+  }, [activeDeckId, decks, matchesComplete]);
   const combinedAllocationByCardId = allocationByDeckStatus.combinedForAvailability;
   const activeDeckAllocationByCardId = allocationByDeckStatus.activeDeckByCardId;
   const registeredOtherDecksByCardId = allocationByDeckStatus.registeredOtherDecksByCardId;
@@ -537,8 +535,6 @@ export function DeckBuilderPage() {
     shouldIgnoreRegisteredAllocation({
       matchesComplete,
       status: activeDeck.status,
-      orderIndex: activeDeck.orderIndex,
-      deckCount: requiredDeckCount,
     });
   const activeDeckEditable =
     activeDeck?.status === 'draft' || (activeDeck?.status === 'submitted' && eventFormat === 'round_robin');
@@ -548,7 +544,7 @@ export function DeckBuilderPage() {
     !!activeDeck && activeDeck.status === 'draft' && registeredDeckCount < requiredDeckCount;
   const canUnregisterActiveDeck = !!activeDeck && activeDeck.status === 'submitted';
   const canDeleteActiveDeck =
-    !!activeDeck && activeDeck.status === 'draft' && activeDeck.orderIndex >= requiredDeckCount;
+    !!activeDeck && activeDeck.status === 'draft' && decks.length > 1;
   const canImportActiveDeck = !!activeDeckEditable && !!activeSeasonId;
   const canExportActiveDeck = Boolean(activeDeck && activeDeck.cards.length > 0);
   const canShareActiveDeck = canExportActiveDeck;
@@ -585,8 +581,8 @@ export function DeckBuilderPage() {
     ? undefined
     : activeDeck.status !== 'draft'
       ? 'Only draft decks can be deleted. Unregister the deck first.'
-      : activeDeck.orderIndex < requiredDeckCount
-        ? `Deck ${activeDeck.orderIndex + 1} is a required slot for this event. Only extra decks added with Add can be deleted.`
+      : decks.length <= 1
+        ? 'Keep at least one deck for this event. Add another tab before deleting this one.'
         : undefined;
 
   const registerActiveDeck = async () => {

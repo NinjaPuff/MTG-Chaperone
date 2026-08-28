@@ -209,7 +209,7 @@ export function DeckSidebar({
         </div>
         {matchCompleteExtraHint ? (
           <p className="mt-1 shrink-0 text-[10px] leading-tight text-muted-foreground">
-            Matches are done. This extra deck may reuse cards from registered lists.
+            Matches are done. This deck may reuse cards from registered lists.
           </p>
         ) : null}
       </div>

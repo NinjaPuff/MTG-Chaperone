@@ -137,7 +137,7 @@ describe('decklistService extra-draft allocation after matches complete', () => 
     expect(prismaMock.decklist.update).not.toHaveBeenCalled();
   });
 
-  it('still rejects required-slot overlap with registered siblings after matches complete', async () => {
+  it('saves a leftover slot 0 draft overlap with registered siblings when all event matches are terminal', async () => {
     prismaMock.decklist.findUnique.mockResolvedValue(
       extraDeck({
         id: 'deck-required',
@@ -148,14 +148,12 @@ describe('decklistService extra-draft allocation after matches complete', () => 
     mockUniquenessOff();
     mockMatches(['confirmed']);
     mockRegisteredSiblingOverlap();
-    prismaMock.cachedCard.findUnique.mockResolvedValue({ name: 'Card One', setCode: 'SET', collectorNumber: '1' });
+    prismaMock.decklist.update.mockResolvedValue({ id: 'deck-required', name: 'Deck 1', entries: [] });
 
-    await expect(
-      updateDecklist('deck-required', 'user-1', false, { entries: EXTRA_ENTRIES }),
-    ).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: expect.stringMatching(/Too many copies allocated/),
-    });
+    const result = await updateDecklist('deck-required', 'user-1', false, { entries: EXTRA_ENTRIES });
+
+    expect(result.id).toBe('deck-required');
+    assertNoExtraDraftSiblingQuery();
   });
 
   it('rejects extra submit when registered count already equals deckCount', async () => {
@@ -329,7 +327,7 @@ describe('decklistService extra-draft allocation after matches complete', () => 
     );
   });
 
-  it('validates a required slot holding a pool-1 card while leftover extras hold the same copy', async () => {
+  it('validates a leftover slot 0 draft holding a pool-1 card while leftover extras hold the same copy', async () => {
     prismaMock.decklist.findUnique.mockResolvedValue(
       extraDeck({
         id: 'deck-required',
@@ -347,12 +345,9 @@ describe('decklistService extra-draft allocation after matches complete', () => 
     const result = await validateDecklist('deck-required', 'user-1');
 
     expect(result.errors.some((error) => /Too many copies allocated/.test(error))).toBe(false);
+    assertNoExtraDraftSiblingQuery();
     expect(prismaMock.decklist.findMany.mock.calls[1][0].where).toEqual(
-      expect.objectContaining({
-        userId: 'user-1',
-        eventId: 'event-1',
-        OR: expect.arrayContaining([{ id: 'deck-required' }, { status: { in: ['submitted', 'locked'] } }]),
-      }),
+      expect.objectContaining({ id: 'deck-required' }),
     );
   });
 });

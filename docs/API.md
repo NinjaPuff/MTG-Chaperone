@@ -1520,7 +1520,7 @@ List the authenticated user’s own decks for a season, all statuses. Used by th
 
 #### `GET /api/events/:eventId/my-decklists` and `GET /api/events/:eventId/rounds/:roundId/my-decklists`
 
-Authenticated owner builder payload for the **event**. Both paths return the same decks: required slots minted once per event (`orderIndex` `0..deckCount-1` when missing) plus extras already on that event. `roundId` / `roundNumber` in the payload are the selected Swiss round (pairings / extra-create metadata). Required tab ids stay the origin rows; they are not rewritten when Round 2 starts. The leftover round path does not mint a second required set. Returns that user’s decks of every status plus `matchesComplete`: `true` when the owner has at least one match in this event and every such match is `confirmed` or `resolved`. The client uses only this flag for extra-deck allocation UI. Not a public archive.
+Authenticated owner builder payload for the **event**. Both paths return the same decks. If the player has no rows on the event, one empty draft (`orderIndex` 0, name `Deck 1`) is minted; existing rows are never reminted. `roundId` / `roundNumber` in the payload are the selected Swiss round (pairings / extra-create metadata). Tab ids stay the origin rows; they are not rewritten when Round 2 starts. Leftover drafts from a previous **completed** event may carry onto this event when their `orderIndex` is free. Returns that user’s decks of every status plus `matchesComplete`: `true` when the owner has at least one match in this event and every such match is `confirmed` or `resolved`. The client uses this flag so leftover drafts may reuse registered copies. Not a public archive.
 
 | Property | Value |
 |----------|-------|
@@ -1925,7 +1925,7 @@ All routes require site admin authentication (`user.role === 'admin'`).
 
 #### `GET /api/admin/deck-checks`
 
-Returns registered lists and the active roster for the current **event** (table-side checks). Does not auto-create rounds. Official lists are `submitted` or `locked` with `orderIndex < deckCount` for the event (including origin-round rows while a later round is `in_progress`). Drafts and extra slots are omitted. `season.decklistVisibility` is ignored. Roster is league members minus season-wide or this-event drops. The payload `round` is still the selected Swiss round for labeling.
+Returns registered lists and the active roster for the current **event** (table-side checks). Does not auto-create rounds. Official lists are `submitted` or `locked` for the event (including origin-round rows while a later round is `in_progress`), regardless of `orderIndex`. Drafts are omitted. `season.decklistVisibility` is ignored. Roster is league members minus season-wide or this-event drops. The payload `round` is still the selected Swiss round for labeling.
 
 | Property | Value |
 |----------|-------|

@@ -117,7 +117,6 @@ describe('decklistAllocation', () => {
   it('selects extra drafts that are not already occupying a slot', () => {
     expect(
       selectExtraDraftsToCarryForward({
-        requiredDeckCount: 1,
         currentEventOrderIndexes: [0],
         previousDrafts: [
           { id: 'required-old', orderIndex: 0, roundNumber: 1, status: 'locked' },
@@ -131,8 +130,7 @@ describe('decklistAllocation', () => {
   it('does not carry required slots, registered extras, or extras that already exist on the current round', () => {
     expect(
       selectExtraDraftsToCarryForward({
-        requiredDeckCount: 1,
-        currentEventOrderIndexes: [0, 1],
+        currentEventOrderIndexes: [1],
         previousDrafts: [
           { id: 'required-old', orderIndex: 0, roundNumber: 1, status: 'draft' },
           { id: 'extra-conflict', orderIndex: 1, roundNumber: 1, status: 'draft' },
@@ -141,13 +139,12 @@ describe('decklistAllocation', () => {
           { id: 'extra-free', orderIndex: 4, roundNumber: 1, status: 'draft' },
         ],
       }),
-    ).toEqual(['extra-free']);
+    ).toEqual(['required-old', 'extra-free']);
   });
 
   it('prefers the newest previous extra when the same slot exists on multiple earlier events', () => {
     expect(
       selectExtraDraftsToCarryForward({
-        requiredDeckCount: 1,
         currentEventOrderIndexes: [0],
         previousDrafts: [
           { id: 'extra-r1', orderIndex: 1, roundNumber: 1, status: 'draft' },
@@ -157,37 +154,23 @@ describe('decklistAllocation', () => {
     ).toEqual(['extra-r2']);
   });
 
-  it('ignores registered siblings only for extra drafts when matches are complete', () => {
+  it('ignores registered siblings for any draft when matches are complete', () => {
     expect(
       shouldIgnoreRegisteredAllocation({
         matchesComplete: true,
         status: 'draft',
-        orderIndex: 1,
-        deckCount: 1,
       }),
     ).toBe(true);
     expect(
       shouldIgnoreRegisteredAllocation({
-        matchesComplete: true,
-        status: 'draft',
-        orderIndex: 0,
-        deckCount: 1,
-      }),
-    ).toBe(false);
-    expect(
-      shouldIgnoreRegisteredAllocation({
         matchesComplete: false,
         status: 'draft',
-        orderIndex: 1,
-        deckCount: 1,
       }),
     ).toBe(false);
     expect(
       shouldIgnoreRegisteredAllocation({
         matchesComplete: true,
         status: 'submitted',
-        orderIndex: 1,
-        deckCount: 1,
       }),
     ).toBe(false);
   });

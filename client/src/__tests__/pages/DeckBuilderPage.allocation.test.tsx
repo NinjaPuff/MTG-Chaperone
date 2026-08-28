@@ -238,7 +238,7 @@ describe('DeckBuilderPage registered-only allocation', () => {
     expect(screen.queryByText('other decks 2')).not.toBeInTheDocument();
   });
 
-  it('still consumes registered copies for a required slot after matches complete', async () => {
+  it('lets leftover slot 0 drafts reuse registered copies after matches complete', async () => {
     configureApi({
       poolQuantity: 2,
       matchesComplete: true,
@@ -253,9 +253,9 @@ describe('DeckBuilderPage registered-only allocation', () => {
     await waitFor(() => expect(screen.getAllByText('Lightning Bolt').length).toBeGreaterThan(0));
     openPoolContextMenu();
 
-    expect(screen.getByRole('button', { name: 'Add to main deck' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Add to sideboard' })).toBeDisabled();
-    expect(screen.getByText('other decks 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add to main deck' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to sideboard' })).toBeEnabled();
+    expect(screen.queryByText('other decks 2')).not.toBeInTheDocument();
   });
 
   it('does not count other extra drafts when matches are complete', async () => {
@@ -294,8 +294,8 @@ describe('DeckBuilderPage registered-only allocation', () => {
     expect(screen.queryByText('other decks 1')).not.toBeInTheDocument();
   });
 
-  it('shows reuse helper copy only for extra drafts after matches complete', async () => {
-    const helperCopy = 'Matches are done. This extra deck may reuse cards from registered lists.';
+  it('shows reuse helper copy for a leftover draft after matches complete', async () => {
+    const helperCopy = 'Matches are done. This deck may reuse cards from registered lists.';
 
     configureApi({
       poolQuantity: 2,
@@ -323,11 +323,12 @@ describe('DeckBuilderPage registered-only allocation', () => {
     renderPage();
     await waitFor(() => expect(screen.getAllByText('Lightning Bolt').length).toBeGreaterThan(0));
     expect(
-      screen.queryByText('Matches are done. This extra deck may reuse cards from registered lists.'),
+      screen.queryByText('Matches are done. This deck may reuse cards from registered lists.'),
     ).not.toBeInTheDocument();
   });
 
-  it('hides reuse helper copy on a required slot after matches complete', async () => {
+  it('shows reuse helper copy on a leftover slot 0 draft after matches complete', async () => {
+    const helperCopy = 'Matches are done. This deck may reuse cards from registered lists.';
     configureApi({
       poolQuantity: 2,
       matchesComplete: true,
@@ -335,14 +336,11 @@ describe('DeckBuilderPage registered-only allocation', () => {
       decks: [{ id: 'deck-active', status: 'draft', entries: [], orderIndex: 0 }],
     });
     renderPage();
-    await waitFor(() => expect(screen.getAllByText('Lightning Bolt').length).toBeGreaterThan(0));
-    expect(
-      screen.queryByText('Matches are done. This extra deck may reuse cards from registered lists.'),
-    ).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(helperCopy)).toBeInTheDocument());
   });
 
   it('refreshes extra reuse on visibility without replacing decks', async () => {
-    const helperCopy = 'Matches are done. This extra deck may reuse cards from registered lists.';
+    const helperCopy = 'Matches are done. This deck may reuse cards from registered lists.';
     let matchesComplete = false;
     let serverExtraName = 'Local Extra';
     mocks.authApiRequest.mockImplementation(async (path: string) => {

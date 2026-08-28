@@ -233,6 +233,32 @@ describe('DecklistsPage league archive', () => {
     expect(screen.getAllByText(/Alice Official/)).toHaveLength(2);
   });
 
+  it('fans a submitted extra under each completed round', async () => {
+    const week2CompletedRounds = {
+      id: 'week-2',
+      name: 'Week 2',
+      status: 'active' as const,
+      orderIndex: 2,
+      config: { deckCount: 1 },
+      rounds: [
+        { id: 'w2-r1', roundNumber: 1, status: 'completed' as const },
+        { id: 'w2-r2', roundNumber: 2, status: 'completed' as const },
+      ],
+    };
+    mockSeasonLoad(
+      [deck('alice-w2-extra', alice, week2, w2r1, 'submitted', 2, 'Alice Extra Official')],
+      true,
+      [week2CompletedRounds],
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Round 1' })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('heading', { name: 'Round 2' })).toBeInTheDocument();
+    expect(screen.getAllByText(/Alice Extra Official/)).toHaveLength(2);
+  });
+
   it('does not fan official lists under an in-progress round', async () => {
     mockSeasonLoad([
       deck('alice-w2-official', alice, week2, w2r1, 'submitted', 0, 'Alice Official'),

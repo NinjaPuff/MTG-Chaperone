@@ -225,12 +225,10 @@ export async function completeRound(roundId: string) {
     });
 
     if (round.event.config?.format !== 'round_robin') {
-      const deckCount = Math.max(1, round.event.config?.deckCount ?? 1);
       await tx.decklist.updateMany({
         where: {
           eventId: round.eventId,
           status: 'submitted',
-          orderIndex: { lt: deckCount },
         },
         data: {
           status: 'locked',

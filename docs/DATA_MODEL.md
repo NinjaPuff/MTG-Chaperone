@@ -321,8 +321,8 @@ Pre-computed full round-robin schedule for a season. Generated once when the sea
 | id | UUID | PK | Primary identifier |
 | userId | UUID | FK → User, not null | Deck builder |
 | eventId | UUID | FK → Event, not null | Event this deck is for |
-| roundId | UUID | FK → Round, not null, `ON DELETE RESTRICT` | Origin (or last-attached) round metadata. Required slots keep this origin round when later Swiss rounds start. Extra drafts rewrite `eventId`+`roundId` only when they move after the previous event is `completed`. |
-| orderIndex | int | not null, default `0` | Slot within the event. Required decks are `0 .. deckCount-1`. Extra drafts are `>= deckCount`. Unique with `(userId, eventId)`. |
+| roundId | UUID | FK → Round, not null, `ON DELETE RESTRICT` | Origin (or last-attached) round metadata. Registered lists keep this origin round when later Swiss rounds start. Leftover drafts rewrite `eventId`+`roundId` only when they move after the previous event is `completed`. |
+| orderIndex | int | not null, default `0` | Sort order within the event. Unique with `(userId, eventId)`. Add creates the next free index. |
 | name | string | nullable | Optional deck name |
 | status | enum | `draft` \| `submitted` \| `locked` | Current lifecycle state |
 | createdAt | timestamp | not null | Row creation time |
@@ -475,9 +475,9 @@ draft ──→ submitted ──→ locked
 |---|---|
 | `draft` | Player is building or editing the deck. Owner and site admins can always see it. Non-owners never see `draft` lists, including leftover extra decks after the round or event completes. |
 | `submitted` | Player has submitted the deck for the **event**. This is an official registered list. May still be retracted depending on event config. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
-| `locked` | The deck is immutable. This is an official registered list. Locked by admin action, match reporting, or round completion of a `submitted` required list (per format / `deckLockingMode`). Completing a non–round-robin round locks the event’s submitted required rows (`orderIndex < deckCount`), including origin-round rows after Round 2 starts. It does not lock leftover `draft`s. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
+| `locked` | The deck is immutable. This is an official registered list. Locked by admin action, match reporting, or round completion of a `submitted` list (per format / `deckLockingMode`). Completing a non–round-robin round locks the event’s submitted rows, including origin-round rows after Round 2 starts. It does not lock leftover `draft`s. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
 
-Site-admin table-side deck checks (`GET /api/admin/deck-checks`) use the current event (first `active`, else first `setup`) official required slots (`submitted` / `locked` and `orderIndex < event.config.deckCount`) for the **event**. `selectDeckbuilderRound` still labels the selected Swiss round in the payload. There is no `phaseId` on decklists; pool `Phase N` is not a decklist key. Deleting a round returns `409 CONFLICT` while any `Decklist.roundId` still references it.
+Site-admin table-side deck checks (`GET /api/admin/deck-checks`) use the current event (first `active`, else first `setup`) official lists (`submitted` / `locked`) for the **event**. `selectDeckbuilderRound` still labels the selected Swiss round in the payload. There is no `phaseId` on decklists; pool `Phase N` is not a decklist key. Deleting a round returns `409 CONFLICT` while any `Decklist.roundId` still references it.
 
 | Transition | Trigger |
 |---|---|
@@ -520,7 +520,7 @@ Site-admin table-side deck checks (`GET /api/admin/deck-checks`) use the current
 
 Runtime checks use the flags on **Season** (`poolVisibility`, `decklistVisibility`, `scheduleVisibility`). Site admins bypass them. Submitted and locked decklists are the official public lists when `decklistVisibility` is on. `draft` decks are never visible to non-owners/non-admins.
 
-After a player’s event matches are all `confirmed` or `resolved`, extra-slot drafts (`orderIndex >= event.config.deckCount`) ignore registered-sibling pool allocation on save so next-phase brewing can reuse those cards. Extra drafts cannot exceed the pool, stay unregistered, and stay private. Required slots always share allocation with registered siblings. Extra-draft saves also skip uniqueness/restricted-copy checks in that exempt state; `validateDecklist` / `submitDecklist` do not.
+After a player’s event matches are all `confirmed` or `resolved`, leftover drafts ignore registered-sibling pool allocation on save so brewing can reuse those cards. Drafts cannot exceed the pool, stay unregistered, and stay private. Draft saves also skip uniqueness/restricted-copy checks in that exempt state; `validateDecklist` / `submitDecklist` do not.
 
 Unlisted decklist shares are `DecklistShare` rows: a frozen JSON snapshot plus an unguessable token. `decklistId` and `createdById` are `ON DELETE SET NULL` so old pastes keep working after unregister/delete. Sharing does not change `decklistVisibility` or grant live `GET /api/decklists/:id` access. Packed hash URLs (`/share/decks#v2.…`) remain readable. `contentsHash` identity includes `decklistId` and printings; existing rows are not rewritten.
 

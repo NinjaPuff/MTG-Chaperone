@@ -53,8 +53,8 @@ function isRegisteredStatus(status: SeasonDecklist['status']) {
   return status === 'submitted' || status === 'locked';
 }
 
-function isOfficialRequired(deck: SeasonDecklist, deckCount: number) {
-  return isRegisteredStatus(deck.status) && deck.orderIndex < deckCount;
+function isOfficial(deck: SeasonDecklist) {
+  return isRegisteredStatus(deck.status);
 }
 
 function completedRoundsForEvent(eventMeta: SeasonEvent | undefined, eventDecks: SeasonDecklist[]) {
@@ -84,14 +84,13 @@ function buildEventGroups(decks: SeasonDecklist[], events: SeasonEvent[]): Event
     .map(([eventId, eventDecks]) => {
       const first = eventDecks[0];
       const eventMeta = eventsById.get(eventId);
-      const deckCount = Math.max(1, eventMeta?.config?.deckCount ?? 1);
       const completedRounds = completedRoundsForEvent(eventMeta, eventDecks);
 
       const rounds = completedRounds
         .map((round) => {
           const roundDecks: SeasonDecklist[] = [];
           for (const deck of eventDecks) {
-            if (isOfficialRequired(deck, deckCount)) {
+            if (isOfficial(deck)) {
               roundDecks.push({
                 ...deck,
                 round: {

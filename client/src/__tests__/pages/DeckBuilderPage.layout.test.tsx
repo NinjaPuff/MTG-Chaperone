@@ -338,6 +338,29 @@ describe('DeckBuilderPage layout', () => {
     });
   });
 
+  it('enables Delete on Deck 1 when another draft tab exists', async () => {
+    configureApi({ extraDraftDeck: true });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-tab-list')).toBeInTheDocument();
+    });
+
+    expect(screen.getByTestId('deck-delete-button')).not.toBeDisabled();
+  });
+
+  it('disables Delete on the last remaining draft with a keep-one tooltip', async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-delete-button')).toBeDisabled();
+    });
+
+    const title = screen.getByTestId('deck-delete-button').getAttribute('title') ?? '';
+    expect(title).toMatch(/keep at least one|last deck for this event/i);
+    expect(title).not.toMatch(/required slot/i);
+  });
+
   it('shows registration counter and disables register at cap', async () => {
     configureApi({ deckStatus: 'draft', deckCount: 1, registeredCount: 1 });
     renderPage();
@@ -349,6 +372,21 @@ describe('DeckBuilderPage layout', () => {
     expect(screen.getByTestId('deck-register-button')).toBeDisabled();
     expect(screen.getByTestId('deck-unregister-button')).toBeDisabled();
     expect(screen.getByTestId('deck-delete-button')).toBeDisabled();
+    expect(screen.getByTestId('deck-delete-button').getAttribute('title') ?? '').not.toMatch(/required slot/i);
+  });
+
+  it('disables Delete on a submitted last remaining deck with unregister tooltip', async () => {
+    configureApi({ deckStatus: 'submitted' });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('deck-delete-button')).toBeDisabled();
+    });
+
+    expect(screen.getByTestId('deck-delete-button')).toHaveAttribute(
+      'title',
+      'Only draft decks can be deleted. Unregister the deck first.',
+    );
   });
 
   it('shows event min as extra prep deck target in a 40-card event', async () => {

@@ -314,7 +314,7 @@ Track each player's card pool for a season. Pools grow through acquisition phase
 
 ### Description
 
-Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for sealed-pool deckbuilding. Decklists are scoped to an event: one player-facing builder at `/events/:eventId/build`. Players register `event.config.deckCount` required lists (`orderIndex < deckCount`) once per event. Those rows stay the official lists for every Swiss round (same ids, same cards). Completing Round 1 and starting Round 2 is pairings only — it does not unregister, wipe, mint empty required slots, or open a distinct Round 2 builder. Extra drafts stay on the same event until it is `completed`, then they can move to the next event.
+Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for sealed-pool deckbuilding. Decklists are scoped to an event: one player-facing builder at `/events/:eventId/build`. Players register up to `event.config.deckCount` lists for the event (the 0/N quota). Official lists are whichever rows are `submitted` or `locked`, regardless of `orderIndex`. Completing Round 1 and starting Round 2 is pairings only — it does not unregister, wipe, mint empty seats, or open a distinct Round 2 builder. If the builder has no rows, it mints one empty draft tab. Leftover drafts stay on the same event until it is `completed`, then they can move to the next event.
 
 ### User Stories
 
@@ -343,7 +343,7 @@ Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for seal
 - [x] Export: copy/download Moxfield/Arena and Archidekt text from the builder, archive, and share page
 - [ ] Decklist privacy follows league settings
 - [ ] Decklist states: draft → submitted → locked
-- [x] Required slots are registered once per event and remain the official lists for later Swiss rounds of that event (Round 2 does not mint a new required set or import from the previous round)
+- [x] Players register up to `deckCount` lists per event; official lists are `submitted`/`locked` regardless of `orderIndex` (Round 2 does not mint a new set or import from the previous round)
 - [ ] Deck locking configurable per event (required_before_round, free_modification, admin_locked)
 
 ### Previous-round league deck archive
@@ -360,7 +360,7 @@ Players and spectators can browse other players’ decks from completed previous
 #### Acceptance Criteria
 
 - [x] Logged-in `/decks` loads the season visible-decklist list, not only `my-season`
-- [x] Archive grouping is event → round → player; official required lists fan under each completed round using the same `decklist.id`
+- [x] Archive grouping is event → round → player; official registered lists fan under each completed round using the same `decklist.id`
 - [x] Registered (`submitted`/`locked`) decks are badged Registered and treated as the official list
 - [x] Leftover `draft` decks are omitted from League/spectator lists and `GET /api/decklists/:id` returns 403 for non-owners/non-admins
 - [x] Players who never registered do not appear in the public archive
@@ -379,14 +379,13 @@ Players and spectators can browse other players’ decks from completed previous
 
 ### Extra decks after matches complete
 
-After every match for a player in the current event is `confirmed` or `resolved`, extra draft tabs (`orderIndex >= deckCount`) may reuse cards from that player’s registered lists. Extra decks stay `draft`, private, and cannot register past `deckCount`. Pool copy limits still apply. Extra drafts do not share allocation with each other. Required slots always share allocation with registered siblings. Completing a round locks the same event’s submitted **required** rows (`orderIndex < deckCount`); leftover drafts stay drafts. Round lifecycle never unsubmits. Extra drafts stay on this event until it is `completed`.
+After every match for a player in the current event is `confirmed` or `resolved`, leftover draft tabs may reuse cards from that player’s registered lists. Extra decks stay `draft`, private, and cannot register past `deckCount`. Pool copy limits still apply. Drafts do not share allocation with each other. Completing a round locks the same event’s submitted rows; leftover drafts stay drafts. Round lifecycle never unsubmits. Leftover drafts stay on this event until it is `completed`.
 
 #### Acceptance Criteria
 
-- [x] Extra draft saves ignore registered-sibling allocation when `matchesComplete` is true
+- [x] Draft saves ignore registered-sibling allocation when `matchesComplete` is true
 - [x] Builder left open after last confirm: tab-back refreshes `matchesComplete` only (no remount, no lost local extras)
-- [x] Extra drafts still cannot exceed pool copies on the active list; leftover extra drafts do not reserve copies from each other
-- [x] Required-slot drafts still share allocation with registered siblings
+- [x] Drafts still cannot exceed pool copies on the active list; leftover drafts do not reserve copies from each other
 - [x] Extra submit still 409s when registered count already equals `deckCount`
 - [x] Extra decks stay private (`draft`) and do not appear in the public archive
 
@@ -446,7 +445,7 @@ Players can share the **active deck’s contents** as a frozen, unlisted documen
 
 ### Admin table-side deck checks
 
-Site admins can open a dedicated `/admin/deck-checks` surface to inspect **registered** lists for the current **event** (table-side checks). This is not the public `/decks` archive and does not use pool `Phase N`. Official check lists are `submitted` or `locked` required slots (`orderIndex < event.config.deckCount`) for the event, including origin-round rows after Round 2 starts. Drafts and extra slots never appear. The page works even when `season.decklistVisibility` is off.
+Site admins can open a dedicated `/admin/deck-checks` surface to inspect **registered** lists for the current **event** (table-side checks). This is not the public `/decks` archive and does not use pool `Phase N`. Official check lists are `submitted` or `locked` for the event, including origin-round rows after Round 2 starts, regardless of `orderIndex`. Drafts never appear. The page works even when `season.decklistVisibility` is off.
 
 #### User Stories
 
@@ -461,7 +460,7 @@ Site admins can open a dedicated `/admin/deck-checks` surface to inspect **regis
 - [x] Site-admin-only route `/admin/deck-checks` (guest: signed-in copy; `role: user`: no admin access); `GET /api/admin/deck-checks` returns 403 for non-admins
 - [x] Current phase is active season → first `active` else `setup` event → `selectDeckbuilderRound` (`in_progress` → `not_started` → last); not pool Phase N; GET does not auto-create rounds
 - [x] Empty states: `No active season.` / `No current event.` / `No current deckbuilder round.`; unknown `seasonId` is 404; invalid `seasonId` is 400
-- [x] Official lists only: `submitted`/`locked` and `orderIndex < deckCount`; drafts and extra slots excluded even if submitted
+- [x] Official lists only: `submitted`/`locked`; drafts excluded
 - [x] Roster is league members minus drops; incomplete = `registeredCount < deckCount`; dropped players omitted from lists and roster
 - [x] `decklistVisibility: false` still returns lists and roster for admin
 - [x] Read-only expand (list + details); search by `primaryName`; no Share/Export/Register

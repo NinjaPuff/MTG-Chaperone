@@ -20,7 +20,6 @@ function candidate(
 describe('selectEventScopedDecklistKeeper', () => {
   it('keeps locked required over submitted and empty round-2 draft', () => {
     const result = selectEventScopedDecklistKeeper({
-      requiredDeckCount: 2,
       candidates: [
         candidate({
           id: 'locked-r1',
@@ -49,7 +48,6 @@ describe('selectEventScopedDecklistKeeper', () => {
 
   it('keeps submitted required over empty round-2 draft', () => {
     const result = selectEventScopedDecklistKeeper({
-      requiredDeckCount: 2,
       candidates: [
         candidate({
           id: 'alice-req-0',
@@ -73,7 +71,6 @@ describe('selectEventScopedDecklistKeeper', () => {
 
   it('keeps draft-with-entries over empty required clone', () => {
     const result = selectEventScopedDecklistKeeper({
-      requiredDeckCount: 1,
       candidates: [
         candidate({
           id: 'empty-clone',
@@ -97,7 +94,6 @@ describe('selectEventScopedDecklistKeeper', () => {
 
   it('required tie uses lowest roundNumber then oldest createdAt', () => {
     const result = selectEventScopedDecklistKeeper({
-      requiredDeckCount: 1,
       candidates: [
         candidate({
           id: 'newer-same-round',
@@ -128,9 +124,8 @@ describe('selectEventScopedDecklistKeeper', () => {
     ]);
   });
 
-  it('extra tie uses highest roundNumber then newest updatedAt', () => {
+  it('extra tie uses lowest roundNumber then oldest createdAt', () => {
     const result = selectEventScopedDecklistKeeper({
-      requiredDeckCount: 1,
       candidates: [
         candidate({
           id: 'extra-r1-newer',
@@ -161,15 +156,14 @@ describe('selectEventScopedDecklistKeeper', () => {
 
     expect(result).toEqual([
       {
-        keeperId: 'extra-r2-newest-update',
-        loserIds: ['extra-r2-older-update', 'extra-r1-newer'],
+        keeperId: 'extra-r1-newer',
+        loserIds: ['extra-r2-older-update', 'extra-r2-newest-update'],
       },
     ]);
   });
 
-  it('does not carry required slots into extra ranking', () => {
+  it('groups collisions by orderIndex only', () => {
     const result = selectEventScopedDecklistKeeper({
-      requiredDeckCount: 1,
       candidates: [
         candidate({
           id: 'required-locked',
