@@ -72,7 +72,7 @@ describe('roundService', () => {
       eventId: 'e1',
       status: 'in_progress',
       matches: [{ status: 'reported' }, { status: 'confirmed' }],
-      event: { config: { format: 'swiss' } },
+      event: { config: { format: 'swiss', deckCount: 2 } },
     });
     prismaMock.match.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.decklist.updateMany.mockResolvedValue({ count: 2 });
@@ -91,11 +91,110 @@ describe('roundService', () => {
     });
     expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
       where: {
-        roundId: 'r1',
+        eventId: 'e1',
         status: 'submitted',
+        orderIndex: { lt: 2 },
       },
       data: { status: 'locked' },
     });
+    expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.roundId).toBeUndefined();
+  });
+
+  it('completeRound does not unsubmit delete or mint decklists', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      eventId: 'e1',
+      status: 'in_progress',
+      matches: [{ status: 'reported' }, { status: 'confirmed' }],
+      event: { config: { format: 'swiss', deckCount: 2 } },
+    });
+    prismaMock.match.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.decklist.updateMany.mockResolvedValue({ count: 2 });
+    prismaMock.round.update.mockResolvedValue({ id: 'r1', status: 'completed' });
+
+    await completeRound('r1');
+
+    expect(prismaMock.decklist.delete).not.toHaveBeenCalled();
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { status: 'locked' },
+      }),
+    );
+    expect(prismaMock.decklist.updateMany.mock.calls.some((call) => call[0]?.data?.status === 'draft')).toBe(
+      false,
+    );
+  });
+
+  it('completeRound on round 2 still locks origin round-1 submitted required rows', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'round-2',
+      eventId: 'week-2',
+      status: 'in_progress',
+      matches: [{ status: 'confirmed' }],
+      event: { config: { format: 'swiss', deckCount: 2 } },
+    });
+    prismaMock.match.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.decklist.updateMany.mockResolvedValue({ count: 2 });
+    prismaMock.round.update.mockResolvedValue({ id: 'round-2', status: 'completed' });
+
+    await completeRound('round-2');
+
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
+      where: {
+        eventId: 'week-2',
+        status: 'submitted',
+        orderIndex: { lt: 2 },
+      },
+      data: { status: 'locked' },
+    });
+    expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.roundId).toBeUndefined();
+    expect(prismaMock.decklist.updateMany.mock.calls[0][0].where.roundId).not.toBe('round-2');
+  });
+
+  it('completeRound is a no-op on already-locked event lists', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'r1',
+      eventId: 'e1',
+      status: 'in_progress',
+      matches: [{ status: 'confirmed' }],
+      event: { config: { format: 'swiss', deckCount: 2 } },
+    });
+    prismaMock.match.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.decklist.updateMany.mockResolvedValue({ count: 0 });
+    prismaMock.round.update.mockResolvedValue({ id: 'r1', status: 'completed' });
+
+    await completeRound('r1');
+
+    expect(prismaMock.decklist.delete).not.toHaveBeenCalled();
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
+      where: {
+        eventId: 'e1',
+        status: 'submitted',
+        orderIndex: { lt: 2 },
+      },
+      data: { status: 'locked' },
+    });
+  });
+
+  it('deleteRound returns CONFLICT when event decklists still reference the round', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({
+      id: 'round-1',
+      status: 'completed',
+      event: { seasonId: 's1', config: { format: 'swiss' } },
+    });
+    prismaMock.decklist.count.mockResolvedValue(2);
+
+    await expect(deleteRound('round-1')).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CONFLICT',
+    });
+    expect(prismaMock.decklist.count).toHaveBeenCalledWith({
+      where: { roundId: 'round-1' },
+    });
+    expect(prismaMock.round.delete).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('does not lock decklists when completing a round robin round', async () => {

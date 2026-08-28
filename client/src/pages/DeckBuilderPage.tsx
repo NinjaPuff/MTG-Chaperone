@@ -552,11 +552,11 @@ export function DeckBuilderPage() {
   const canDeleteActiveDeck =
     !!activeDeck && activeDeck.status === 'draft' && activeDeck.orderIndex >= requiredDeckCount;
   const canImportActiveDeck = !!activeDeckEditable && !!activeSeasonId;
-  const canShareActiveDeck = Boolean(activeDeck);
   const canExportActiveDeck = Boolean(activeDeck && activeDeck.cards.length > 0);
+  const canShareActiveDeck = canExportActiveDeck;
 
   const openShare = async () => {
-    if (!activeDeck || shareBusy) {
+    if (!activeDeck || shareBusy || activeDeck.cards.length === 0) {
       return;
     }
     setShareBusy(true);
@@ -1142,6 +1142,7 @@ export function DeckBuilderPage() {
                   data-testid="deck-share-button"
                   className="shrink-0 rounded border border-border bg-background px-2 py-1 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={!canShareActiveDeck || shareBusy}
+                  title={canShareActiveDeck ? undefined : 'Nothing to share.'}
                   onClick={openShare}
                 >
                   Share

@@ -317,7 +317,6 @@ async function extraDraftIgnoresRegisteredAllocation(decklist: {
 async function loadAllocationSiblingDecklists(args: {
   userId: string;
   eventId: string;
-  roundId: string;
   decklistId: string;
   deckCount: number;
   ignoreRegistered: boolean;
@@ -355,7 +354,6 @@ async function loadAllocationSiblingDecklists(args: {
       ? {
           userId: args.userId,
           eventId: args.eventId,
-          roundId: args.roundId,
           OR: [
             { id: args.decklistId },
             {
@@ -368,7 +366,6 @@ async function loadAllocationSiblingDecklists(args: {
       : {
           userId: args.userId,
           eventId: args.eventId,
-          roundId: args.roundId,
           status: {
             in: ['submitted', 'locked'],
           },
@@ -541,22 +538,31 @@ function parseMinChanges(parameters: unknown) {
   return Math.max(0, Math.floor(maybeMinChanges));
 }
 
-async function getPriorRoundEntries(userId: string, eventId: string, roundNumber: number) {
+async function getPriorRoundEntries(
+  userId: string,
+  event: { id: string; orderIndex: number; season: { id: string } },
+) {
   const priorDecklists = await prisma.decklist.findMany({
     where: {
       userId,
-      eventId,
       status: {
         in: ['submitted', 'locked'],
       },
-      round: {
-        roundNumber: {
-          lt: roundNumber,
+      event: {
+        seasonId: event.season.id,
+        status: 'completed',
+        orderIndex: {
+          lt: event.orderIndex,
         },
       },
     },
     select: {
       orderIndex: true,
+      event: {
+        select: {
+          orderIndex: true,
+        },
+      },
       round: {
         select: {
           roundNumber: true,
@@ -577,13 +583,13 @@ async function getPriorRoundEntries(userId: string, eventId: string, roundNumber
   });
 
   const priorRoundEntries: PriorRoundEntry[] = [];
-  for (const decklist of priorDecklists) {
-    for (const entry of decklist.entries) {
+  for (const decklist of priorDecklists ?? []) {
+    for (const entry of decklist.entries ?? []) {
       priorRoundEntries.push({
-        roundNumber: decklist.round.roundNumber,
+        roundNumber: decklist.event?.orderIndex ?? 0,
         cachedCardId: entry.cachedCardId,
         quantity: entry.quantity,
-        typeLine: entry.cachedCard.typeLine,
+        typeLine: entry.cachedCard?.typeLine ?? '',
       });
     }
   }
@@ -602,16 +608,20 @@ function extractRestrictedQtyMap(restrictedCards: Map<string, RestrictedCard>) {
   return map;
 }
 
-async function buildRestrictionContext(userId: string, eventId: string, roundNumber: number, poolQuantityByCardId: Map<string, number>) {
+async function buildRestrictionContext(
+  userId: string,
+  event: { id: string; orderIndex: number; season: { id: string } },
+  poolQuantityByCardId: Map<string, number>,
+) {
   const eventRule = await prisma.deckUniquenessRule.findUnique({
-    where: { eventId },
+    where: { eventId: event.id },
     select: {
       constraintType: true,
       parameters: true,
     },
   });
 
-  const { priorDecklists, priorRoundEntries } = await getPriorRoundEntries(userId, eventId, roundNumber);
+  const { priorDecklists, priorRoundEntries } = await getPriorRoundEntries(userId, event);
   if (!eventRule) {
     return {
       restrictedCards: new Map<string, RestrictedCard>(),
@@ -860,7 +870,6 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
     where: {
       userId,
       eventId,
-      roundId,
     },
     include: {
       entries: {
@@ -874,42 +883,41 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
     },
   });
 
-  if (decklists.length < deckCount) {
-    const existing = new Set(decklists.map((decklist) => decklist.orderIndex));
-    const missing = [];
-    for (let orderIndex = 0; orderIndex < deckCount; orderIndex += 1) {
-      if (!existing.has(orderIndex)) {
-        missing.push({
-          userId,
-          eventId,
-          roundId,
-          orderIndex,
-          name: `Deck ${orderIndex + 1}`,
-        });
-      }
-    }
-    if (missing.length > 0) {
-      await prisma.decklist.createMany({
-        data: missing,
+  const existingRequired = new Set(
+    decklists.filter((decklist) => decklist.orderIndex < deckCount).map((decklist) => decklist.orderIndex),
+  );
+  const missing = [];
+  for (let orderIndex = 0; orderIndex < deckCount; orderIndex += 1) {
+    if (!existingRequired.has(orderIndex)) {
+      missing.push({
+        userId,
+        eventId,
+        roundId,
+        orderIndex,
+        name: `Deck ${orderIndex + 1}`,
       });
-      decklists = await prisma.decklist.findMany({
-        where: {
-          userId,
-          eventId,
-          roundId,
-        },
-        include: {
-          entries: {
-            include: {
-              cachedCard: true,
-            },
+    }
+  }
+  if (missing.length > 0) {
+    await prisma.decklist.createMany({
+      data: missing,
+    });
+    decklists = await prisma.decklist.findMany({
+      where: {
+        userId,
+        eventId,
+      },
+      include: {
+        entries: {
+          include: {
+            cachedCard: true,
           },
         },
-        orderBy: {
-          orderIndex: 'asc',
-        },
-      });
-    }
+      },
+      orderBy: {
+        orderIndex: 'asc',
+      },
+    });
   }
 
   const decklistWithCardsInclude = {
@@ -955,7 +963,7 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
       });
       const extraIdsToCarry = selectExtraDraftsToCarryForward({
         requiredDeckCount: deckCount,
-        currentRoundOrderIndexes: decklists.map((decklist) => decklist.orderIndex),
+        currentEventOrderIndexes: decklists.map((decklist) => decklist.orderIndex),
         previousDrafts: previousEventDrafts.map((decklist) => ({
           id: decklist.id,
           orderIndex: decklist.orderIndex,
@@ -979,7 +987,6 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
           where: {
             userId,
             eventId,
-            roundId,
           },
           include: decklistWithCardsInclude,
           orderBy: {
@@ -990,46 +997,7 @@ export async function listMyDecklistsForRound(eventId: string, roundId: string, 
     }
   }
 
-  const otherRoundExtras = await prisma.decklist.findMany({
-    where: {
-      userId,
-      eventId,
-      roundId: {
-        not: roundId,
-      },
-      status: 'draft',
-      orderIndex: {
-        gte: deckCount,
-      },
-    },
-    include: {
-      ...decklistWithCardsInclude,
-      round: {
-        select: {
-          roundNumber: true,
-        },
-      },
-    },
-  });
-  const extraIdsToShow = selectExtraDraftsToCarryForward({
-    requiredDeckCount: deckCount,
-    currentRoundOrderIndexes: decklists.map((decklist) => decklist.orderIndex),
-    previousDrafts: otherRoundExtras.map((decklist) => ({
-      id: decklist.id,
-      orderIndex: decklist.orderIndex,
-      roundNumber: decklist.round.roundNumber,
-      status: decklist.status,
-    })),
-  });
-  if (extraIdsToShow.length > 0) {
-    const extrasById = new Map(otherRoundExtras.map((decklist) => [decklist.id, decklist]));
-    const attached = extraIdsToShow
-      .map((id) => extrasById.get(id))
-      .filter((decklist): decklist is (typeof otherRoundExtras)[number] => Boolean(decklist));
-    decklists = [...decklists, ...attached].sort((left, right) => left.orderIndex - right.orderIndex);
-  }
-
-  const restrictionContext = await buildRestrictionContext(userId, eventId, round.roundNumber, poolQuantityByCardId);
+  const restrictionContext = await buildRestrictionContext(userId, event, poolQuantityByCardId);
   const restrictedCards = [...restrictionContext.restrictedCards.entries()].map(([cachedCardId, value]) => ({
     cachedCardId,
     restrictedQty: value.restrictedQty,
@@ -1087,13 +1055,12 @@ export async function createDecklist(input: {
     where: {
       userId: input.userId,
       eventId: input.eventId,
-      roundId: input.roundId,
       orderIndex,
     },
     select: { id: true },
   });
   if (exists) {
-    throw new AppError(409, 'CONFLICT', 'Decklist already exists for this round and slot');
+    throw new AppError(409, 'CONFLICT', 'Decklist already exists for this event and slot');
   }
 
   let entries: DeckEntryInput[] = [];
@@ -1236,8 +1203,7 @@ export async function updateDecklist(
   const { poolQuantityByCardId, basicLandCardIds } = await getPoolCardsForUserSeason(decklist.userId, decklist.event.season.id);
   const restrictions = await buildRestrictionContext(
     decklist.userId,
-    decklist.eventId,
-    decklist.round.roundNumber,
+    decklist.event,
     poolQuantityByCardId,
   );
   const ignoreRegistered = await extraDraftIgnoresRegisteredAllocation(decklist);
@@ -1248,7 +1214,6 @@ export async function updateDecklist(
   const siblingDecklists = await loadAllocationSiblingDecklists({
     userId: decklist.userId,
     eventId: decklist.eventId,
-    roundId: decklist.roundId,
     decklistId: decklist.id,
     deckCount: Math.max(1, decklist.event.config?.deckCount ?? 1),
     ignoreRegistered,
@@ -1373,15 +1338,13 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
   const { poolQuantityByCardId, basicLandCardIds } = await getPoolCardsForUserSeason(decklist.userId, decklist.event.season.id);
   const restrictions = await buildRestrictionContext(
     decklist.userId,
-    decklist.eventId,
-    decklist.round.roundNumber,
+    decklist.event,
     poolQuantityByCardId,
   );
 
   const siblingDecklists = await loadAllocationSiblingDecklists({
     userId: decklist.userId,
     eventId: decklist.eventId,
-    roundId: decklist.roundId,
     decklistId: decklist.id,
     deckCount: Math.max(1, decklist.event.config?.deckCount ?? 1),
     ignoreRegistered: await extraDraftIgnoresRegisteredAllocation(decklist),
@@ -1432,12 +1395,10 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
   }
 
   if (restrictions.constraintType === 'minimum_changes' && restrictions.minChanges > 0) {
-    const previousRoundNumber = decklist.round.roundNumber - 1;
-    if (previousRoundNumber > 0) {
-      const previousDeck = restrictions.priorDecklists.find(
-        (item) => item.orderIndex === decklist.orderIndex && item.round.roundNumber === previousRoundNumber,
-      );
-      if (previousDeck) {
+    const previousDeck = [...(restrictions.priorDecklists ?? [])]
+      .filter((item) => item.orderIndex === decklist.orderIndex)
+      .sort((left, right) => (right.event?.orderIndex ?? 0) - (left.event?.orderIndex ?? 0))[0];
+    if (previousDeck) {
         const previousCardIds = new Set(
           previousDeck.entries.filter((entry) => !isBasicLand(entry.cachedCard.typeLine)).map((entry) => entry.cachedCardId),
         );
@@ -1453,7 +1414,6 @@ export async function validateDecklist(decklistId: string, userId: string, isAdm
         if (shortfall > 0) {
           warnings.push(`${shortfall} more non-basic card changes required from previous round`);
         }
-      }
     }
   }
 
@@ -1502,7 +1462,6 @@ export async function submitDecklist(decklistId: string, userId: string, isAdmin
     where: {
       userId: decklist.userId,
       eventId: decklist.eventId,
-      roundId: decklist.roundId,
       status: {
         in: ['submitted', 'locked'],
       },
@@ -1512,7 +1471,7 @@ export async function submitDecklist(decklistId: string, userId: string, isAdmin
     },
   });
   if (registeredDeckCount >= deckCount) {
-    throw new AppError(409, 'CONFLICT', `Already registered ${deckCount} deck(s) for this round. Unregister one first.`);
+    throw new AppError(409, 'CONFLICT', `Already registered ${deckCount} deck(s) for this event. Unregister one first.`);
   }
 
   const validation = await validateDecklist(decklistId, userId, true);
@@ -1556,7 +1515,7 @@ export async function unsubmitDecklist(decklistId: string, userId: string, isAdm
   if (!isRoundRobin) {
     const playedMatch = await prisma.match.findFirst({
       where: {
-        roundId: decklist.roundId,
+        round: { eventId: decklist.eventId },
         status: {
           not: 'pending',
         },
@@ -1610,9 +1569,16 @@ export async function deleteDecklist(decklistId: string, userId: string, isAdmin
 }
 
 export async function unlockDecklistsForRound(client: Prisma.TransactionClient, roundId: string) {
+  const round = await client.round.findUnique({
+    where: { id: roundId },
+    select: { eventId: true },
+  });
+  if (!round) {
+    return 0;
+  }
   const result = await client.decklist.updateMany({
     where: {
-      roundId,
+      eventId: round.eventId,
       status: 'locked',
     },
     data: {

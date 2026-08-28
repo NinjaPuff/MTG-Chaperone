@@ -145,7 +145,7 @@ describe('DeckBuilderPage share', () => {
     configureApi({ deckEntries: [shockEntry] });
   });
 
-  it('enables Share for draft, submitted, locked, and empty decks', async () => {
+  it('enables Share for draft, submitted, and locked decks that have cards', async () => {
     for (const deckStatus of ['draft', 'submitted', 'locked'] as const) {
       mocks.authApiRequest.mockReset();
       configureApi({ deckStatus, deckEntries: [shockEntry] });
@@ -164,13 +164,6 @@ describe('DeckBuilderPage share', () => {
       );
       unmount();
     }
-
-    mocks.authApiRequest.mockReset();
-    configureApi({ deckEntries: [] });
-    renderPage();
-    await waitFor(() => {
-      expect(screen.getByTestId('deck-share-button')).toBeEnabled();
-    });
   });
 
   it('POSTs only the active deck and does not mint until Share is clicked', async () => {
@@ -213,27 +206,14 @@ describe('DeckBuilderPage share', () => {
     expect(secondUrl).not.toBe(firstUrl);
   });
 
-  it('shares an empty deck as an empty snapshot and reuses the same URL when unchanged', async () => {
+  it('disables Share when the active deck has no cards', async () => {
+    mocks.authApiRequest.mockReset();
     configureApi({ deckEntries: [] });
     renderPage();
-
     await waitFor(() => {
-      expect(screen.getByTestId('deck-share-button')).toBeEnabled();
+      expect(screen.getByTestId('deck-share-button')).toBeDisabled();
     });
-    fireEvent.click(screen.getByTestId('deck-share-button'));
-    const firstUrl = (await screen.findByText(/\/share\/decks\/tok-deck-1/)).textContent ?? '';
-    expect(mocks.authApiRequest).toHaveBeenCalledWith(
-      '/api/decklists/deck-1/share',
-      expect.objectContaining({
-        method: 'POST',
-        body: expect.objectContaining({ entries: [] }),
-      }),
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    fireEvent.click(screen.getByTestId('deck-share-button'));
-    const secondUrl = (await screen.findByText(/\/share\/decks\/tok-deck-1/)).textContent ?? '';
-    expect(secondUrl).toBe(firstUrl);
+    expect(screen.getByTestId('deck-share-button')).toHaveAttribute('title', 'Nothing to share.');
   });
 
   it('POSTs setCode from a pool add on an empty deck', async () => {

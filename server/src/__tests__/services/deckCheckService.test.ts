@@ -375,11 +375,37 @@ describe('getAdminDeckChecks', () => {
     expect(result.players.every((player) => player.requiredCount === 2)).toBe(true);
     expect(prismaMock.decklist.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { eventId: 'week-2', roundId: 'w2-r2' },
+        where: { eventId: 'week-2' },
       }),
     );
+    expect(prismaMock.decklist.findMany.mock.calls[0][0].where.roundId).toBeUndefined();
     expect(prismaMock.round.create).not.toHaveBeenCalled();
     expect(prismaMock.decklist.update).not.toHaveBeenCalled();
+  });
+
+  it('returns origin-round registered lists while round 2 is in_progress', async () => {
+    mockHappyPath({
+      events: [week2Event([w2r1, w2r2])],
+      decks: [
+        makeDeck('alice-req-0', alice, week2, w2r1, 'submitted', 0),
+        makeDeck('alice-draft-1', alice, week2, w2r1, 'draft', 1),
+        makeDeck('alice-extra-2', alice, week2, w2r1, 'draft', 2),
+        makeDeck('bob-r2-draft', bob, week2, w2r2, 'draft', 0),
+      ],
+    });
+
+    const result = await getAdminDeckChecks('season-1');
+
+    expect(result.round?.id).toBe('w2-r2');
+    expect(result.decklists.map((deck) => deck.id)).toEqual(['alice-req-0']);
+    expect(result.decklists.every((deck) => deck.status === 'submitted' || deck.status === 'locked')).toBe(true);
+    expect(result.decklists.every((deck) => deck.orderIndex < 2)).toBe(true);
+    expect(prismaMock.decklist.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { eventId: 'week-2' },
+      }),
+    );
+    expect(prismaMock.decklist.findMany.mock.calls[0][0].where.roundId).toBeUndefined();
   });
 
   it('omits a player dropped from the event', async () => {

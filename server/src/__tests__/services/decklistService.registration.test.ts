@@ -8,6 +8,7 @@ vi.mock('../../lib/prisma.js', () => ({
 import {
   createDecklist,
   deleteDecklist,
+  listMyDecklistsForEvent,
   listMyDecklistsForRound,
   submitDecklist,
   unsubmitDecklist,
@@ -15,15 +16,60 @@ import {
   updateDecklist,
 } from '../../services/decklistService.js';
 
-function mockEventRoundContext() {
+function mockEventRoundContext(options?: { eventId?: string; roundId?: string; roundNumber?: number; deckCount?: number }) {
+  const eventId = options?.eventId ?? 'event-1';
+  const roundId = options?.roundId ?? 'round-1';
   prismaMock.event.findUnique.mockResolvedValue({
-    id: 'event-1',
-    config: { deckCount: 2, format: 'swiss', deckLockingMode: 'free_modification' },
+    id: eventId,
+    orderIndex: 2,
+    config: { deckCount: options?.deckCount ?? 2, format: 'swiss', deckLockingMode: 'free_modification' },
     deckUniquenessRule: null,
     season: { id: 'season-1' },
-    rounds: [{ id: 'round-1', roundNumber: 2 }],
+    rounds: [{ id: roundId, roundNumber: options?.roundNumber ?? 2 }],
   });
 }
+
+function mockWeek2ForEventList(options?: { deckCount?: number }) {
+  const deckCount = options?.deckCount ?? 2;
+  prismaMock.event.findUnique
+    .mockResolvedValueOnce({
+      status: 'active',
+      config: { format: 'swiss' },
+      rounds: [
+        { id: 'round-1', roundNumber: 1, status: 'completed' },
+        { id: 'round-2', roundNumber: 2, status: 'in_progress' },
+      ],
+    })
+    .mockResolvedValue({
+      id: 'week-2',
+      orderIndex: 2,
+      status: 'active',
+      config: { deckCount, format: 'swiss', deckLockingMode: 'free_modification' },
+      deckUniquenessRule: null,
+      season: { id: 'season-1' },
+      rounds: [{ id: 'round-2', roundNumber: 2 }],
+    });
+  prismaMock.event.findFirst.mockResolvedValue(null);
+}
+
+const aliceReq0 = {
+  id: 'alice-req-0',
+  orderIndex: 0,
+  status: 'submitted' as const,
+  entries: [{ cachedCardId: 'card-shock', quantity: 1 }],
+};
+const aliceReq1 = {
+  id: 'alice-req-1',
+  orderIndex: 1,
+  status: 'locked' as const,
+  entries: [{ cachedCardId: 'card-bolt', quantity: 1 }],
+};
+const aliceExtra2 = {
+  id: 'alice-extra-2',
+  orderIndex: 2,
+  status: 'draft' as const,
+  entries: [{ cachedCardId: 'card-distinctive', quantity: 2 }],
+};
 
 function mockUserPool() {
   prismaMock.cardPool.findUnique.mockResolvedValue({
@@ -88,7 +134,18 @@ describe('decklistService registration behaviors', () => {
 
     await expect(submitDecklist('deck-1', 'user-1')).rejects.toMatchObject({
       code: 'CONFLICT',
+      message: 'Already registered 2 deck(s) for this event. Unregister one first.',
     });
+    expect(prismaMock.decklist.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 'user-1',
+          eventId: 'event-1',
+          status: { in: ['submitted', 'locked'] },
+        }),
+      }),
+    );
+    expect(prismaMock.decklist.count.mock.calls[0][0].where.roundId).toBeUndefined();
     expect(prismaMock.decklist.update).not.toHaveBeenCalled();
   });
 
@@ -106,6 +163,16 @@ describe('decklistService registration behaviors', () => {
     await expect(unsubmitDecklist('deck-1', 'user-1')).rejects.toMatchObject({
       code: 'INVALID_EVENT_STATE',
     });
+    expect(prismaMock.match.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { not: 'pending' },
+          OR: [{ player1Id: 'user-1' }, { player2Id: 'user-1' }],
+          round: { eventId: 'event-1' },
+        }),
+      }),
+    );
+    expect(prismaMock.match.findFirst.mock.calls[0][0].where.roundId).toBeUndefined();
   });
 
   it('allows unsubmit in round robin even when matches are reported', async () => {
@@ -141,27 +208,21 @@ describe('decklistService registration behaviors', () => {
   });
 
   it('returns registeredCount in my decklists payload', async () => {
-    mockEventRoundContext();
+    mockWeek2ForEventList();
     mockUserPool();
-    prismaMock.decklist.findMany
-      .mockResolvedValueOnce([
-        { id: 'd1', orderIndex: 0, status: 'submitted', entries: [] },
-        { id: 'd2', orderIndex: 1, status: 'locked', entries: [] },
-        { id: 'd3', orderIndex: 2, status: 'draft', entries: [] },
-      ])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    prismaMock.decklist.findMany.mockResolvedValue([aliceReq0, aliceReq1, aliceExtra2]);
     prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
 
-    const response = await listMyDecklistsForRound('event-1', 'round-1', 'user-1');
+    const response = await listMyDecklistsForEvent('week-2', 'alice');
 
     expect(response.registeredCount).toBe(2);
+    expect(response.roundId).toBe('round-2');
     expect(response.matchesComplete).toBe(false);
     expect(prismaMock.match.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          round: { eventId: 'event-1' },
-          OR: [{ player1Id: 'user-1' }, { player2Id: 'user-1' }],
+          round: { eventId: 'week-2' },
+          OR: [{ player1Id: 'alice' }, { player2Id: 'alice' }],
         }),
       }),
     );
@@ -170,13 +231,11 @@ describe('decklistService registration behaviors', () => {
   it('sets matchesComplete true when every event match is terminal', async () => {
     mockEventRoundContext();
     mockUserPool();
-    prismaMock.decklist.findMany
-      .mockResolvedValueOnce([
-        { id: 'd1', orderIndex: 0, status: 'draft', entries: [] },
-        { id: 'd2', orderIndex: 1, status: 'draft', entries: [] },
-      ])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.decklist.findMany.mockResolvedValue([
+      { id: 'd1', orderIndex: 0, status: 'draft', entries: [] },
+      { id: 'd2', orderIndex: 1, status: 'draft', entries: [] },
+    ]);
     prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
     prismaMock.match.findMany.mockResolvedValue([{ status: 'confirmed' }, { status: 'resolved' }]);
 
@@ -188,13 +247,11 @@ describe('decklistService registration behaviors', () => {
   it('sets matchesComplete false when a not_started round still has a pending match', async () => {
     mockEventRoundContext();
     mockUserPool();
-    prismaMock.decklist.findMany
-      .mockResolvedValueOnce([
-        { id: 'd1', orderIndex: 0, status: 'draft', entries: [] },
-        { id: 'd2', orderIndex: 1, status: 'draft', entries: [] },
-      ])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.decklist.findMany.mockResolvedValue([
+      { id: 'd1', orderIndex: 0, status: 'draft', entries: [] },
+      { id: 'd2', orderIndex: 1, status: 'draft', entries: [] },
+    ]);
     prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
     prismaMock.match.findMany.mockResolvedValue([{ status: 'confirmed' }, { status: 'pending' }]);
 
@@ -313,10 +370,13 @@ describe('decklistService registration behaviors', () => {
       2,
       expect.objectContaining({
         where: expect.objectContaining({
+          userId: 'user-1',
+          eventId: 'event-1',
           status: { in: ['submitted', 'locked'] },
         }),
       }),
     );
+    expect(prismaMock.decklist.findMany.mock.calls[1][0].where.roundId).toBeUndefined();
   });
 
   it('blocks update when a registered sibling would over-allocate copies', async () => {
@@ -566,16 +626,20 @@ describe('decklistService registration behaviors', () => {
     expect(result.errors).not.toContain('Sideboard count is 14; expected 15');
   });
 
-  it('applies minimum-changes warnings using only registered prior-round decks', async () => {
+  it('applies minimum-changes warnings using only registered prior-event decks', async () => {
     prismaMock.decklist.findUnique.mockResolvedValue({
       id: 'deck-1',
       userId: 'user-1',
-      eventId: 'event-1',
-      roundId: 'round-2',
+      eventId: 'event-2',
+      roundId: 'round-1',
       orderIndex: 0,
       status: 'draft',
-      event: { config: { minDeckSize: 40, sideboardRule: 'entire_pool' }, season: { id: 'season-1' } },
-      round: { roundNumber: 2 },
+      event: {
+        orderIndex: 2,
+        config: { minDeckSize: 40, sideboardRule: 'entire_pool' },
+        season: { id: 'season-1' },
+      },
+      round: { roundNumber: 1 },
       entries: [{ cachedCardId: 'card-1', quantity: 2, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
     });
     prismaMock.cardPool.findUnique.mockResolvedValue({
@@ -604,6 +668,7 @@ describe('decklistService registration behaviors', () => {
         {
           orderIndex: 0,
           round: { roundNumber: 1 },
+          event: { orderIndex: 1 },
           entries: [
             {
               cachedCardId: 'card-1',
@@ -621,53 +686,143 @@ describe('decklistService registration behaviors', () => {
       1,
       expect.objectContaining({
         where: expect.objectContaining({
+          userId: 'user-1',
           status: { in: ['submitted', 'locked'] },
+          event: expect.objectContaining({
+            seasonId: 'season-1',
+            status: 'completed',
+            orderIndex: { lt: 2 },
+          }),
         }),
       }),
     );
+    expect(prismaMock.decklist.findMany.mock.calls[0][0].where.eventId).toBeUndefined();
+    expect(prismaMock.decklist.findMany.mock.calls[0][0].where.round).toBeUndefined();
   });
 
-  it('includes extra drafts from other rounds of the same event without moving them', async () => {
-    prismaMock.event.findUnique.mockResolvedValue({
-      id: 'event-1',
-      orderIndex: 2,
-      config: { deckCount: 1, format: 'swiss', deckLockingMode: 'free_modification' },
-      deckUniquenessRule: null,
-      season: { id: 'season-1' },
-      rounds: [{ id: 'round-2', roundNumber: 2 }],
-    });
+  it('lists event required rows and same-event extras after round 2 starts without minting or moving', async () => {
+    mockWeek2ForEventList();
     mockUserPool();
-    const requiredOnRound2 = { id: 'd-required', orderIndex: 0, status: 'draft', entries: [] };
-    const extraFromRound1 = {
-      id: 'd-extra',
-      orderIndex: 1,
-      status: 'draft',
-      round: { roundNumber: 1 },
-      entries: [{ cachedCardId: 'card-1', quantity: 2 }],
-    };
-    prismaMock.event.findFirst.mockResolvedValue(null);
-    prismaMock.decklist.findMany
-      .mockResolvedValueOnce([requiredOnRound2])
-      .mockResolvedValueOnce([extraFromRound1])
-      .mockResolvedValueOnce([]);
+    prismaMock.decklist.findMany.mockResolvedValue([aliceReq0, aliceReq1, aliceExtra2]);
     prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
 
-    const response = await listMyDecklistsForRound('event-1', 'round-2', 'user-1');
+    const response = await listMyDecklistsForEvent('week-2', 'alice');
 
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
     expect(prismaMock.decklist.updateMany).not.toHaveBeenCalled();
-    expect(prismaMock.decklist.findMany).toHaveBeenNthCalledWith(
-      2,
+    expect(response.roundId).toBe('round-2');
+    expect(response.decklists.map((decklist) => decklist.id)).toEqual([
+      'alice-req-0',
+      'alice-req-1',
+      'alice-extra-2',
+    ]);
+    expect(response.decklists[0].status).toBe('submitted');
+    expect(response.decklists[1].status).toBe('locked');
+    expect(response.decklists[2].entries).toEqual([{ cachedCardId: 'card-distinctive', quantity: 2 }]);
+  });
+
+  it('listMyDecklistsForRound returns the same event ids without minting', async () => {
+    mockEventRoundContext({ eventId: 'week-2', roundId: 'round-2', roundNumber: 2, deckCount: 2 });
+    mockUserPool();
+    prismaMock.event.findFirst.mockResolvedValue(null);
+    prismaMock.decklist.findMany.mockResolvedValue([aliceReq0, aliceReq1, aliceExtra2]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    const response = await listMyDecklistsForRound('week-2', 'round-2', 'alice');
+
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
+    expect(response.decklists.map((decklist) => decklist.id)).toEqual([
+      'alice-req-0',
+      'alice-req-1',
+      'alice-extra-2',
+    ]);
+  });
+
+  it('does not mint required slots when they already exist on the event under another roundId', async () => {
+    mockWeek2ForEventList();
+    mockUserPool();
+    prismaMock.decklist.findMany.mockResolvedValue([
+      { ...aliceReq0, roundId: 'round-1' },
+      { ...aliceReq1, roundId: 'round-1' },
+    ]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    const response = await listMyDecklistsForEvent('week-2', 'alice');
+
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
+    expect(response.decklists.map((decklist) => decklist.id)).toEqual(['alice-req-0', 'alice-req-1']);
+  });
+
+  it('mints missing required slots once per event when none exist', async () => {
+    mockWeek2ForEventList();
+    mockUserPool();
+    prismaMock.decklist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: 'minted-0', orderIndex: 0, status: 'draft', entries: [] },
+        { id: 'minted-1', orderIndex: 1, status: 'draft', entries: [] },
+      ]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    const response = await listMyDecklistsForEvent('week-2', 'alice');
+
+    expect(prismaMock.decklist.createMany).toHaveBeenCalledWith({
+      data: [
+        { userId: 'alice', eventId: 'week-2', roundId: 'round-2', orderIndex: 0, name: 'Deck 1' },
+        { userId: 'alice', eventId: 'week-2', roundId: 'round-2', orderIndex: 1, name: 'Deck 2' },
+      ],
+    });
+    expect(response.decklists.map((decklist) => decklist.orderIndex)).toEqual([0, 1]);
+  });
+
+  it('keeps an unregistered required draft across round 2 without replacing it', async () => {
+    mockWeek2ForEventList();
+    mockUserPool();
+    const draftRequired = {
+      id: 'alice-req-0',
+      orderIndex: 0,
+      status: 'draft' as const,
+      entries: [{ cachedCardId: 'card-kept', quantity: 3 }],
+    };
+    prismaMock.decklist.findMany.mockResolvedValue([draftRequired, aliceReq1]);
+    prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
+
+    const response = await listMyDecklistsForEvent('week-2', 'alice');
+
+    expect(prismaMock.decklist.createMany).not.toHaveBeenCalled();
+    expect(response.decklists[0]).toMatchObject({
+      id: 'alice-req-0',
+      status: 'draft',
+      entries: [{ cachedCardId: 'card-kept', quantity: 3 }],
+    });
+  });
+
+  it('rejects createDecklist when the event slot is already taken', async () => {
+    mockEventRoundContext({ eventId: 'week-2', roundId: 'round-2' });
+    mockUserPool();
+    prismaMock.decklist.findFirst.mockResolvedValue({ id: 'existing-on-round-1' });
+
+    await expect(
+      createDecklist({
+        userId: 'alice',
+        eventId: 'week-2',
+        roundId: 'round-2',
+        orderIndex: 0,
+      }),
+    ).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: 'Decklist already exists for this event and slot',
+    });
+    expect(prismaMock.decklist.create).not.toHaveBeenCalled();
+    expect(prismaMock.decklist.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          userId: 'user-1',
-          eventId: 'event-1',
-          roundId: { not: 'round-2' },
-          status: 'draft',
-          orderIndex: { gte: 1 },
-        }),
+        where: {
+          userId: 'alice',
+          eventId: 'week-2',
+          orderIndex: 0,
+        },
       }),
     );
-    expect(response.decklists.map((decklist) => decklist.id)).toEqual(['d-required', 'd-extra']);
   });
 
   it('moves extra drafts from the previous completed event onto the current event', async () => {
@@ -692,9 +847,7 @@ describe('decklistService registration behaviors', () => {
     prismaMock.decklist.findMany
       .mockResolvedValueOnce([requiredOnNewEvent])
       .mockResolvedValueOnce([extraFromPreviousEvent])
-      .mockResolvedValueOnce([requiredOnNewEvent, extraFromPreviousEvent])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+      .mockResolvedValueOnce([requiredOnNewEvent, extraFromPreviousEvent]);
     prismaMock.decklist.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
 
@@ -727,10 +880,9 @@ describe('decklistService registration behaviors', () => {
     });
     mockUserPool();
     prismaMock.event.findFirst.mockResolvedValue(null);
-    prismaMock.decklist.findMany
-      .mockResolvedValueOnce([{ id: 'd-required', orderIndex: 0, status: 'draft', entries: [] }])
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([]);
+    prismaMock.decklist.findMany.mockResolvedValue([
+      { id: 'd-required', orderIndex: 0, status: 'draft', entries: [] },
+    ]);
     prismaMock.deckUniquenessRule.findUnique.mockResolvedValue(null);
 
     await listMyDecklistsForRound('event-2', 'round-1', 'user-1');

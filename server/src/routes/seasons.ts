@@ -49,7 +49,7 @@ router.get('/:seasonId/events', async (req, res, next) => {
       include: {
         config: true,
         rounds: {
-          select: { status: true },
+          select: { id: true, roundNumber: true, status: true },
         },
       },
       orderBy: { orderIndex: 'asc' },

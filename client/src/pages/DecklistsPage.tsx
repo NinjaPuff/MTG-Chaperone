@@ -13,6 +13,12 @@ type SeasonEvent = {
   name: string;
   status: 'setup' | 'active' | 'completed';
   orderIndex: number;
+  config?: { deckCount?: number | null } | null;
+  rounds?: Array<{
+    id: string;
+    roundNumber: number;
+    status: 'not_started' | 'in_progress' | 'completed';
+  }>;
 };
 
 type SeasonDecklist = ArchiveDecklist;
@@ -47,7 +53,26 @@ function isRegisteredStatus(status: SeasonDecklist['status']) {
   return status === 'submitted' || status === 'locked';
 }
 
-function buildEventGroups(decks: SeasonDecklist[]): EventGroup[] {
+function isOfficialRequired(deck: SeasonDecklist, deckCount: number) {
+  return isRegisteredStatus(deck.status) && deck.orderIndex < deckCount;
+}
+
+function completedRoundsForEvent(eventMeta: SeasonEvent | undefined, eventDecks: SeasonDecklist[]) {
+  const fromPayload = (eventMeta?.rounds ?? []).filter((round) => round.status === 'completed');
+  if (fromPayload.length > 0) {
+    return [...fromPayload].sort((left, right) => left.roundNumber - right.roundNumber);
+  }
+  const byId = new Map<string, SeasonDecklist['round']>();
+  for (const deck of eventDecks) {
+    if (deck.round.status === 'completed') {
+      byId.set(deck.round.id, deck.round);
+    }
+  }
+  return [...byId.values()].sort((left, right) => left.roundNumber - right.roundNumber);
+}
+
+function buildEventGroups(decks: SeasonDecklist[], events: SeasonEvent[]): EventGroup[] {
+  const eventsById = new Map(events.map((event) => [event.id, event]));
   const byEvent = new Map<string, SeasonDecklist[]>();
   for (const deck of decks) {
     const list = byEvent.get(deck.event.id) ?? [];
@@ -58,15 +83,30 @@ function buildEventGroups(decks: SeasonDecklist[]): EventGroup[] {
   return [...byEvent.entries()]
     .map(([eventId, eventDecks]) => {
       const first = eventDecks[0];
-      const byRound = new Map<string, SeasonDecklist[]>();
-      for (const deck of eventDecks) {
-        const list = byRound.get(deck.round.id) ?? [];
-        list.push(deck);
-        byRound.set(deck.round.id, list);
-      }
+      const eventMeta = eventsById.get(eventId);
+      const deckCount = Math.max(1, eventMeta?.config?.deckCount ?? 1);
+      const completedRounds = completedRoundsForEvent(eventMeta, eventDecks);
 
-      const rounds = [...byRound.entries()]
-        .map(([roundId, roundDecks]) => {
+      const rounds = completedRounds
+        .map((round) => {
+          const roundDecks: SeasonDecklist[] = [];
+          for (const deck of eventDecks) {
+            if (isOfficialRequired(deck, deckCount)) {
+              roundDecks.push({
+                ...deck,
+                round: {
+                  id: round.id,
+                  roundNumber: round.roundNumber,
+                  status: round.status,
+                },
+              });
+              continue;
+            }
+            if (deck.round.id === round.id) {
+              roundDecks.push(deck);
+            }
+          }
+
           const byPlayer = new Map<string, SeasonDecklist[]>();
           for (const deck of roundDecks) {
             const key = deck.user?.id ?? deck.id;
@@ -90,12 +130,12 @@ function buildEventGroups(decks: SeasonDecklist[]): EventGroup[] {
             .sort((a, b) => a.playerName.localeCompare(b.playerName));
 
           return {
-            roundId,
-            roundNumber: roundDecks[0]?.round.roundNumber ?? 0,
+            roundId: round.id,
+            roundNumber: round.roundNumber,
             players,
           };
         })
-        .sort((a, b) => a.roundNumber - b.roundNumber);
+        .filter((roundGroup) => roundGroup.players.length > 0);
 
       return {
         eventId,
@@ -129,7 +169,7 @@ function DeckArchiveList({
                   <div key={player.playerKey} className="space-y-2">
                     {player.decks.map((decklist) => (
                       <ArchiveDeckRow
-                        key={decklist.id}
+                        key={`${round.roundId}-${decklist.id}`}
                         decklist={decklist}
                         playerName={player.playerName}
                         canShare={Boolean(viewerUserId)}
@@ -156,6 +196,7 @@ export function DecklistsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentEvent, setCurrentEvent] = useState<SeasonEvent | null>(null);
+  const [seasonEvents, setSeasonEvents] = useState<SeasonEvent[]>([]);
   const [seasonDecklists, setSeasonDecklists] = useState<SeasonDecklist[]>([]);
   const [decklistVisibility, setDecklistVisibility] = useState<boolean | null>(null);
 
@@ -180,6 +221,7 @@ export function DecklistsPage() {
           eventsResponse.data.find((event) => event.status === 'active') ??
           eventsResponse.data.find((event) => event.status === 'setup') ??
           null;
+        setSeasonEvents(eventsResponse.data);
         setCurrentEvent(activeEvent);
 
         const seasonResponse = await apiRequest<ApiListResponse<SeasonDecklist>>(
@@ -219,8 +261,11 @@ export function DecklistsPage() {
     return archiveDecks.filter((decklist) => decklist.user?.id !== user.id);
   }, [archiveDecks, playerSlug, user]);
 
-  const myGroups = useMemo(() => buildEventGroups(myArchiveDecks), [myArchiveDecks]);
-  const leagueGroups = useMemo(() => buildEventGroups(leagueArchiveDecks), [leagueArchiveDecks]);
+  const myGroups = useMemo(() => buildEventGroups(myArchiveDecks, seasonEvents), [myArchiveDecks, seasonEvents]);
+  const leagueGroups = useMemo(
+    () => buildEventGroups(leagueArchiveDecks, seasonEvents),
+    [leagueArchiveDecks, seasonEvents],
+  );
 
   const scopedPlayerName = useMemo(() => {
     if (!playerSlug) {

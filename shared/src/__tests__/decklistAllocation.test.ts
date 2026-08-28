@@ -118,7 +118,7 @@ describe('decklistAllocation', () => {
     expect(
       selectExtraDraftsToCarryForward({
         requiredDeckCount: 1,
-        currentRoundOrderIndexes: [0],
+        currentEventOrderIndexes: [0],
         previousDrafts: [
           { id: 'required-old', orderIndex: 0, roundNumber: 1, status: 'locked' },
           { id: 'extra-old', orderIndex: 1, roundNumber: 1, status: 'draft' },
@@ -132,7 +132,7 @@ describe('decklistAllocation', () => {
     expect(
       selectExtraDraftsToCarryForward({
         requiredDeckCount: 1,
-        currentRoundOrderIndexes: [0, 1],
+        currentEventOrderIndexes: [0, 1],
         previousDrafts: [
           { id: 'required-old', orderIndex: 0, roundNumber: 1, status: 'draft' },
           { id: 'extra-conflict', orderIndex: 1, roundNumber: 1, status: 'draft' },
@@ -144,11 +144,11 @@ describe('decklistAllocation', () => {
     ).toEqual(['extra-free']);
   });
 
-  it('prefers the newest previous extra when the same slot exists on multiple earlier rounds', () => {
+  it('prefers the newest previous extra when the same slot exists on multiple earlier events', () => {
     expect(
       selectExtraDraftsToCarryForward({
         requiredDeckCount: 1,
-        currentRoundOrderIndexes: [0],
+        currentEventOrderIndexes: [0],
         previousDrafts: [
           { id: 'extra-r1', orderIndex: 1, roundNumber: 1, status: 'draft' },
           { id: 'extra-r2', orderIndex: 1, roundNumber: 2, status: 'draft' },

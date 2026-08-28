@@ -68,8 +68,10 @@ export function ArchiveDeckRow({
   const mainCards = builderDeck.cards.filter((card) => card.zone === 'main');
   const sideboardCards = builderDeck.cards.filter((card) => card.zone === 'sideboard');
 
+  const hasCards = builderDeck.cards.length > 0;
+
   const openShare = async () => {
-    if (shareBusy) {
+    if (shareBusy || !hasCards) {
       return;
     }
     setShareBusy(true);
@@ -149,8 +151,8 @@ export function ArchiveDeckRow({
                   <button
                     type="button"
                     className="rounded border border-border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={builderDeck.cards.length === 0}
-                    title={builderDeck.cards.length === 0 ? 'Nothing to export.' : undefined}
+                    disabled={!hasCards}
+                    title={hasCards ? undefined : 'Nothing to export.'}
                     onClick={() => setShowExportDialog(true)}
                   >
                     Export
@@ -158,7 +160,8 @@ export function ArchiveDeckRow({
                   <button
                     type="button"
                     className="rounded border border-border bg-background px-2 py-0.5 text-xs font-medium hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={shareBusy}
+                    disabled={shareBusy || !hasCards}
+                    title={hasCards ? undefined : 'Nothing to share.'}
                     onClick={() => void openShare()}
                   >
                     Share

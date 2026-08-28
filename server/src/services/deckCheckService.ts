@@ -168,7 +168,6 @@ export async function getAdminDeckChecks(seasonId?: string) {
   const decklists = await prisma.decklist.findMany({
     where: {
       eventId: currentEvent.id,
-      roundId: selectedRound.id,
     },
     include: decklistInclude,
     orderBy: { orderIndex: 'asc' },

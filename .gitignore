@@ -10,5 +10,6 @@ build/
 Thumbs.db
 .cursor/
 .lavish/
+server/.qa-seed-state.json
 uploads/
 agent-transcripts/

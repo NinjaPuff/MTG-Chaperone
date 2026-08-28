@@ -55,4 +55,26 @@ describe('seasons event create route', () => {
     expect(response.body.error.fields['config.minDeckSize']).toBeDefined();
     expect(mocks.createEvent).not.toHaveBeenCalled();
   });
+
+  it('GET events includes round id roundNumber and status', async () => {
+    prismaMock.event.findMany.mockResolvedValue([]);
+
+    const response = await request(app).get('/api/seasons/11111111-1111-4111-8111-111111111111/events');
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { seasonId: '11111111-1111-4111-8111-111111111111' },
+        include: expect.objectContaining({
+          rounds: {
+            select: {
+              id: true,
+              roundNumber: true,
+              status: true,
+            },
+          },
+        }),
+      }),
+    );
+  });
 });

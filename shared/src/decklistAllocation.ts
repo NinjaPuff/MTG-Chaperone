@@ -32,10 +32,10 @@ export type ExtraDraftCarryCandidate = {
 
 export function selectExtraDraftsToCarryForward(args: {
   requiredDeckCount: number;
-  currentRoundOrderIndexes: number[];
+  currentEventOrderIndexes: number[];
   previousDrafts: ExtraDraftCarryCandidate[];
 }): string[] {
-  const occupied = new Set(args.currentRoundOrderIndexes);
+  const occupied = new Set(args.currentEventOrderIndexes);
   const chosen: string[] = [];
   const ranked = [...args.previousDrafts].sort(
     (left, right) => right.roundNumber - left.roundNumber || left.orderIndex - right.orderIndex,

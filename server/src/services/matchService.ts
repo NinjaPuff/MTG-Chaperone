@@ -64,17 +64,19 @@ async function getMatch(matchId: string) {
 
 async function lockDecklistsForMatchParticipants(
   client: Pick<Prisma.TransactionClient, 'decklist'> | Pick<typeof prisma, 'decklist'>,
-  roundId: string,
+  eventId: string,
   playerIds: string[],
+  deckCount: number,
 ) {
   if (playerIds.length === 0) {
     return;
   }
   await client.decklist.updateMany({
     where: {
-      roundId,
+      eventId,
       userId: { in: playerIds },
       status: 'submitted',
+      orderIndex: { lt: deckCount },
     },
     data: { status: 'locked' },
   });
@@ -242,8 +244,9 @@ export async function reportMatch(matchId: string, reporterId: string, gameResul
   if (match.round.event.config?.format !== 'round_robin') {
     await lockDecklistsForMatchParticipants(
       prisma,
-      match.roundId,
+      match.round.eventId,
       [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
+      Math.max(1, match.round.event.config?.deckCount ?? 1),
     );
   }
   if (match.round.event.config && isBracketFormat(match.round.event.config.format)) {
@@ -270,8 +273,9 @@ export async function confirmMatch(matchId: string, confirmerId: string) {
     if (match.round.event.config?.format !== 'round_robin') {
       await lockDecklistsForMatchParticipants(
         tx,
-        match.roundId,
+        match.round.eventId,
         [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
+        Math.max(1, match.round.event.config?.deckCount ?? 1),
       );
     }
 
@@ -324,8 +328,9 @@ export async function resolveMatch(matchId: string, adminId: string, gameResults
     if (match.round.event.config?.format !== 'round_robin') {
       await lockDecklistsForMatchParticipants(
         tx,
-        match.roundId,
+        match.round.eventId,
         [match.player1Id, match.player2Id].filter((id): id is string => Boolean(id)),
+        Math.max(1, match.round.event.config?.deckCount ?? 1),
       );
     }
 

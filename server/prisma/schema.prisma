@@ -505,11 +505,12 @@ model Decklist {
 
   user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   event   Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  round   Round          @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  round   Round          @relation(fields: [roundId], references: [id], onDelete: Restrict)
   entries DecklistEntry[]
   shares  DecklistShare[]
 
-  @@unique([userId, eventId, roundId, orderIndex])
+  @@unique([userId, eventId, orderIndex])
+  @@index([roundId])
 }
 
 model DecklistShare {

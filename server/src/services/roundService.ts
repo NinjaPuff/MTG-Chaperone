@@ -225,10 +225,12 @@ export async function completeRound(roundId: string) {
     });
 
     if (round.event.config?.format !== 'round_robin') {
+      const deckCount = Math.max(1, round.event.config?.deckCount ?? 1);
       await tx.decklist.updateMany({
         where: {
-          roundId,
+          eventId: round.eventId,
           status: 'submitted',
+          orderIndex: { lt: deckCount },
         },
         data: {
           status: 'locked',
@@ -377,6 +379,13 @@ export async function deleteRound(roundId: string) {
     throw new AppError(409, 'INVALID_OPERATION', 'Bracket rounds can only be deleted by resetting the entire event');
   }
   validateRoundTransition(round.status, 'delete');
+
+  const referencingDecklists = await prisma.decklist.count({
+    where: { roundId },
+  });
+  if (referencingDecklists > 0) {
+    throw new AppError(409, 'CONFLICT', 'Cannot delete a round while decklists still reference it');
+  }
 
   await prisma.$transaction(async (tx) => {
     if (round.event.config?.format === 'round_robin') {

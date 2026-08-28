@@ -109,14 +109,32 @@ const aliceOwnerFixtures = [
 ];
 
 const seasonEvents = [
-  { id: 'week-2', name: 'Week 2', status: 'active', orderIndex: 2 },
-  { id: 'week-1', name: 'Week 1', status: 'completed', orderIndex: 1 },
+  {
+    id: 'week-2',
+    name: 'Week 2',
+    status: 'active' as const,
+    orderIndex: 2,
+    config: { deckCount: 2 },
+    rounds: [w2r1, w2r2],
+  },
+  {
+    id: 'week-1',
+    name: 'Week 1',
+    status: 'completed' as const,
+    orderIndex: 1,
+    config: { deckCount: 2 },
+    rounds: [w1r1],
+  },
 ];
 
-function mockSeasonLoad(decks: ReturnType<typeof deck>[], visibility = true) {
+function mockSeasonLoad(
+  decks: ReturnType<typeof deck>[],
+  visibility = true,
+  events: typeof seasonEvents | Array<(typeof seasonEvents)[number] | Record<string, unknown>> = seasonEvents,
+) {
   mocks.apiRequest.mockImplementation(async (path: string) => {
     if (path === '/api/seasons/season-1/events') {
-      return { data: seasonEvents };
+      return { data: events };
     }
     if (path === '/api/seasons/season-1/decklists') {
       return { data: decks, meta: { decklistVisibility: visibility } };
@@ -187,6 +205,51 @@ describe('DecklistsPage league archive', () => {
     expect(section).toBeTruthy();
     const groups = within(section as HTMLElement).getAllByRole('heading', { level: 3 });
     expect(groups.map((node) => node.textContent)).toEqual(['Week 2', 'Week 1']);
+  });
+
+  it('fans the same official event lists under each completed round', async () => {
+    const week2CompletedRounds = {
+      id: 'week-2',
+      name: 'Week 2',
+      status: 'active' as const,
+      orderIndex: 2,
+      config: { deckCount: 2 },
+      rounds: [
+        { id: 'w2-r1', roundNumber: 1, status: 'completed' as const },
+        { id: 'w2-r2', roundNumber: 2, status: 'completed' as const },
+      ],
+    };
+    mockSeasonLoad(
+      [deck('alice-w2-official', alice, week2, w2r1, 'submitted', 0, 'Alice Official')],
+      true,
+      [week2CompletedRounds],
+    );
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Round 1' })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('heading', { name: 'Round 2' })).toBeInTheDocument();
+    expect(screen.getAllByText(/Alice Official/)).toHaveLength(2);
+  });
+
+  it('does not fan official lists under an in-progress round', async () => {
+    mockSeasonLoad([
+      deck('alice-w2-official', alice, week2, w2r1, 'submitted', 0, 'Alice Official'),
+      deck('bob-w2-r2-sub', bob, week2, w2r2, 'submitted', 0, 'Bob Current Sub'),
+    ]);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Alice Official/)).toBeInTheDocument();
+    });
+
+    const week2Heading = screen.getByRole('heading', { name: 'Week 2' });
+    const week2Section = week2Heading.parentElement as HTMLElement;
+    expect(within(week2Section).getByRole('heading', { name: 'Round 1' })).toBeInTheDocument();
+    expect(within(week2Section).queryByRole('heading', { name: 'Round 2' })).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Alice Official/)).toHaveLength(1);
+    expect(screen.queryByText(/Bob Current Sub/)).not.toBeInTheDocument();
   });
 
   it('shows empty state when there are no archive-round decks', async () => {
@@ -609,6 +672,28 @@ describe('DecklistsPage league archive', () => {
         }),
       }),
     );
+  });
+
+  it('disables archive Share and Export when the list has no cards', async () => {
+    mocks.useAuth.mockReturnValue({ user: aliceUser });
+    const emptyAlice = {
+      ...deck('alice-empty', alice, week1, w1r1, 'submitted', 0, 'Alice Empty'),
+      entries: [],
+    };
+    mockSeasonLoad([emptyAlice]);
+    renderPage();
+
+    await waitFor(() => {
+      expect(archiveDetails('Alice Empty')).toBeTruthy();
+    });
+    const row = expandArchive('Alice Empty');
+    await waitFor(() => {
+      expect(within(row).getByRole('button', { name: 'Share' })).toBeDisabled();
+    });
+    expect(within(row).getByRole('button', { name: 'Share' })).toHaveAttribute('title', 'Nothing to share.');
+    expect(within(row).getByRole('button', { name: 'Export' })).toBeDisabled();
+    expect(within(row).getByRole('button', { name: 'Export' })).toHaveAttribute('title', 'Nothing to export.');
+    expect(mocks.apiRequest.mock.calls.some((call) => String(call[0]).endsWith('/share'))).toBe(false);
   });
 
   function wrapShareFailure(error: Error) {

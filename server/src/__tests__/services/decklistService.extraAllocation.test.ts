@@ -18,6 +18,7 @@ function extraDeck(overrides: Record<string, unknown> = {}) {
     status: 'draft',
     orderIndex: 1,
     event: {
+      orderIndex: 2,
       season: { id: 'season-1' },
       config: {
         format: 'swiss',

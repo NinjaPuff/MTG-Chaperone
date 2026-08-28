@@ -18,7 +18,8 @@
     "db:migrate": "npm run db:migrate --workspace=server",
     "db:studio": "npm run db:studio --workspace=server",
     "db:generate": "npm run db:generate --workspace=server",
-    "db:seed-demo-pools": "npm run db:seed-demo-pools --workspace=server"
+    "db:seed-demo-pools": "npm run db:seed-demo-pools --workspace=server",
+    "qa:seed": "npm run qa:seed --workspace=server"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",

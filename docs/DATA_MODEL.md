@@ -321,7 +321,8 @@ Pre-computed full round-robin schedule for a season. Generated once when the sea
 | id | UUID | PK | Primary identifier |
 | userId | UUID | FK → User, not null | Deck builder |
 | eventId | UUID | FK → Event, not null | Event this deck is for |
-| roundId | UUID | FK → Round, not null | Round this deck is submitted for |
+| roundId | UUID | FK → Round, not null, `ON DELETE RESTRICT` | Origin (or last-attached) round metadata. Required slots keep this origin round when later Swiss rounds start. Extra drafts rewrite `eventId`+`roundId` only when they move after the previous event is `completed`. |
+| orderIndex | int | not null, default `0` | Slot within the event. Required decks are `0 .. deckCount-1`. Extra drafts are `>= deckCount`. Unique with `(userId, eventId)`. |
 | name | string | nullable | Optional deck name |
 | status | enum | `draft` \| `submitted` \| `locked` | Current lifecycle state |
 | createdAt | timestamp | not null | Row creation time |
@@ -473,14 +474,14 @@ draft ──→ submitted ──→ locked
 | State | Description |
 |---|---|
 | `draft` | Player is building or editing the deck. Owner and site admins can always see it. Non-owners never see `draft` lists, including leftover extra decks after the round or event completes. |
-| `submitted` | Player has submitted the deck for the round. This is an official registered list. May still be retracted depending on event config. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
-| `locked` | The deck is immutable. This is an official registered list. Locked by admin action, match reporting, or round completion of a `submitted` list (per format / `deckLockingMode`). Completing a non–round-robin round does not lock leftover `draft`s. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
+| `submitted` | Player has submitted the deck for the **event**. This is an official registered list. May still be retracted depending on event config. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
+| `locked` | The deck is immutable. This is an official registered list. Locked by admin action, match reporting, or round completion of a `submitted` required list (per format / `deckLockingMode`). Completing a non–round-robin round locks the event’s submitted required rows (`orderIndex < deckCount`), including origin-round rows after Round 2 starts. It does not lock leftover `draft`s. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
 
-Site-admin table-side deck checks (`GET /api/admin/deck-checks`) use the current event (first `active`, else first `setup`) plus `selectDeckbuilderRound` required slots (`submitted` / `locked` and `orderIndex < event.config.deckCount`). There is no `phaseId` on decklists; pool `Phase N` is not a decklist key.
+Site-admin table-side deck checks (`GET /api/admin/deck-checks`) use the current event (first `active`, else first `setup`) official required slots (`submitted` / `locked` and `orderIndex < event.config.deckCount`) for the **event**. `selectDeckbuilderRound` still labels the selected Swiss round in the payload. There is no `phaseId` on decklists; pool `Phase N` is not a decklist key. Deleting a round returns `409 CONFLICT` while any `Decklist.roundId` still references it.
 
 | Transition | Trigger |
 |---|---|
-| `draft` → `submitted` | Player submits the deck for the round. |
+| `draft` → `submitted` | Player submits the deck for the event. |
 | `submitted` → `locked` | Admin locks decks, or the round begins (when `deckLockingMode` is `required_before_round`). |
 | `submitted` → `draft` | Player un-submits before lock, if permitted by the event's `deckLockingMode` setting. |
 
@@ -505,7 +506,8 @@ Site-admin table-side deck checks (`GET /api/admin/deck-checks`) use the current
 | CardPool | `(userId, seasonId)` | unique composite | One pool per player per season |
 | CachedCard | `setCode` | non-unique | Filter cards by set |
 | CachedCard | `name` | non-unique | Card name search |
-| Decklist | `(userId, eventId, roundId)` | non-unique | Lookup a player's deck for a specific round |
+| Decklist | `(userId, eventId, orderIndex)` | unique composite | One slot per player per event (required and extra) |
+| Decklist | `roundId` | non-unique | Origin-round lookups; round delete is `RESTRICT` |
 | DecklistEntry | `decklistId` | non-unique | Fetch all entries in a decklist |
 | CardPoolEntry | `acquisitionId` | non-unique | Fetch all entries in an acquisition batch |
 | InviteLink | `token` | unique | Token-based invite redemption |

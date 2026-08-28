@@ -657,13 +657,18 @@ List all events in a season.
       "id": "clxevt001",
       "name": "Week 1",
       "status": "completed",
-      "format": "sealed",
-      "roundCount": 3,
-      "scheduledDate": "2026-04-07T19:00:00Z"
+      "orderIndex": 1,
+      "config": {},
+      "rounds": [
+        { "id": "w1-r1", "roundNumber": 1, "status": "completed" },
+        { "id": "w1-r2", "roundNumber": 2, "status": "completed" }
+      ]
     }
   ]
 }
 ```
+
+Each `rounds` entry includes `id`, `roundNumber`, and `status` so the `/decks` archive can fan official event lists under completed-round headings.
 
 ---
 
@@ -1515,7 +1520,7 @@ List the authenticated user’s own decks for a season, all statuses. Used by th
 
 #### `GET /api/events/:eventId/my-decklists` and `GET /api/events/:eventId/rounds/:roundId/my-decklists`
 
-Authenticated owner builder payload for the current (or specified) round. Returns that user’s decks of every status plus `matchesComplete`: `true` when the owner has at least one match in this event and every such match is `confirmed` or `resolved`. The client uses only this flag for extra-deck allocation UI. Not a public archive.
+Authenticated owner builder payload for the **event**. Both paths return the same decks: required slots minted once per event (`orderIndex` `0..deckCount-1` when missing) plus extras already on that event. `roundId` / `roundNumber` in the payload are the selected Swiss round (pairings / extra-create metadata). Required tab ids stay the origin rows; they are not rewritten when Round 2 starts. The leftover round path does not mint a second required set. Returns that user’s decks of every status plus `matchesComplete`: `true` when the owner has at least one match in this event and every such match is `confirmed` or `resolved`. The client uses only this flag for extra-deck allocation UI. Not a public archive.
 
 | Property | Value |
 |----------|-------|
@@ -1633,7 +1638,7 @@ Create a new decklist for an event and round. Each player may have one decklist 
 
 **Response `201`:** Decklist object (same shape as `GET /api/decklists/:decklistId`).
 
-**Errors:** `CONFLICT` (decklist already exists for this round), `VALIDATION_ERROR`
+**Errors:** `CONFLICT` (decklist already exists for this event and slot), `VALIDATION_ERROR`
 
 ---
 
@@ -1669,7 +1674,7 @@ Update decklist entries. Only allowed while the decklist is in `draft` status.
 
 #### `POST /api/decklists/:decklistId/submit`
 
-Submit a decklist, locking it for the round. Runs validation against the card pool.
+Submit a decklist for the **event**. Runs validation against the card pool. Registration cap is `event.config.deckCount` submitted/locked lists for the event (`409 CONFLICT`: `Already registered N deck(s) for this event. Unregister one first.`).
 
 | Property | Value |
 |----------|-------|
@@ -1688,7 +1693,7 @@ Submit a decklist, locking it for the round. Runs validation against the card po
 }
 ```
 
-**Errors:** `FORBIDDEN`, `CONFLICT` (already submitted), `VALIDATION_ERROR` (cards not in pool, minimum card count not met)
+**Errors:** `FORBIDDEN`, `CONFLICT` (already registered N deck(s) for this event; already submitted), `VALIDATION_ERROR` (cards not in pool, minimum card count not met)
 
 ---
 
@@ -1920,7 +1925,7 @@ All routes require site admin authentication (`user.role === 'admin'`).
 
 #### `GET /api/admin/deck-checks`
 
-Returns registered lists and the active roster for the current event + current deckbuilder round (table-side checks). Does not auto-create rounds. Official lists are `submitted` or `locked` with `orderIndex < deckCount`. Drafts and extra slots are omitted. `season.decklistVisibility` is ignored. Roster is league members minus season-wide or this-event drops.
+Returns registered lists and the active roster for the current **event** (table-side checks). Does not auto-create rounds. Official lists are `submitted` or `locked` with `orderIndex < deckCount` for the event (including origin-round rows while a later round is `in_progress`). Drafts and extra slots are omitted. `season.decklistVisibility` is ignored. Roster is league members minus season-wide or this-event drops. The payload `round` is still the selected Swiss round for labeling.
 
 | Property | Value |
 |----------|-------|

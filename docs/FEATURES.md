@@ -314,12 +314,12 @@ Track each player's card pool for a season. Pools grow through acquisition phase
 
 ### Description
 
-Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for sealed-pool deckbuilding. Decklists are scoped to event + round. Each round can have a distinct deck. Players can import from a previous round's decklist as a starting point.
+Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for sealed-pool deckbuilding. Decklists are scoped to an event: one player-facing builder at `/events/:eventId/build`. Players register `event.config.deckCount` required lists (`orderIndex < deckCount`) once per event. Those rows stay the official lists for every Swiss round (same ids, same cards). Completing Round 1 and starting Round 2 is pairings only — it does not unregister, wipe, mint empty required slots, or open a distinct Round 2 builder. Extra drafts stay on the same event until it is `completed`, then they can move to the next event.
 
 ### User Stories
 
 - As a player, I want to build a deck from my card pool with a visual interface like Moxfield.
-- As a player, I want to import my previous round's decklist as a starting point for the next round.
+- As a player, I want my registered decks for this event to stay registered when Round 2 starts, without importing or rebuilding a second required set.
 - As a player, I want to see how many copies of each card I have available across all my decks.
 - As a player, I want to export my decklist in MTGO/Arena/Moxfield format.
 
@@ -343,12 +343,12 @@ Full-featured deck builder inspired by Moxfield and CubeCobra, tailored for seal
 - [x] Export: copy/download Moxfield/Arena and Archidekt text from the builder, archive, and share page
 - [ ] Decklist privacy follows league settings
 - [ ] Decklist states: draft → submitted → locked
-- [ ] "Import from previous round" copies a prior decklist as starting point
+- [x] Required slots are registered once per event and remain the official lists for later Swiss rounds of that event (Round 2 does not mint a new required set or import from the previous round)
 - [ ] Deck locking configurable per event (required_before_round, free_modification, admin_locked)
 
 ### Previous-round league deck archive
 
-Players and spectators can browse other players’ decks from completed previous rounds on `/decks`. Registered (`submitted`/`locked`) lists are the official source of truth. Leftover `draft` decks stay owner- and site-admin-only forever, including after the round or event completes. Players who never registered do not appear in the public archive.
+Players and spectators can browse other players’ decks from completed previous rounds on `/decks`. Registered (`submitted`/`locked`) lists are the official source of truth for the **event**. Archive headings may repeat the same official decklist ids under each completed round of that event (display fan-out only; the API still returns one row per decklist). Leftover `draft` decks stay owner- and site-admin-only forever, including after the round or event completes. Players who never registered do not appear in the public archive.
 
 #### User Stories
 
@@ -360,7 +360,7 @@ Players and spectators can browse other players’ decks from completed previous
 #### Acceptance Criteria
 
 - [x] Logged-in `/decks` loads the season visible-decklist list, not only `my-season`
-- [x] Archive grouping is event → round → player
+- [x] Archive grouping is event → round → player; official required lists fan under each completed round using the same `decklist.id`
 - [x] Registered (`submitted`/`locked`) decks are badged Registered and treated as the official list
 - [x] Leftover `draft` decks are omitted from League/spectator lists and `GET /api/decklists/:id` returns 403 for non-owners/non-admins
 - [x] Players who never registered do not appear in the public archive
@@ -379,7 +379,7 @@ Players and spectators can browse other players’ decks from completed previous
 
 ### Extra decks after matches complete
 
-After every match for a player in the current event is `confirmed` or `resolved`, extra draft tabs (`orderIndex >= deckCount`) may reuse cards from that player’s registered lists. Extra decks stay `draft`, private, and cannot register past `deckCount`. Pool copy limits still apply, and extra drafts share allocation with each other. Required slots always share allocation with registered siblings. Completing a round locks `submitted` lists only; leftover drafts stay drafts.
+After every match for a player in the current event is `confirmed` or `resolved`, extra draft tabs (`orderIndex >= deckCount`) may reuse cards from that player’s registered lists. Extra decks stay `draft`, private, and cannot register past `deckCount`. Pool copy limits still apply, and extra drafts share allocation with each other. Required slots always share allocation with registered siblings. Completing a round locks the same event’s submitted **required** rows (`orderIndex < deckCount`); leftover drafts stay drafts. Round lifecycle never unsubmits. Extra drafts stay on this event until it is `completed`.
 
 #### Acceptance Criteria
 
@@ -402,7 +402,7 @@ Players copy a pasteable decklist (optional `.txt` download) for Moxfield Import
 
 #### Acceptance Criteria
 
-- [x] Builder header order is Import, Export, Share, Register; Export is disabled with “Nothing to export.” when the active deck has no cards
+- [x] Builder header order is Import, Export, Share, Register; Export is disabled with “Nothing to export.” and Share with “Nothing to share.” when the active deck has no cards
 - [x] Modal copies Moxfield/Arena text by default and can switch to Archidekt `Nx` lines; download `.txt` is secondary
 - [x] Archive Export lives in the expanded row (not `<summary>`), signed-in only
 - [x] Share page Export is available to guests
@@ -435,7 +435,7 @@ Players can share the **active deck’s contents** as a frozen, unlisted documen
 - [x] Non-owners freeze the live DB list; only the owner may freeze unsaved builder cards; owner name is always the deck owner’s
 - [x] Entries keep `setCode` / `collectorNumber`; `#v2.` hydrates printings from the card cache
 - [x] Archive Share that fails (403 or network) shows `Failed to create share link`
-- [x] Empty lists can be shared
+- [x] Empty lists cannot be shared or exported; Share and Export are disabled with “Nothing to share.” / “Nothing to export.”
 - [x] After unregister/delete of the origin deck, a previously copied token still loads (`ON DELETE SET NULL`)
 - [x] Malformed, missing, unknown-token, or query-string-only share → invalid-link UI; no login wall
 - [x] Packed hash URLs (`#v1.…` / `#v2.…`) still decode locally
@@ -446,11 +446,11 @@ Players can share the **active deck’s contents** as a frozen, unlisted documen
 
 ### Admin table-side deck checks
 
-Site admins can open a dedicated `/admin/deck-checks` surface to inspect **registered** lists for the current event + current deckbuilder round (table-side checks). This is not the public `/decks` archive and does not use pool `Phase N`. Official check lists are `submitted` or `locked` required slots (`orderIndex < event.config.deckCount`). Drafts and extra slots never appear. The page works even when `season.decklistVisibility` is off.
+Site admins can open a dedicated `/admin/deck-checks` surface to inspect **registered** lists for the current **event** (table-side checks). This is not the public `/decks` archive and does not use pool `Phase N`. Official check lists are `submitted` or `locked` required slots (`orderIndex < event.config.deckCount`) for the event, including origin-round rows after Round 2 starts. Drafts and extra slots never appear. The page works even when `season.decklistVisibility` is off.
 
 #### User Stories
 
-- As an admin, I want to view every player’s registered list for the current event and current deckbuilder round so I can perform table-side deck checks.
+- As an admin, I want to view every player’s registered list for the current event so I can perform table-side deck checks.
 - As an admin, I want to search by player name and see who has not finished registering (`registeredCount < deckCount`), including players with no decklist row yet.
 - As an admin, I want this even when season decklist visibility is off.
 - As a non-admin, I must not open this UI or receive the extra roster payload.

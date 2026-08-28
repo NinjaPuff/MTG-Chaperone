@@ -13,7 +13,8 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:generate": "prisma generate",
-    "db:seed-demo-pools": "tsx scripts/seed-card-pools-demo.ts"
+    "db:seed-demo-pools": "tsx scripts/seed-card-pools-demo.ts",
+    "qa:seed": "tsx scripts/qa-seed.ts"
   },
   "dependencies": {
     "@mtg-league/shared": "*",

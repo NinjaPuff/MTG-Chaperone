@@ -13,14 +13,19 @@ describe('unlockDecklistsForRound', () => {
   });
 
   it('unlocks locked decklists for a round', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({ eventId: 'week-2' });
     prismaMock.decklist.updateMany.mockResolvedValue({ count: 3 });
 
-    const count = await unlockDecklistsForRound(prismaMock as any, 'round-1');
+    const count = await unlockDecklistsForRound(prismaMock as any, 'round-2');
 
     expect(count).toBe(3);
+    expect(prismaMock.round.findUnique).toHaveBeenCalledWith({
+      where: { id: 'round-2' },
+      select: { eventId: true },
+    });
     expect(prismaMock.decklist.updateMany).toHaveBeenCalledWith({
       where: {
-        roundId: 'round-1',
+        eventId: 'week-2',
         status: 'locked',
       },
       data: {
@@ -30,6 +35,7 @@ describe('unlockDecklistsForRound', () => {
   });
 
   it('returns zero when no decklists are unlocked', async () => {
+    prismaMock.round.findUnique.mockResolvedValue({ eventId: 'week-2' });
     prismaMock.decklist.updateMany.mockResolvedValue({ count: 0 });
 
     const count = await unlockDecklistsForRound(prismaMock as any, 'round-2');
