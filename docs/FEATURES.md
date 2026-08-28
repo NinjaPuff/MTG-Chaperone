@@ -444,6 +444,30 @@ Players can share the **active deck’s contents** as a frozen, unlisted documen
 - [x] Deckbuilder Share button is `shrink-0` and the sidebar height chain stays intact
 - [x] No revoke/expiry UI
 
+### Admin table-side deck checks
+
+Site admins can open a dedicated `/admin/deck-checks` surface to inspect **registered** lists for the current event + current deckbuilder round (table-side checks). This is not the public `/decks` archive and does not use pool `Phase N`. Official check lists are `submitted` or `locked` required slots (`orderIndex < event.config.deckCount`). Drafts and extra slots never appear. The page works even when `season.decklistVisibility` is off.
+
+#### User Stories
+
+- As an admin, I want to view every player’s registered list for the current event and current deckbuilder round so I can perform table-side deck checks.
+- As an admin, I want to search by player name and see who has not finished registering (`registeredCount < deckCount`), including players with no decklist row yet.
+- As an admin, I want this even when season decklist visibility is off.
+- As a non-admin, I must not open this UI or receive the extra roster payload.
+- As a player or spectator, I still only see completed-round lists on `/decks`.
+
+#### Acceptance Criteria
+
+- [x] Site-admin-only route `/admin/deck-checks` (guest: signed-in copy; `role: user`: no admin access); `GET /api/admin/deck-checks` returns 403 for non-admins
+- [x] Current phase is active season → first `active` else `setup` event → `selectDeckbuilderRound` (`in_progress` → `not_started` → last); not pool Phase N; GET does not auto-create rounds
+- [x] Empty states: `No active season.` / `No current event.` / `No current deckbuilder round.`; unknown `seasonId` is 404; invalid `seasonId` is 400
+- [x] Official lists only: `submitted`/`locked` and `orderIndex < deckCount`; drafts and extra slots excluded even if submitted
+- [x] Roster is league members minus drops; incomplete = `registeredCount < deckCount`; dropped players omitted from lists and roster
+- [x] `decklistVisibility: false` still returns lists and roster for admin
+- [x] Read-only expand (list + details); search by `primaryName`; no Share/Export/Register
+- [x] Linked from Admin → Current Season and EventDetail Admin Controls (`setup`/`active` only)
+- [x] `/decks` archive filter (`isArchiveRound`) is unchanged; non-admins still do not see current-round lists
+
 ### Planned for Later
 
 - Deck-level description/primer notes
@@ -636,6 +660,7 @@ Centralized admin interface for all league management operations.
 - As an admin, I want a single place to manage all league operations.
 - As an admin, I want to batch-enter results for all matches in a round at once.
 - As an admin, I want to see and resolve all pending match disputes.
+- As an admin, I want to open table-side deck checks for the current event and round from the admin dashboard (`/admin/deck-checks`).
 
 ### Acceptance Criteria
 
@@ -648,6 +673,7 @@ Centralized admin interface for all league management operations.
 - [ ] Dispute resolution queue showing all disputed matches
 - [ ] Pool management: view, approve, or reject pool acquisitions
 - [ ] Batch player operations: drop multiple players, send announcements
+- [x] Table-side deck checks: `/admin/deck-checks` lists current-round registered lists and incomplete registrations (see §11 Admin table-side deck checks)
 
 ---
 

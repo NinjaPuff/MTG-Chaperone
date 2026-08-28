@@ -17,6 +17,7 @@ import {
   type StaleReference,
 } from '../services/cardCacheService.js';
 import { dropPlayer } from '../services/playerDropService.js';
+import { getAdminDeckChecks } from '../services/deckCheckService.js';
 
 const router = Router();
 
@@ -267,6 +268,20 @@ router.post(
     }
   },
 );
+
+router.get('/deck-checks', async (req, res, next) => {
+  try {
+    const rawSeasonId = typeof req.query.seasonId === 'string' ? req.query.seasonId.trim() : '';
+    const seasonId = rawSeasonId.length > 0 ? rawSeasonId : undefined;
+    if (seasonId !== undefined && !z.string().uuid().safeParse(seasonId).success) {
+      throw new AppError(400, 'VALIDATION_ERROR', 'Query parameter seasonId must be a UUID');
+    }
+    const data = await getAdminDeckChecks(seasonId);
+    res.json({ data });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.post('/matches/batch-report', (_req, res) => {
   res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Batch report matches not yet implemented' } });

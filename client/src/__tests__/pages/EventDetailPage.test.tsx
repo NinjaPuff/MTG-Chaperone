@@ -471,4 +471,51 @@ describe('EventDetailPage', () => {
 
     expect(mocks.confirm).not.toHaveBeenCalled();
   });
+
+  it('shows a Deck checks link for admins on an active event', async () => {
+    mocks.role = 'admin';
+    configureApi('active', []);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Deck checks' })).toHaveAttribute(
+        'href',
+        '/admin/deck-checks?seasonId=s1',
+      );
+    });
+  });
+
+  it('shows a Deck checks link for admins on a setup event', async () => {
+    mocks.role = 'admin';
+    configureApi('setup', []);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Deck checks' })).toHaveAttribute(
+        'href',
+        '/admin/deck-checks?seasonId=s1',
+      );
+    });
+  });
+
+  it('hides the Deck checks link on a completed event', async () => {
+    mocks.role = 'admin';
+    configureApi('completed', []);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Week 1')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('link', { name: 'Deck checks' })).not.toBeInTheDocument();
+  });
+
+  it('hides the Deck checks link for non-admins', async () => {
+    configureApi('active', []);
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText('Week 1')).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('link', { name: 'Deck checks' })).not.toBeInTheDocument();
+  });
 });

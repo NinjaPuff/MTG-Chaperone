@@ -476,6 +476,8 @@ draft ──→ submitted ──→ locked
 | `submitted` | Player has submitted the deck for the round. This is an official registered list. May still be retracted depending on event config. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
 | `locked` | The deck is immutable. This is an official registered list. Locked by admin action, match reporting, or round completion of a `submitted` list (per format / `deckLockingMode`). Completing a non–round-robin round does not lock leftover `draft`s. Visible to others when `season.decklistVisibility` is on (owner and site admins always). |
 
+Site-admin table-side deck checks (`GET /api/admin/deck-checks`) use the current event (first `active`, else first `setup`) plus `selectDeckbuilderRound` required slots (`submitted` / `locked` and `orderIndex < event.config.deckCount`). There is no `phaseId` on decklists; pool `Phase N` is not a decklist key.
+
 | Transition | Trigger |
 |---|---|
 | `draft` → `submitted` | Player submits the deck for the round. |

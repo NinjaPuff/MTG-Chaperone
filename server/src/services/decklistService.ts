@@ -70,8 +70,8 @@ type DecklistValidationResult = {
   invalidCardIds: string[];
 };
 
-type DeckbuilderRoundStatus = 'not_started' | 'in_progress' | 'completed';
-type DeckbuilderRound = {
+export type DeckbuilderRoundStatus = 'not_started' | 'in_progress' | 'completed';
+export type DeckbuilderRound = {
   id: string;
   roundNumber: number;
   status: DeckbuilderRoundStatus;
@@ -460,7 +460,7 @@ async function getPoolCardsForUserSeason(userId: string, seasonId: string) {
   };
 }
 
-function selectDeckbuilderRound(rounds: DeckbuilderRound[]): DeckbuilderRound | null {
+export function selectDeckbuilderRound(rounds: DeckbuilderRound[]): DeckbuilderRound | null {
   return (
     rounds.find((round) => round.status === 'in_progress') ??
     rounds.find((round) => round.status === 'not_started') ??

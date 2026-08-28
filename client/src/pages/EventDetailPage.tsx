@@ -779,6 +779,14 @@ export function EventDetailPage() {
                 Reset Event
               </button>
             ) : null}
+            {event.status === 'setup' || event.status === 'active' ? (
+              <Link
+                to={`/admin/deck-checks?seasonId=${event.season.id}`}
+                className="rounded-md border border-border px-3 py-2 text-sm"
+              >
+                Deck checks
+              </Link>
+            ) : null}
             <button
               type="button"
               disabled={isMutating}

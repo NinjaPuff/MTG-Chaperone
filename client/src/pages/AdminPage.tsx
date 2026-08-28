@@ -1627,9 +1627,17 @@ export function AdminPage() {
           ) : (
             <>
               <form className="grid gap-4 md:grid-cols-2" onSubmit={saveSeasonSettings}>
-                <h3 className="text-lg font-semibold md:col-span-2">
-                  Current Season: #{activeSeason.number} - {activeSeason.name}
-                </h3>
+        <h3 className="text-lg font-semibold md:col-span-2 flex flex-wrap items-center justify-between gap-3">
+          <span>
+            Current Season: #{activeSeason.number} - {activeSeason.name}
+          </span>
+          <Link
+            to={`/admin/deck-checks?seasonId=${activeSeason.id}`}
+            className="rounded-md border border-border px-3 py-1 text-sm font-normal"
+          >
+            Deck checks
+          </Link>
+        </h3>
                 <label className="text-sm font-medium">
                   Season Name
                   <input

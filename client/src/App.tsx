@@ -11,6 +11,7 @@ import { DecklistsPage } from './pages/DecklistsPage';
 import { DeckBuilderPage } from './pages/DeckBuilderPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
+import { AdminDeckChecksPage } from './pages/AdminDeckChecksPage';
 import { SeasonHistoryPage } from './pages/SeasonHistoryPage';
 import { JoinPage } from './pages/JoinPage';
 import { ShareDeckPage } from './pages/ShareDeckPage';
@@ -40,6 +41,7 @@ export function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/profile/:slug" element={<ProfilePage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/admin/deck-checks" element={<AdminDeckChecksPage />} />
         <Route path="/join" element={<JoinPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

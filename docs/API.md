@@ -1918,6 +1918,43 @@ Get a user's match history across all leagues.
 
 All routes require site admin authentication (`user.role === 'admin'`).
 
+#### `GET /api/admin/deck-checks`
+
+Returns registered lists and the active roster for the current event + current deckbuilder round (table-side checks). Does not auto-create rounds. Official lists are `submitted` or `locked` with `orderIndex < deckCount`. Drafts and extra slots are omitted. `season.decklistVisibility` is ignored. Roster is league members minus season-wide or this-event drops.
+
+| Property | Value |
+|----------|-------|
+| Auth     | Admin |
+| Query Params | `seasonId` (UUID, optional) — omitted or empty resolves the first `isActive` season (`number` desc). Unknown id is `NOT_FOUND`. Non-UUID is `VALIDATION_ERROR`. |
+
+**Response `200`:**
+
+```json
+{
+  "data": {
+    "emptyReason": null,
+    "season": { "id": "season-1", "name": "Season 1", "decklistVisibility": false },
+    "event": { "id": "week-2", "name": "Week 2", "status": "active" },
+    "round": { "id": "w2-r2", "roundNumber": 2, "status": "in_progress" },
+    "deckCount": 2,
+    "decklists": [],
+    "players": [
+      {
+        "user": { "id": "user-alice", "displayName": "Alice", "publicName": null, "slug": "alice", "avatarUrl": null },
+        "registeredCount": 1,
+        "requiredCount": 2
+      }
+    ]
+  }
+}
+```
+
+`emptyReason` is `no_active_season`, `no_current_event`, `no_current_round`, or `null`. Known context layers stay filled on empty 200s. Zero registrations is `emptyReason: null` with `decklists: []` and a populated roster.
+
+**Errors:** `UNAUTHORIZED`, `FORBIDDEN`, `VALIDATION_ERROR`, `NOT_FOUND`
+
+---
+
 #### `GET /api/admin/card-cache/stats`
 
 Returns cached card counts and last-updated timestamps for the requested set codes.
