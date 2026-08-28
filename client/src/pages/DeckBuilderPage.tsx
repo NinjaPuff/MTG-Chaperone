@@ -399,9 +399,7 @@ export function DeckBuilderPage() {
     return buildPoolAllocationMaps(
       decks,
       activeDeckId,
-      ignoreRegistered
-        ? { ignoreRegisteredSiblings: true, extraSlotMinOrderIndex: requiredDeckCount }
-        : undefined,
+      ignoreRegistered ? { ignoreRegisteredSiblings: true } : undefined,
     );
   }, [activeDeckId, decks, matchesComplete, requiredDeckCount]);
   const combinedAllocationByCardId = allocationByDeckStatus.combinedForAvailability;

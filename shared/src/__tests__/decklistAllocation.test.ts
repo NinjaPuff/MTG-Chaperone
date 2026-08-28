@@ -192,7 +192,7 @@ describe('decklistAllocation', () => {
     ).toBe(false);
   });
 
-  it('skips registered siblings and counts extra drafts when ignoreRegisteredSiblings is on', () => {
+  it('skips registered siblings and does not count extra drafts when ignoreRegisteredSiblings is on', () => {
     const result = buildPoolAllocationMaps(
       [
         makeDeck({
@@ -215,11 +215,36 @@ describe('decklistAllocation', () => {
         }),
       ],
       'extra-active',
-      { ignoreRegisteredSiblings: true, extraSlotMinOrderIndex: 1 },
+      { ignoreRegisteredSiblings: true },
     );
 
-    expect(result.combinedForAvailability.get('card-a')).toBe(2);
+    expect(result.combinedForAvailability.get('card-a')).toBe(1);
     expect(result.activeDeckByCardId.get('card-a')).toBe(1);
-    expect(result.registeredOtherDecksByCardId.get('card-a')).toBe(1);
+    expect(result.registeredOtherDecksByCardId.get('card-a')).toBeUndefined();
+  });
+
+  it('does not count another extra draft when ignoreRegisteredSiblings is on and nothing is registered', () => {
+    const result = buildPoolAllocationMaps(
+      [
+        makeDeck({
+          id: 'extra-other',
+          status: 'draft',
+          orderIndex: 2,
+          cards: [{ cachedCardId: 'card-a', quantity: 1 }],
+        }),
+        makeDeck({
+          id: 'extra-active',
+          status: 'draft',
+          orderIndex: 1,
+          cards: [{ cachedCardId: 'card-a', quantity: 1 }],
+        }),
+      ],
+      'extra-active',
+      { ignoreRegisteredSiblings: true },
+    );
+
+    expect(result.combinedForAvailability.get('card-a')).toBe(1);
+    expect(result.activeDeckByCardId.get('card-a')).toBe(1);
+    expect(result.registeredOtherDecksByCardId.get('card-a')).toBeUndefined();
   });
 });

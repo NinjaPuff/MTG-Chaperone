@@ -379,13 +379,13 @@ Players and spectators can browse other players’ decks from completed previous
 
 ### Extra decks after matches complete
 
-After every match for a player in the current event is `confirmed` or `resolved`, extra draft tabs (`orderIndex >= deckCount`) may reuse cards from that player’s registered lists. Extra decks stay `draft`, private, and cannot register past `deckCount`. Pool copy limits still apply, and extra drafts share allocation with each other. Required slots always share allocation with registered siblings. Completing a round locks the same event’s submitted **required** rows (`orderIndex < deckCount`); leftover drafts stay drafts. Round lifecycle never unsubmits. Extra drafts stay on this event until it is `completed`.
+After every match for a player in the current event is `confirmed` or `resolved`, extra draft tabs (`orderIndex >= deckCount`) may reuse cards from that player’s registered lists. Extra decks stay `draft`, private, and cannot register past `deckCount`. Pool copy limits still apply. Extra drafts do not share allocation with each other. Required slots always share allocation with registered siblings. Completing a round locks the same event’s submitted **required** rows (`orderIndex < deckCount`); leftover drafts stay drafts. Round lifecycle never unsubmits. Extra drafts stay on this event until it is `completed`.
 
 #### Acceptance Criteria
 
 - [x] Extra draft saves ignore registered-sibling allocation when `matchesComplete` is true
 - [x] Builder left open after last confirm: tab-back refreshes `matchesComplete` only (no remount, no lost local extras)
-- [x] Extra drafts still cannot exceed pool copies or double-spend against other extra drafts
+- [x] Extra drafts still cannot exceed pool copies on the active list; leftover extra drafts do not reserve copies from each other
 - [x] Required-slot drafts still share allocation with registered siblings
 - [x] Extra submit still 409s when registered count already equals `deckCount`
 - [x] Extra decks stay private (`draft`) and do not appear in the public archive

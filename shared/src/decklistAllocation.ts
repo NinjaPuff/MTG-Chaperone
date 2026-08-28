@@ -12,7 +12,6 @@ export type DeckAllocationDeck = {
 
 export type PoolAllocationOptions = {
   ignoreRegisteredSiblings?: boolean;
-  extraSlotMinOrderIndex?: number;
 };
 
 export function isRegisteredDecklistStatus(status: DeckAllocationDeck['status']) {
@@ -77,19 +76,13 @@ export function buildPoolAllocationMaps(
   const activeDeckByCardId = new Map<string, number>();
   const registeredOtherDecksByCardId = new Map<string, number>();
   const ignoreRegistered = options?.ignoreRegisteredSiblings === true;
-  const extraMin = options?.extraSlotMinOrderIndex ?? 1;
 
   for (const deck of decks) {
     const isActiveDeck = activeDeckId !== null && deck.id === activeDeckId;
     const isRegisteredDeck = isRegisteredDecklistStatus(deck.status);
-    const isExtraDraftSibling =
-      ignoreRegistered &&
-      !isActiveDeck &&
-      deck.status === 'draft' &&
-      (deck.orderIndex ?? 0) >= extraMin;
 
     if (ignoreRegistered) {
-      if (!isActiveDeck && !isExtraDraftSibling) {
+      if (!isActiveDeck) {
         continue;
       }
     } else if (!isActiveDeck && !isRegisteredDeck) {

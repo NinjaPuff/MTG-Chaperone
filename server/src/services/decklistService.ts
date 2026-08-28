@@ -324,27 +324,11 @@ async function loadAllocationSiblingDecklists(args: {
 }) {
 
   if (args.ignoreRegistered) {
+    if (!args.includeSelf) {
+      return [];
+    }
     return prisma.decklist.findMany({
-      where: args.includeSelf
-        ? {
-            userId: args.userId,
-            eventId: args.eventId,
-            OR: [
-              { id: args.decklistId },
-              {
-                status: 'draft',
-                orderIndex: { gte: args.deckCount },
-                id: { not: args.decklistId },
-              },
-            ],
-          }
-        : {
-            userId: args.userId,
-            eventId: args.eventId,
-            status: 'draft',
-            orderIndex: { gte: args.deckCount },
-            id: { not: args.decklistId },
-          },
+      where: { id: args.decklistId },
       select: allocationSiblingEntrySelect,
     });
   }

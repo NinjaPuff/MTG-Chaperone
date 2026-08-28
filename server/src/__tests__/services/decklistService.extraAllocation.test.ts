@@ -34,16 +34,35 @@ function extraDeck(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockPoolQty2() {
+function mockPoolQty(quantity: number) {
   prismaMock.cardPool.findUnique.mockResolvedValue({
     id: 'pool-1',
     acquisitions: [
       {
-        entries: [{ cachedCardId: 'card-1', quantity: 2, cachedCard: { typeLine: 'Creature - Wizard' } }],
+        entries: [{ cachedCardId: 'card-1', quantity, cachedCard: { typeLine: 'Creature - Wizard' } }],
       },
     ],
   });
   prismaMock.cachedCard.findMany.mockResolvedValue([]);
+}
+
+function mockPoolQty2() {
+  mockPoolQty(2);
+}
+
+function mockPoolQty1() {
+  mockPoolQty(1);
+}
+
+function assertNoExtraDraftSiblingQuery() {
+  for (const [args] of prismaMock.decklist.findMany.mock.calls) {
+    const where = args.where as Record<string, unknown> | undefined;
+    const clauses = [where, ...((where?.OR as Array<Record<string, unknown> | undefined>) ?? [])];
+    for (const clause of clauses) {
+      expect(clause?.status).not.toBe('draft');
+      expect(clause?.orderIndex).toBeUndefined();
+    }
+  }
 }
 
 function mockUniquenessOff() {
@@ -96,15 +115,7 @@ describe('decklistService extra-draft allocation after matches complete', () => 
     const result = await updateDecklist('deck-extra', 'user-1', false, { entries: EXTRA_ENTRIES });
 
     expect(result.id).toBe('deck-extra');
-    expect(prismaMock.decklist.findMany).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: 'draft',
-          orderIndex: { gte: 1 },
-        }),
-      }),
-    );
+    assertNoExtraDraftSiblingQuery();
   });
 
   it('still rejects extra-draft copies that exceed the pool after matches complete', async () => {
@@ -196,7 +207,7 @@ describe('decklistService extra-draft allocation after matches complete', () => 
     });
   });
 
-  it('counts other extra drafts against the pool when the exemption is on', async () => {
+  it('saves extra-draft copies that another extra already holds when the exemption is on', async () => {
     prismaMock.decklist.findUnique.mockResolvedValue(extraDeck());
     mockPoolQty2();
     mockUniquenessOff();
@@ -208,25 +219,13 @@ describe('decklistService extra-draft allocation after matches complete', () => 
         entries: [{ cachedCardId: 'card-1', quantity: 2 }],
       },
     ]);
-    prismaMock.cachedCard.findUnique.mockResolvedValue({ name: 'Card One', setCode: 'SET', collectorNumber: '1' });
+    prismaMock.decklist.update.mockResolvedValue({ id: 'deck-extra', name: 'Extra', entries: [] });
 
-    await expect(updateDecklist('deck-extra', 'user-1', false, { entries: EXTRA_ENTRIES })).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      message: expect.stringMatching(/Too many copies allocated/),
-    });
-    expect(prismaMock.decklist.findMany).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        where: expect.objectContaining({
-          status: 'draft',
-          orderIndex: { gte: 1 },
-        }),
-      }),
-    );
-    expect(prismaMock.decklist.findMany.mock.calls[1][0].where.status).not.toEqual({
-      in: ['submitted', 'locked'],
-    });
-    expect(prismaMock.decklist.findMany.mock.calls[1][0].where.roundId).toBeUndefined();
+    const result = await updateDecklist('deck-extra', 'user-1', false, { entries: EXTRA_ENTRIES });
+
+    expect(result.id).toBe('deck-extra');
+    expect(prismaMock.decklist.update).toHaveBeenCalled();
+    assertNoExtraDraftSiblingQuery();
   });
 
   it('omits registered-sibling allocation errors when validating an extra draft after matches complete', async () => {
@@ -245,22 +244,11 @@ describe('decklistService extra-draft allocation after matches complete', () => 
     const result = await validateDecklist('deck-extra', 'user-1');
 
     expect(result.errors.some((error) => /Too many copies allocated/.test(error))).toBe(false);
-    expect(prismaMock.decklist.findMany).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        where: expect.objectContaining({
-          OR: expect.arrayContaining([
-            { id: 'deck-extra' },
-            expect.objectContaining({
-              status: 'draft',
-              orderIndex: { gte: 1 },
-            }),
-          ]),
-        }),
-      }),
+    assertNoExtraDraftSiblingQuery();
+    expect(prismaMock.decklist.findMany.mock.calls[1][0].where).toEqual(
+      expect.objectContaining({ id: 'deck-extra' }),
     );
-    const siblingWhere = prismaMock.decklist.findMany.mock.calls[1][0].where;
-    expect(JSON.stringify(siblingWhere)).not.toContain('submitted');
+    expect(JSON.stringify(prismaMock.decklist.findMany.mock.calls[1][0].where)).not.toContain('submitted');
   });
 
   it('uses the deck owner id when an admin updates another user extra deck', async () => {
@@ -317,5 +305,54 @@ describe('decklistService extra-draft allocation after matches complete', () => 
 
     const result = await updateDecklist('deck-extra', 'user-1', false, { entries: EXTRA_ENTRIES });
     expect(result.id).toBe('deck-extra');
+  });
+
+  it('validates an extra holding a pool-1 card while another extra holds the same copy', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue(
+      extraDeck({
+        entries: [{ cachedCardId: 'card-1', quantity: 1, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
+      }),
+    );
+    mockPoolQty1();
+    mockUniquenessOff();
+    mockMatches(['confirmed']);
+    prismaMock.decklist.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { entries: [{ cachedCardId: 'card-1', quantity: 1 }] },
+    ]);
+
+    const result = await validateDecklist('deck-extra', 'user-1');
+
+    expect(result.errors.some((error) => /Too many copies allocated/.test(error))).toBe(false);
+    assertNoExtraDraftSiblingQuery();
+    expect(prismaMock.decklist.findMany.mock.calls[1][0].where).toEqual(
+      expect.objectContaining({ id: 'deck-extra' }),
+    );
+  });
+
+  it('validates a required slot holding a pool-1 card while leftover extras hold the same copy', async () => {
+    prismaMock.decklist.findUnique.mockResolvedValue(
+      extraDeck({
+        id: 'deck-required',
+        orderIndex: 0,
+        entries: [{ cachedCardId: 'card-1', quantity: 1, zone: 'main', cachedCard: { typeLine: 'Creature - Wizard' } }],
+      }),
+    );
+    mockPoolQty1();
+    mockUniquenessOff();
+    mockMatches(['confirmed']);
+    prismaMock.decklist.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { entries: [{ cachedCardId: 'card-1', quantity: 1 }] },
+    ]);
+
+    const result = await validateDecklist('deck-required', 'user-1');
+
+    expect(result.errors.some((error) => /Too many copies allocated/.test(error))).toBe(false);
+    expect(prismaMock.decklist.findMany.mock.calls[1][0].where).toEqual(
+      expect.objectContaining({
+        userId: 'user-1',
+        eventId: 'event-1',
+        OR: expect.arrayContaining([{ id: 'deck-required' }, { status: { in: ['submitted', 'locked'] } }]),
+      }),
+    );
   });
 });

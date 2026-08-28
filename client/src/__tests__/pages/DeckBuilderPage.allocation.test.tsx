@@ -258,7 +258,7 @@ describe('DeckBuilderPage registered-only allocation', () => {
     expect(screen.getByText('other decks 2')).toBeInTheDocument();
   });
 
-  it('counts other extra drafts when matches are complete', async () => {
+  it('does not count other extra drafts when matches are complete', async () => {
     configureApi({
       poolQuantity: 2,
       matchesComplete: true,
@@ -266,16 +266,32 @@ describe('DeckBuilderPage registered-only allocation', () => {
       decks: [
         { id: 'deck-active', status: 'draft', entries: [], orderIndex: 1 },
         { id: 'deck-extra-sibling', status: 'draft', entries: [makeDeckEntry(2)], orderIndex: 2 },
-        { id: 'deck-registered', status: 'submitted', entries: [makeDeckEntry(2)], orderIndex: 0 },
       ],
     });
     renderPage();
 
-    await waitFor(() => expect(screen.getByText('other decks 2')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('Lightning Bolt').length).toBeGreaterThan(0));
+    expect(screen.queryByText('other decks 2')).not.toBeInTheDocument();
     openPoolContextMenu();
 
-    expect(screen.getByRole('button', { name: 'Add to main deck' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Add to sideboard' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add to main deck' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Add to sideboard' })).toBeEnabled();
+  });
+
+  it('shows no other-decks badge when two extras share a pool-1 card after matches complete', async () => {
+    configureApi({
+      poolQuantity: 1,
+      matchesComplete: true,
+      deckCount: 1,
+      decks: [
+        { id: 'deck-active', status: 'draft', entries: [makeDeckEntry(1)], orderIndex: 1 },
+        { id: 'deck-extra-sibling', status: 'draft', entries: [makeDeckEntry(1)], orderIndex: 2 },
+      ],
+    });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText('in deck 1')).toBeInTheDocument());
+    expect(screen.queryByText('other decks 1')).not.toBeInTheDocument();
   });
 
   it('shows reuse helper copy only for extra drafts after matches complete', async () => {
